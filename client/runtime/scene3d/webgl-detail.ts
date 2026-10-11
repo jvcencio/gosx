@@ -101,8 +101,8 @@ function sceneWebGLUploadDetail(gl = Object.create(null), resources = Object.cre
   if (!uniforms.detail || !material || !material.detail) return;
   const atlas = resources.materials.get(material);
   gl.uniform4fv(uniforms.detail, sceneDetailUniformData(material.detail, atlas.masks, enabled));
-  scenePBRBindTexture(gl, 14, atlas.texture, gl.TEXTURE_2D_ARRAY);
-  gl.uniform1i(uniforms.detailAtlas, 14);
+  scenePBRBindTexture(gl, 15, atlas.texture, gl.TEXTURE_2D_ARRAY);
+  gl.uniform1i(uniforms.detailAtlas, 15);
 }
 function sceneWebGLDisposeDetail(gl = Object.create(null), resources = Object.create(null)) {
   for (const atlas of resources.atlases.values()) gl.deleteTexture(atlas.texture);

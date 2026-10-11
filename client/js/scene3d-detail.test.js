@@ -130,7 +130,16 @@ test("WebGL uploads detail controls and the atlas without rebinding base maps", 
   c.sceneWebGLUploadDetail(gl, { materials: new Map([[material, atlas]]) }, { detail: "params", detailAtlas: "atlas" }, material, true);
   assert.equal(calls[0][0], 3); assert.equal(calls[0][8], 5); assert.equal(calls[0][9], 12);
   assert.ok(Math.abs(calls[0][10] - 20 * Math.PI / 180) < 1e-7);
-  assert.equal(calls[1], 114); assert.deepEqual(calls[2], [7, atlas.texture]); assert.equal(calls[3], 14);
+  assert.equal(calls[1], 115); assert.deepEqual(calls[2], [7, atlas.texture]); assert.equal(calls[3], 15);
+  const samplers = new Map();
+  Object.assign(gl, { TEXTURE_2D: 8, uniform3fv() {}, uniform2f() {}, uniformMatrix4fv() {},
+    uniform1i: (name, unit) => samplers.set(name, unit) });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "bootstrap-src", "15a1-scene-texture-budget.ts"), "utf8"), c);
+  c.sceneCreateTransmissionWebGL(gl).upload({ transmissionScene: "transmission" }, {}, [], [], {});
+  c.sceneWebGLUploadDetail(gl, { materials: new Map([[material, atlas]]) }, { detail: "params", detailAtlas: "atlas" }, material, true);
+  assert.equal(samplers.get("transmission"), 14);
+  assert.equal(samplers.get("atlas"), 15);
+  assert.notEqual(samplers.get("transmission"), samplers.get("atlas"), "2D transmission and array detail samplers must not alias even with inactive transmission");
 });
 
 test("WebGPU updates a stable detail group when quality changes", () => {
