@@ -46,6 +46,10 @@ func Generate(seed int64) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	rockColor, rockRoughness, err := makeRockSurface(noise)
+	if err != nil {
+		return nil, err
+	}
 	beach, err := terrainGeometry(noise)
 	if err != nil {
 		return nil, err
@@ -58,7 +62,7 @@ func Generate(seed int64) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	stacksGLB, err := writeGLB(stacks, rockMaterial(), []embeddedImage{{name: "rock-normal", data: rockNormal, mime: "image/jpeg"}})
+	stacksGLB, err := writeGLB(stacks, rockMaterial(), []embeddedImage{{name: "rock-normal", data: rockNormal, mime: "image/jpeg"}, {name: "rock-color", data: rockColor, mime: "image/jpeg"}, {name: "rock-wetness", data: rockRoughness}})
 	if err != nil {
 		return nil, fmt.Errorf("stacks GLB: %w", err)
 	}
@@ -132,8 +136,15 @@ func shoreDistance(x, z float64) float64 {
 }
 
 func headlandProfile(t float64) float64 {
-	// Sloping talus, a ledge, the exposed face, then a broken upper shelf.
-	return .17*clamp(t/.18, 0, 1) + .59*clamp((t-.27)/.32, 0, 1) + .24*clamp((t-.72)/.25, 0, 1)
+	// A talus apron meets a steep eroded face. Smooth joins avoid the long,
+	// perfectly horizontal steps of the old three-ramp profile.
+	return .12*smoothstep(0, .32, t) + .81*smoothstep(.24, .78, t) + .07*smoothstep(.74, 1, t)
+}
+
+func leftCliffEdge(n noiseField, z float64) float64 {
+	edge := -31 + 2.8*math.Sin(z*.18) + 1.15*math.Sin(z*.53+.6) + 1.4*n.value(z/6, 17)
+	joint := math.Pow(math.Abs(math.Sin(z*1.18+1.1*n.value(z*.22, 9))), .65)
+	return edge + 1.5*(joint-.5)
 }
 
 func terrainHeight(n noiseField, x, z float64) float64 {
@@ -150,14 +161,18 @@ func terrainHeight(n noiseField, x, z float64) float64 {
 	sand := n.fbm(x*.17+19, z*.17-7, 4) * .08
 	h += sand
 	zGate := smoothstep(-40, -30, z)
-	leftEdge := -31 + 1.9*math.Sin(z*.09) + n.value(z/9, 17)
-	rightEdge := 37 + 2.2*math.Sin(z*.07+1.3)
-	left := headlandProfile(clamp((leftEdge+2-x)/7, 0, 1)) * zGate
-	right := headlandProfile(clamp((x-rightEdge+2)/7, 0, 1)) * zGate
+	// Spurs, coves and narrow drainage cuts change the outline at several
+	// scales. The same surface drives the mesh, walking and bathymetry.
+	leftEdge := leftCliffEdge(n, z) + .2*math.Sin(x*2.4+z*.12)
+	rightEdge := 37 + 2.6*math.Sin(z*.16+1.3) + 1.1*math.Sin(z*.47)
+	left := headlandProfile(clamp((leftEdge+2-x)/6, 0, 1)) * zGate
+	right := headlandProfile(clamp((x-rightEdge+2)/6, 0, 1)) * zGate
 	if left > 0 {
 		base := h
-		cliff := n.fbm(x/4.8+47, z/7.2-11, 5)
+		cliff := n.fbm(x/5.8+47, z/3.8-11, 4)
 		ridge := (1 - 2*math.Abs(cliff)) * 3
+		gully := 4.5 * math.Pow(1-math.Abs(n.value(z*.33, 39)), 12) * smoothstep(0, .7, left)
+		ridge -= gully
 		h = lerp(base, 18+ridge, left)
 	}
 	if right > 0 {
@@ -187,7 +202,21 @@ func terrainGeometry(n noiseField) (*geometry, error) {
 	}
 	for _, z := range zs {
 		for column := 0; column < columns; column++ {
-			x := -60 + 120*float64(column)/float64(columns-1)
+			// Spend the same grid on the cliffs' cross-sections, where the
+			// former metre-wide columns reduced each face to a few triangles.
+			var x float64
+			switch {
+			case column < 16:
+				x = lerp(-60, -39, float64(column)/16)
+			case column < 48:
+				x = lerp(-39, -25, float64(column-16)/32)
+			case column < 96:
+				x = lerp(-25, 29, float64(column-48)/48)
+			case column < 120:
+				x = lerp(29, 43, float64(column-96)/24)
+			default:
+				x = lerp(43, 60, float64(column-120)/8)
+			}
 			y := terrainHeight(n, x, z)
 			dx := (terrainHeight(n, x+.2, z) - terrainHeight(n, x-.2, z)) / .4
 			dz := (terrainHeight(n, x, z+.2) - terrainHeight(n, x, z-.2)) / .4
@@ -403,12 +432,45 @@ func rockMaterial() map[string]any {
 	return map[string]any{
 		"name": "Weathered basalt",
 		"pbrMetallicRoughness": map[string]any{
-			"baseColorFactor": []float64{srgbLinear(62.0 / 255), srgbLinear(63.0 / 255), srgbLinear(66.0 / 255), 1},
-			"metallicFactor":  0,
-			"roughnessFactor": .85,
+			"baseColorTexture":         map[string]any{"index": 1},
+			"metallicRoughnessTexture": map[string]any{"index": 2},
+			"metallicFactor":           0,
+			"roughnessFactor":          1,
 		},
 		"normalTexture": map[string]any{"index": 0, "scale": .9, "extensions": map[string]any{"KHR_texture_transform": map[string]any{"scale": []float64{3, 9}}}},
 	}
+}
+
+// Height is stored in the rock UV, so damp feet, mineral seams and dry
+// shoulders stay attached to the actual rock instead of repeating up it.
+// These small maps carry macro variation; scanned detail supplies the grain.
+func makeRockSurface(n noiseField) ([]byte, []byte, error) {
+	const width, height = 128, 256
+	albedo := image.NewNRGBA(image.Rect(0, 0, width, height))
+	palette := make(color.Palette, 16)
+	for i := range palette {
+		palette[i] = color.NRGBA{G: uint8(i * 17), A: 255}
+	}
+	roughness := image.NewPaletted(albedo.Bounds(), palette)
+	for row := range height {
+		y := -6 + 24*float64(row)/float64(height-1)
+		for col := range width {
+			a := 2 * math.Pi * float64(col) / float64(width-1)
+			x, z := math.Cos(a)*3, math.Sin(a)*3
+			mineral := fbm3(n, x, y*.28, z, 3)
+			wet := 1 - smoothstep(.1, 1.5+.35*mineral, y)
+			seam := math.Pow(1-math.Abs(noiseValue3(n, x*2.1, y*.07, z*2.1)), 10)
+			factor := (1 + .32*mineral - .14*seam) * (1 - .52*wet)
+			albedo.SetNRGBA(col, row, color.NRGBA{R: uint8(64 * factor), G: uint8((66 + wet*3) * factor), B: uint8((68 + wet*5) * factor), A: 255})
+			roughness.SetColorIndex(col, row, uint8(math.Round(clamp((.87-.62*wet+.05*mineral)*15, 0, 15))))
+		}
+	}
+	colorMap, err := encodeJPEG(albedo, 82)
+	if err != nil {
+		return nil, nil, err
+	}
+	roughnessMap, err := encodePNG(roughness)
+	return colorMap, roughnessMap, err
 }
 
 func solidMaterial(base [4]float64, roughness, metalness float64) map[string]any {
@@ -460,6 +522,12 @@ func stackSpecs(seed int64) []stackSpec {
 func boulderSpecs(seed int64) []boulderSpec {
 	rng := newRandom(seed + 0xB01D3)
 	out := make([]boulderSpec, 0, 14)
+	// Reuse part of the existing rock budget for fallen blocks at the cliff
+	// toe. This breaks the wall/sea join without adding meshes or vertices.
+	n := newNoise(seed)
+	for _, z := range []float64{-25, -17, -9, -1, 6} {
+		out = append(out, boulderSpec{leftCliffEdge(n, z) + 2.6, z, 1.4 + rng.float64()*.8, len(out)})
+	}
 	for attempt := 0; len(out) < 14 && attempt < 10000; attempt++ {
 		x := -18 + rng.float64()*36
 		z := -7 + rng.float64()*9.5
@@ -544,23 +612,32 @@ func addStack(g *geometry, stack stackSpec) {
 	const sides, rings = 48, 64
 	noise := newNoise(stack.seed)
 	baseY, topY := -6.0, stack.height
+	var rim [sides]float64
+	lo, hi, mean := math.Inf(1), math.Inf(-1), 0.0
+	for side := range sides {
+		a := 2 * math.Pi * float64(side) / sides
+		rim[side] = fbm3(noise, math.Cos(a)*1.8+7, 3.3, math.Sin(a)*1.8+5, 3) + .25*math.Sin(2*a+.7) + .12*math.Sin(5*a+float64(stack.seed%13))
+		lo, hi = math.Min(lo, rim[side]), math.Max(hi, rim[side])
+	}
+	for side := range sides {
+		rim[side] = .28 * stack.height * (rim[side] - lo) / (hi - lo)
+		mean += rim[side] / sides
+	}
 	first := len(g.positions) / 3
 	for row := 0; row <= rings; row++ {
 		t := float64(row) / rings
 		y := lerp(baseY, topY, t)
-		domeStart := topY - math.Min((topY-baseY)*.09, stack.radius*.3)
-		dome := smoothstep(domeStart, topY, y)
-		profile := 1 - .08*dome
+		crown := smoothstep(.56, 1, t)
+		profile := 1 - .18*smoothstep(.44, 1, t)
 		for side := 0; side <= sides; side++ { // the last column repeats the first with u = 1
 			angle := 2 * math.Pi * float64(side%sides) / sides
 			dx, dz := math.Cos(angle), math.Sin(angle)
-			// Broad polygon faces carry the silhouette; small fissures weather
-			// them without turning the whole column into rounded pillows.
-			const faces = 8
+			// Unequal buttresses and deep clefts replace the regular column.
+			// The upper mass tapers to a broken, sloping crown rather than a lid.
+			const faces = 7
 			sector := 2 * math.Pi / faces
 			facet := math.Cos(math.Pi/faces) / math.Cos(math.Mod(angle+math.Pi/faces, sector)-math.Pi/faces)
-			// A jagged crown: notch the top rows by noise around the circumference.
-			worldY := y - dome*stack.radius*.35*math.Abs(noiseValue3(noise, dx*1.7+stack.x, 3.3, dz*1.7+stack.z))
+			worldY := y - crown*rim[side%sides]
 			// Weathered basalt: broad lumps, sharper ridges, vertical fissures
 			// (noise stretched along Y), a gentle taper and faint irregular strata.
 			px, pz := dx*stack.radius, dz*stack.radius
@@ -568,15 +645,16 @@ func addStack(g *geometry, stack stackSpec) {
 			lumps := fbm3(noise, px/(r*1.3), worldY/(r*1.1), pz/(r*1.3), 4)
 			ridges := ridgeFbm3(noise, px/(r*.45)+5, worldY/(r*.45), pz/(r*.45)+9, 4)
 			cracks := fbm3(noise, px/(r*.22)+11, worldY*.07, pz/(r*.22)+7, 3)
-			strata := .014 * math.Sin(worldY*2.6+2.5*noiseValue3(noise, px*.1, worldY*.05, pz*.1))
-			taper := 1 - .13*(worldY-baseY)/(topY-baseY)
+			strata := .018 * math.Sin(worldY*2.6+2.5*noiseValue3(noise, px*.1, worldY*.05, pz*.1))
 			// Bulges and waists that change with height break the bottle outline.
 			girth := noiseValue3(noise, stack.x*.31, worldY/(r*.9), stack.z*.31) + .5*noiseValue3(noise, stack.x*.7, worldY/(r*.4), stack.z*.7)
-			radius := r * facet * profile * taper * (1 + .055*girth + .11*lumps + .10*ridges - .12*math.Abs(cracks) + strata)
+			buttress := .17*math.Cos(3*angle+float64(stack.seed%17)) + .10*math.Sin(5*angle+1.7)
+			cleft := .23 * math.Pow((1+math.Sin(4*angle+.8+worldY*.035))/2, 12)
+			radius := r * facet * profile * (1 + buttress + .11*girth + .17*lumps + .12*ridges - cleft - .12*math.Abs(cracks) + strata)
 			notch := smoothstep(-1, -.6, worldY) * (1 - smoothstep(1.2, 1.6, worldY))
-			radius *= 1 - .18*notch
+			radius *= 1 - .12*notch
 			leanFactor := (worldY - baseY) * stack.lean
-			p := vec3{stack.x + dx*radius + leanFactor, worldY, stack.z + dz*radius}
+			p := vec3{stack.x + dx*radius + leanFactor + .35*crown, worldY, stack.z + dz*radius*(.82+.12*math.Sin(float64(stack.seed%13))) - .6*crown}
 			appendVertex(g, p, float64(side)/sides, 0) // V is normalized for the entire rock mesh below.
 			if side == sides {
 				g.seams = append(g.seams, [2]int{first + row*(sides+1), first + row*(sides+1) + sides})
@@ -594,7 +672,7 @@ func addStack(g *geometry, stack stackSpec) {
 		}
 	}
 	bottom := appendVertex(g, vec3{stack.x, baseY, stack.z}, .5, baseY/8)
-	top := appendVertex(g, vec3{stack.x + (topY-baseY)*stack.lean, topY, stack.z}, .5, topY/8)
+	top := appendVertex(g, vec3{stack.x + (topY-baseY)*stack.lean + .35, topY - mean, stack.z - .6}, .5, topY/8)
 	for side := 0; side < sides; side++ {
 		next := side + 1
 		firstRing := uint16(first + side)
@@ -763,18 +841,25 @@ func makeBathymetry(n noiseField) ([]byte, error) {
 	img := image.NewGray(image.Rect(0, 0, BathymetrySize, BathymetrySize))
 	seed := int64(n.seed)
 	stacks := stackSpecs(seed)
+	footprints := make([]rockFootprint, len(stacks))
+	for i, stack := range stacks {
+		footprints[i] = stackWaterline(stack)
+	}
 	boulders := boulderSpecs(seed)
 	for y := 0; y < BathymetrySize; y++ {
 		z := BathymetryMinZ + (float64(y)+0.5)/BathymetrySize*(BathymetryMaxZ-BathymetryMinZ)
 		for x := 0; x < BathymetrySize; x++ {
 			wx := BathymetryMinX + (float64(x)+0.5)/BathymetrySize*(BathymetryMaxX-BathymetryMinX)
 			height := terrainHeight(n, wx, z)
-			for _, stack := range stacks {
-				centerX := stack.x + 6*stack.lean
-				// A smooth mound, not a disk: the shallow-water and foam bands
-				// then ring the rock instead of drawing texel squares.
-				d := math.Hypot(wx-centerX, z-stack.z)
-				rise := 1 - smoothstep(stack.radius*.92, stack.radius*1.08, d)
+			for i, stack := range stacks {
+				// Follow the eroded mesh's actual sea-level contour, including
+				// clefts and buttresses, rather than an unrelated circular halo.
+				footprint := &footprints[i]
+				if wx < footprint.minX-1 || wx > footprint.maxX+1 || z < footprint.minZ-1 || z > footprint.maxZ+1 {
+					continue
+				}
+				d := footprint.distance(wx, z)
+				rise := 1 - smoothstep(-.5, .65, d)
 				height = math.Max(height, lerp(height, stack.height, rise))
 			}
 			for _, boulder := range boulders {
@@ -788,6 +873,52 @@ func makeBathymetry(n noiseField) ([]byte, error) {
 		}
 	}
 	return encodePNG(img)
+}
+
+type rockFootprint struct {
+	points                 []vec3
+	minX, minZ, maxX, maxZ float64
+}
+
+func stackWaterline(stack stackSpec) rockFootprint {
+	g := &geometry{}
+	addStack(g, stack)
+	const sides, rings = 48, 64
+	outline := rockFootprint{minX: math.Inf(1), minZ: math.Inf(1), maxX: math.Inf(-1), maxZ: math.Inf(-1)}
+	for side := range sides {
+		for row := 0; row < rings; row++ {
+			a := (row*(sides+1) + side) * 3
+			b := a + (sides+1)*3
+			if g.positions[a+1] > 0 || g.positions[b+1] < 0 {
+				continue
+			}
+			t := -g.positions[a+1] / (g.positions[b+1] - g.positions[a+1])
+			p := vec3{x: lerp(g.positions[a], g.positions[b], t), z: lerp(g.positions[a+2], g.positions[b+2], t)}
+			outline.points = append(outline.points, p)
+			outline.minX, outline.minZ = math.Min(outline.minX, p.x), math.Min(outline.minZ, p.z)
+			outline.maxX, outline.maxZ = math.Max(outline.maxX, p.x), math.Max(outline.maxZ, p.z)
+			break
+		}
+	}
+	return outline
+}
+
+// Signed distance to the closed waterline polygon; negative inside the rock.
+func (f *rockFootprint) distance(x, z float64) float64 {
+	inside, nearest := false, math.Inf(1)
+	for i, a := range f.points {
+		b := f.points[(i+1)%len(f.points)]
+		dx, dz := b.x-a.x, b.z-a.z
+		t := clamp(((x-a.x)*dx+(z-a.z)*dz)/math.Max(dx*dx+dz*dz, 1e-12), 0, 1)
+		nearest = math.Min(nearest, math.Hypot(x-a.x-t*dx, z-a.z-t*dz))
+		if (a.z > z) != (b.z > z) && x < (b.x-a.x)*(z-a.z)/(b.z-a.z)+a.x {
+			inside = !inside
+		}
+	}
+	if inside {
+		return -nearest
+	}
+	return nearest
 }
 
 // BathymetryEncoding is the scene.OceanBathymetry encoding of the heightmap.

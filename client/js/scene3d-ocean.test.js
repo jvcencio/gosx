@@ -194,6 +194,6 @@ test("WebGPU applies shoreline coverage after horizon fog", async t => {
  const bundle=makePointsBundle(null);bundle.points=[];bundle.environment.ocean=oceanRecord();
  h.renderer.render(bundle,{width:64,height:64});
  const shader=h.fake.state.shaderModules.find(module=>module.label==="gosx-ocean").code;
- assert.ok(shader.indexOf("color *= shoreFade; alpha *= shoreFade;") > shader.indexOf("alpha = mix(alpha, 1.0, fog)"));
- assert.match(shader,/if \(shoreFade <= 0.0\) \{ discard; \}/);
+ assert.ok(shader.indexOf("color *= sf; alpha *= sf;") > shader.indexOf("alpha = mix(alpha, 1.0, fog)"));
+ assert.match(shader,/if \(sf <= 0.0\) \{ discard; \}/);
 });

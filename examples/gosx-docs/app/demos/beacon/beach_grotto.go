@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	grottoX, grottoZ          = -23.8, 10.7
+	grottoX, grottoZ          = -20.8, 10.7
 	grottoFrontX, grottoBackX = grottoX + 2.5, grottoX - 2.5
 )
 

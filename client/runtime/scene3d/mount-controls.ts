@@ -275,16 +275,23 @@
     if (!canvas || typeof canvas.requestPointerLock !== "function") {
       return false;
     }
+    const fallback = () => {
+      try {
+        const request = canvas.requestPointerLock();
+        if (request) Promise.resolve(request).catch(() => {});
+        return true;
+      } catch (_error) { return false; }
+    };
     try {
-      canvas.requestPointerLock({ unadjustedMovement: true });
+      const request = canvas.requestPointerLock({ unadjustedMovement: true });
+      // Modern browsers reject unsupported raw input asynchronously. The
+      // synchronous catch below only covers the older, void-returning API.
+      if (request) Promise.resolve(request).catch((error) => {
+        if (error && error.name === "NotSupportedError") fallback();
+      });
       return true;
     } catch (_unadjustedError) {
-      try {
-        canvas.requestPointerLock();
-        return true;
-      } catch (_error) {
-        return false;
-      }
+      return fallback();
     }
   }
 

@@ -118,6 +118,34 @@ test("pointer lock looks with movementX/Y, clamps pitch, hides the hint and rest
   near(h.handle.controller.currentCamera().rotationY, -0.22); near(h.handle.controller.currentCamera().rotationX, 1.45);
   h.env.document.exitPointerLock(); assert.equal(hint.hidden, false); assert.equal(h.raf.count(), 0); h.handle.dispose();
 });
+test("primary mouse drag looks without pointer lock, ends on release or blur, and does not lock after dragging", () => {
+  const h = controls();
+  const pointer = { pointerType: "mouse", pointerId: 9, button: 0, clientX: 150, clientY: 100 };
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 200 });
+  near(h.handle.controller.currentCamera().rotationY, 0);
+  h.event(h.canvas, "pointerdown", { ...pointer, button: 2 });
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 200 });
+  near(h.handle.controller.currentCamera().rotationY, 0);
+  h.event(h.canvas, "pointerdown", pointer);
+  assert.equal(h.env.document.activeElement, h.canvas);
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 250, clientY: 50 });
+  near(h.handle.controller.currentCamera().rotationY, -.22);
+  near(h.handle.controller.currentCamera().rotationX, camera.rotationX + .11);
+  h.event(h.canvas, "pointerup", pointer);
+  h.event(h.canvas, "click", pointer);
+  assert.equal(h.canvas.pointerLockCalls.length, 0, "drag release must not hide the cursor");
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 300 });
+  near(h.handle.controller.currentCamera().rotationY, -.22);
+  h.event(h.canvas, "pointerdown", pointer); h.event(h.env.context, "blur");
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 300 });
+  near(h.handle.controller.currentCamera().rotationY, -.22);
+  h.event(h.env.document, "keydown", { code: "Home" });
+  assert.deepEqual({ ...h.handle.controller.currentCamera() }, camera);
+  h.event(h.canvas, "pointerdown", pointer); h.event(h.canvas, "pointercancel", pointer);
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 300 });
+  near(h.handle.controller.currentCamera().rotationY, 0);
+  h.handle.dispose();
+});
 test("touch move and drag-to-look use independent pointer IDs in portrait and landscape", () => {
   for (const [width, height] of [[600, 400], [300, 600]]) {
     const h = controls({ hint: "none" }); h.canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width, height });
@@ -199,6 +227,33 @@ test("walk scene fetches its advertised chunk, preserves the first pose, publish
   unsubscribe();
   assert.equal(mounted.handle.resetCamera(), true);
   assert.deepEqual({ ...mounted.handle.getCamera() }, initial);
+  // Reproduce browsers that return a rejected promise for raw mouse input.
+  const request = canvas.requestPointerLock.bind(canvas), calls = [];
+  canvas.requestPointerLock = (options) => {
+    calls.push(options);
+    if (options) return Promise.reject(Object.assign(new Error("raw mouse input unsupported"), { name: "NotSupportedError" }));
+    request(); return Promise.resolve();
+  };
+  canvas.dispatchEvent({ type: "click", pointerType: "mouse" });
+  await flushAsyncWork();
+  assert.equal(calls.length, 2, "retry the asynchronous raw-input rejection with ordinary pointer lock");
+  assert.equal(calls[1], undefined);
+  assert.equal(env.document.pointerLockElement, canvas);
+  env.document.dispatchEvent({ type: "mousemove", movementX: 100, movementY: 0 });
+  near(mounted.handle.getCamera().rotationY, initial.rotationY - .22);
+  env.document.exitPointerLock(); mounted.handle.resetCamera();
+  calls.length = 0;
+  canvas.requestPointerLock = () => {
+    calls.push(null);
+    return Promise.reject(Object.assign(new Error("embedded browser denies pointer lock"), { name: "SecurityError" }));
+  };
+  canvas.dispatchEvent({ type: "click", pointerType: "mouse" });
+  await flushAsyncWork();
+  assert.equal(calls.length, 1, "do not retry a policy denial or leave an unhandled rejection");
+  canvas.dispatchEvent({ type: "pointerdown", pointerType: "mouse", pointerId: 3, button: 0, clientX: 30, clientY: 30 });
+  canvas.dispatchEvent({ type: "pointermove", pointerType: "mouse", pointerId: 3, clientX: 130, clientY: 30, preventDefault() {} });
+  near(mounted.handle.getCamera().rotationY, initial.rotationY - .22);
+  canvas.dispatchEvent({ type: "pointerup", pointerType: "mouse", pointerId: 3 });
   mounted.handle.dispose();
 });
 

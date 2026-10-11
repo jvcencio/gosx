@@ -481,10 +481,12 @@ func TestCompatibilityAuditReceiptAndReconciliation(t *testing.T) {
 	// The shared wave packer and optional query, vessel and walk-surface
 	// authorities extend the full source inventory. Keep the pinned historical
 	// receipt unchanged and explicitly reconcile every added authority name.
+	// The shared desktop/touch input helper belongs to the existing lazy
+	// walking chunk and does not extend the historical minimal-runtime receipt.
 	wantFullOnly = uniqueStrings(append(wantFullOnly,
 		"__gosx_scene3d_ocean_query", "__gosx_scene3d_ocean_query_api", "__gosx_scene3d_ocean_waves",
 		"__gosx_scene3d_vessel_api", "__gosx_scene3d_vessel_input", "__gosx_scene3d_vessel_model",
-		"__gosx_scene3d_vessel_physics", "__gosx_scene3d_vessel_wake", "__gosx_scene3d_walk_surfaces"))
+		"__gosx_scene3d_vessel_physics", "__gosx_scene3d_vessel_wake", "__gosx_scene3d_walk_input", "__gosx_scene3d_walk_surfaces"))
 	if !equalStrings(audit.Reconciliation.MissingFromAnchor, wantReceiptOnly) {
 		t.Fatalf("receipt-only names = %+v, want %+v", audit.Reconciliation.MissingFromAnchor, wantReceiptOnly)
 	}
