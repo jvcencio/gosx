@@ -82,7 +82,7 @@ const SCENE_OCEAN_FRAGMENT_GLSL = [
   "  vec2 i = floor(p), f = fract(p), u = f * f * (3. - 2. * f);",
   "  return mix(mix(oh(i), oh(i + vec2(1., 0.)), u.x), mix(oh(i + vec2(0., 1.)), oh(i + vec2(1., 1.)), u.x), u.y);",
   "}",
-  "float ob(vec2 p) { float v = 0., a = 0.5; for (int i = 0; i < 4; i++) { v += a * on(p); p = p * 2.03 + 17.1; a *= 0.5; } return v; }",
+  "float of(vec2 p) { float v = 0., a = 0.5; for (int i = 0; i < 4; i++) { v += a * on(p); p = p * 2.03 + 17.1; a *= 0.5; } return v; }",
   // Short capillary-scale waves perturb the normal per pixel. Each wave fades
   // out when its phase changes by more than about a radian per pixel.
   "vec3 od(vec3 n, vec2 xz, float t, vec2 wind) {",
@@ -128,8 +128,8 @@ const SCENE_OCEAN_FRAGMENT_GLSL = [
   "  if (dist < 250.) {",
   // Sparse foam filaments drift with the wash; wide noise ridges painted sheets.
   "    vec2 fp = v_w.xz + vec2(t * 0.07, t * 0.035);",
-  "    float cells = ob(fp * vec2(0.65, 1.1)); float lace = smoothstep(0.94, 0.995, 1. - abs(2. * cells - 1.));",
-  "    float bu = smoothstep(0.32, 0.67, ob(fp * 0.19 + 3.1));",
+  "    float cells = of(fp * vec2(0.65, 1.1)); float lace = smoothstep(0.94, 0.995, 1. - abs(2. * cells - 1.));",
+  "    float bu = smoothstep(0.32, 0.67, of(fp * 0.19 + 3.1));",
   "    foam = (1. - smoothstep(0.12, 0.35, v_j)) * lace * bu;",
   "    if (u_ocean[6].z > 0.5) {",
   "      float ph = fract(t / 9. + 0.15 * sin(v_w.x * 0.07 + 1.3) + 0.08 * sin(v_w.x * 0.19));",
