@@ -48,6 +48,12 @@ class BundleTests(unittest.TestCase):
     def pack(self):
         package.pack(type("Args", (), {"source": str(self.source), "wasm_dir": str(self.wasm), "tag": "v1.2.3", "commit": self.commit, "output": str(self.archive)})())
 
+    def set_scene3d_map_policy(self, policy):
+        manifest = self.source / "client/js/bootstrap-src/chunks.json"
+        chunks = json.loads(manifest.read_text())
+        chunks["chunks"][1]["sourceMap"] = policy
+        manifest.write_text(json.dumps(chunks))
+
     def test_complete_bundle_round_trip(self):
         self.pack()
         package.verify(type("Args", (), {"archive": str(self.archive), "tag": "v1.2.3", "commit": self.commit})())
@@ -64,6 +70,49 @@ class BundleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing or nonregular runtime asset"):
             self.pack()
         self.assertFalse(self.archive.exists())
+
+    def test_debug_only_map_excluded_whether_present_or_absent(self):
+        self.set_scene3d_map_policy("debug-only")
+        source_map = self.source / "client/js/bootstrap-feature-scene3d.js.map"
+        for present in (True, False):
+            with self.subTest(present=present):
+                if not present:
+                    source_map.unlink()
+                self.pack()
+                package.verify(type("Args", (), {"archive": str(self.archive), "tag": "v1.2.3", "commit": self.commit})())
+                with tarfile.open(self.archive, "r:gz") as tar:
+                    self.assertNotIn("client/js/bootstrap-feature-scene3d.js.map", tar.getnames())
+                    self.assertIn("client/js/bootstrap-runtime.js.map", tar.getnames())
+                self.archive.unlink()
+
+    def test_reject_missing_required_map(self):
+        (self.source / "client/js/bootstrap-runtime.js.map").unlink()
+        with self.assertRaisesRegex(ValueError, "missing or nonregular runtime asset"):
+            self.pack()
+        self.assertFalse(self.archive.exists())
+
+    def test_debug_only_policy_keeps_sidecars_required(self):
+        self.set_scene3d_map_policy("debug-only")
+        (self.source / "client/js/bootstrap-feature-scene3d.js.br").unlink()
+        with self.assertRaisesRegex(ValueError, "missing or nonregular runtime asset"):
+            self.pack()
+        self.assertFalse(self.archive.exists())
+
+    def test_reject_unknown_map_policy(self):
+        self.set_scene3d_map_policy("skip-all")
+        with self.assertRaisesRegex(ValueError, "unsupported sourceMap policy"):
+            self.pack()
+        self.assertFalse(self.archive.exists())
+
+    def test_committed_chunk_manifest_matches_release_assets(self):
+        source = MODULE_PATH.parent.parent
+        chunks = json.loads((source / "client/js/bootstrap-src/chunks.json").read_text())["chunks"]
+        files = package.browser_files(source, self.wasm)
+        for entry in chunks:
+            name = entry["name"]
+            for suffix in ("", ".br", ".gz"):
+                self.assertIn(f"client/js/{name}{suffix}", files)
+            self.assertEqual(f"client/js/{name}.map" in files, entry.get("sourceMap", "") != "debug-only")
 
     def test_reject_wrong_commit(self):
         with self.assertRaisesRegex(ValueError, "does not match release commit"):
