@@ -40,7 +40,7 @@
     const read=()=>helpers.current(base.controller,sceneState.camera,sceneState._scrollCamera);
     const controller={get zoomScale(){return base.controller.zoomScale||1;},set zoomScale(value: number){base.controller.zoomScale=value;},mode:'first-person',touched:false,active:false,currentCamera:()=>state.mode==='sailing'?state.camera||read():read(),
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-      syncCamera:camera=>{if(base.controller&&base.controller.syncCamera)base.controller.syncCamera(camera);},
+      syncCamera:camera=>base.controller?.syncCamera?.(camera),
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
       applyCamera:camera=>{leave();if(base.controller&&base.controller.applyCamera)base.controller.applyCamera(camera);}};
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
