@@ -18,6 +18,11 @@ import (
 
 const blackglassBeachModelRoot = "/models/blackglass/"
 
+// Raster assets are cached longer than models. Fingerprint changed content
+// so returning visitors get the new preview and matching ocean depth field.
+const blackglassBeachPosterSrc = "/demos/posters/beacon.webp?v=24f873bb502c"
+const blackglassBeachHeightSrc = blackglassBeachModelRoot + "beach-v2-height.png?v=9cf66f42f8bc"
+
 type blackglassBeachPeriod struct {
 	ID, Name string
 	SunColor string
@@ -145,7 +150,7 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 				Clarity: 3.5, Roughness: 0.11, Foam: 0.4, Surf: 0.52, Extent: 4000,
 				Reflections: &scene.OceanReflections{Mode: "ssr+planar", Resolution: 0.5, Strength: 1},
 				Bathymetry: &scene.OceanBathymetry{
-					Src:  blackglassBeachModelRoot + "beach-v2-height.png",
+					Src:  blackglassBeachHeightSrc,
 					MinX: beachgen.BathymetryMinX, MinZ: beachgen.BathymetryMinZ, MaxX: beachgen.BathymetryMaxX, MaxZ: beachgen.BathymetryMaxZ,
 					MinHeight: beachgen.BathymetryMinHeight, MaxHeight: beachgen.BathymetryMaxHeight, Encoding: beachgen.BathymetryEncoding,
 				},

@@ -13,7 +13,7 @@ func Page() Node {
 		<div class="bgb__canvas gosx-scene3d-poster-stage" data-gosx-scene3d-poster-stage>
 			<img
 				class="gosx-scene3d-poster"
-				src="/demos/posters/beacon.webp"
+				src={data.posterSrc}
 				alt=""
 				width="1000"
 				height="625"

@@ -1,12 +1,36 @@
 package docs
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"math"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"m31labs.dev/gosx/examples/gosx-docs/internal/beachgen"
 	"m31labs.dev/gosx/scene"
 )
+
+func TestBeachCachedRasterURLsMatchContent(t *testing.T) {
+	depth := BlackglassBeachProgram("shore", "").Environment.Ocean.Bathymetry.Src
+	for _, src := range []string{blackglassBeachPosterSrc, depth} {
+		u, err := url.Parse(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(filepath.Join("../../../public", strings.TrimPrefix(u.Path, "/")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := fmt.Sprintf("%x", sha256.Sum256(data))[:12]
+		if u.Query().Get("v") != want {
+			t.Errorf("%s needs content fingerprint %s", src, want)
+		}
+	}
+}
 
 func TestBeachHeroFramesCoveAndGlass(t *testing.T) {
 	view := blackglassBeachViewFor("shore")
