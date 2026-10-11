@@ -163,11 +163,14 @@ jobs:
   # retains every fixture-sized test plus direct concurrent coverage of its
   # mutex-protected network capture. The broad lane includes the expensive BC7
   # and vector-search kernels omitted from pull requests and keeps a 40-minute
-  # per-package alarm inside this 50-minute job ceiling.
+  # per-package alarm. Main run 38170524231 spent 28.5 minutes in CLI tests
+  # before the 50-minute job ceiling cancelled active IR, budget, and wire
+  # tests. Pushes get 90 minutes for the full suite and scoped second phase;
+  # pull requests keep their 50-minute ceiling.
   go-race-tests:
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: ${{ github.event_name == 'push' && 90 || 50 }}
 
     steps:
       - name: Check out repository
