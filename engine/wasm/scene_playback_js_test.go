@@ -141,3 +141,35 @@ func TestFinitePlaybackDoesNotConsumeStaleFrameTime(t *testing.T) {
 		t.Fatal("playback did not settle and release", samples)
 	}
 }
+
+func TestFinitePlaybackHiddenSkippedEndpoint(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		options FramePlaybackOptions
+	}{
+		{"offset", FramePlaybackOptions{Duration: .1, Offset: .1}},
+		{"past end", FramePlaybackOptions{Duration: .1, Offset: 1}},
+		{"instant", FramePlaybackOptions{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			host := playbackFrames(t)
+			host.Call("hidden", true)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			calls := 0
+			err := playFramesOnClock(ctx, tc.options, func(at float64, final bool) error {
+				calls++
+				if at != tc.options.Duration || !final {
+					t.Error("skipped playback did not apply its exact endpoint", at, final)
+				}
+				return nil
+			}, func() float64 { return host.Call("now").Float() })
+			if err != nil || calls != 1 {
+				t.Fatal("hidden skipped playback waited for presentation", calls, err)
+			}
+			if host.Call("pending").Int() != 0 || host.Call("listeners").Int() != 0 {
+				t.Fatal("hidden skipped playback retained callbacks")
+			}
+		})
+	}
+}

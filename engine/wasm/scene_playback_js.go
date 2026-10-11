@@ -83,7 +83,8 @@ func NextFrame(ctx context.Context) error {
 // PlayFrames runs a finite procedural presentation and returns only after its
 // final command transaction and subsequent visible frame. The sampler receives
 // an exact final=true endpoint, even when Offset skips the complete animation.
-// Hidden time is paused. Cancellation prevents all later samples and writes.
+// Explicitly skipped playbacks settle immediately when hidden; active playback
+// pauses hidden time. Cancellation prevents all later samples and writes.
 func (s Scene3D) PlayFrames(ctx context.Context, options FramePlaybackOptions, sample func(float64, bool) []scene.Command) error {
 	if sample == nil {
 		return fmt.Errorf("playback requires a sampler")
@@ -104,9 +105,17 @@ func playFramesOnClock(ctx context.Context, options FramePlaybackOptions, apply 
 	if ctx == nil || apply == nil {
 		return fmt.Errorf("playback requires context and sampler")
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	waiter := newSceneFrameWaiter()
 	defer waiter.dispose()
 	elapsed := o.Offset
+	// Skipping has no frames left to present. Commit its endpoint even when a
+	// hidden document cannot deliver RAF, so callers can finish catching up.
+	if elapsed >= o.Duration && waiter.source.Hidden() {
+		return apply(o.Duration, true)
+	}
 	_, _, err = waiter.next(ctx)
 	if err != nil {
 		return err
