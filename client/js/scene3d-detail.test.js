@@ -61,6 +61,20 @@ test("WebGL detail is a cached compile variant with nil source unchanged", () =>
   // The browser optics oracle covers behavior; nil detail must keep this base exact.
   assert.equal(crypto.createHash("sha256").update(base).digest("hex"), "84eebd140305d8f6246935ec8d3a8187bacfa8dcae8258f2351f3b7a8c4e5165");
   const shader = c.sceneWebGLDetailFragment(base, true);
+  const glWithUnits = units => ({ MAX_TEXTURE_IMAGE_UNITS: 1, getParameter: () => units });
+  assert.match(c.scenePBRFragmentSourceForContext(glWithUnits(16), base), /#define GOSX_HDR_IBL 1/);
+  const bounded = c.scenePBRFragmentSourceForContext(glWithUnits(16), shader);
+  assert.match(bounded, /#define GOSX_HDR_IBL 0/);
+  assert.match(bounded, /uniform highp sampler2DArray u_detailAtlas;/);
+  assert.match(bounded, /DetailResult detailResult = detailApply/);
+  assert.match(c.scenePBRFragmentSourceForContext(glWithUnits(17), shader), /#define GOSX_HDR_IBL 1/);
+  c.sceneAllocateTextureUnits = () => ({ ibl: { brdfLUT: 13 }, shadows: [9, 10] });
+  for (const [units, detail, minimum] of [[15, false, 16], [16, true, 17]]) {
+    const uniforms = { detail: detail ? {} : null };
+    const gl = { ...glWithUnits(units), uniform1i() {}, uniform1f() {} };
+    c.scenePBRUploadEnvironmentMap(gl, uniforms, { ibl: {} }, {}, [], []);
+    assert.equal(uniforms._gosxIBLDiagnostics.reason, `fragment-texture-units<${minimum}`);
+  }
   assert.match(shader, /textureGrad\(u_detailAtlas/);
   assert.ok(shader.indexOf("dFdx(v_worldPosition)") < shader.indexOf("detailApply(v_worldPosition"));
   assert.match(shader, /fade > 0\.0 && u_detail\[4\]\.w > 0\.5/);
@@ -84,7 +98,14 @@ test("WebGPU detail preserves the nil shader and uses a separate array binding",
   const shader = c.sceneWebGPUDetailFragment(base, true);
   assert.match(shader, /textureSampleGrad\(detailAtlas/);
   assert.match(shader, /@group\(2\) @binding\(1\) var detailAtlas: texture_2d_array/);
-  assert.ok(shader.indexOf("dpdx(in.worldPos)") < shader.indexOf("detailApply(in.worldPos"));
+  const colorStart = shader.indexOf("fn gosxPBRColor(in: VertexOutput) -> vec4f {");
+  const colorEnd = shader.indexOf("@fragment fn fragmentMain", colorStart);
+  const color = shader.slice(colorStart, colorEnd);
+  assert.ok(colorStart >= 0 && colorEnd > colorStart, "detail uses the shared PBR color function");
+  assert.match(color, /let detailDx = dpdx\(in\.worldPos\);/);
+  assert.match(color, /let detailDy = dpdy\(in\.worldPos\);/);
+  assert.ok(color.indexOf("dpdx(in.worldPos)") < color.indexOf("if (material.hasAlbedoMap"), "derivatives precede nonuniform material branches");
+  assert.ok(color.indexOf("dpdy(in.worldPos)") < color.indexOf("detailApply(in.worldPos"), "derivatives and their use share the color function scope");
   assert.match(shader, /fade > 0\.0 && detail.data\[4\]\.w > 0\.5/);
   assert.equal(c.wgpuPipelineKey(c.sceneDetailVariantKey("pbr", true), "opaque", true, "rgba8unorm", "depth24plus", 1), "pbr-detail|opaque|1|rgba8unorm|depth24plus|1");
   assert.equal(c.sceneDetailVariantKey("pbr", null), "pbr");
@@ -109,7 +130,16 @@ test("WebGL uploads detail controls and the atlas without rebinding base maps", 
   c.sceneWebGLUploadDetail(gl, { materials: new Map([[material, atlas]]) }, { detail: "params", detailAtlas: "atlas" }, material, true);
   assert.equal(calls[0][0], 3); assert.equal(calls[0][8], 5); assert.equal(calls[0][9], 12);
   assert.ok(Math.abs(calls[0][10] - 20 * Math.PI / 180) < 1e-7);
-  assert.equal(calls[1], 114); assert.deepEqual(calls[2], [7, atlas.texture]); assert.equal(calls[3], 14);
+  assert.equal(calls[1], 115); assert.deepEqual(calls[2], [7, atlas.texture]); assert.equal(calls[3], 15);
+  const samplers = new Map();
+  Object.assign(gl, { TEXTURE_2D: 8, uniform3fv() {}, uniform2f() {}, uniformMatrix4fv() {},
+    uniform1i: (name, unit) => samplers.set(name, unit) });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "bootstrap-src", "15a1-scene-texture-budget.ts"), "utf8"), c);
+  c.sceneCreateTransmissionWebGL(gl).upload({ transmissionScene: "transmission" }, {}, [], [], {});
+  c.sceneWebGLUploadDetail(gl, { materials: new Map([[material, atlas]]) }, { detail: "params", detailAtlas: "atlas" }, material, true);
+  assert.equal(samplers.get("transmission"), 14);
+  assert.equal(samplers.get("atlas"), 15);
+  assert.notEqual(samplers.get("transmission"), samplers.get("atlas"), "2D transmission and array detail samplers must not alias even with inactive transmission");
 });
 
 test("WebGPU updates a stable detail group when quality changes", () => {

@@ -2,7 +2,7 @@
 function sceneWebGPUDetailFragment(source: string, detail: boolean) {
   if (!detail) return source;
   return source.replace("@fragment fn fragmentMain(in: VertexOutput)", sceneDetailShaderSource("wgsl") + "\n@fragment fn fragmentMain(in: VertexOutput)")
-    .replace("-> @location(0) vec4f {\n    var albedo = material.albedo;", "-> @location(0) vec4f {\n    let detailDx = dpdx(in.worldPos);\n    let detailDy = dpdy(in.worldPos);\n    var albedo = material.albedo;")
+    .replace("fn gosxPBRColor(in: VertexOutput) -> vec4f {", "fn gosxPBRColor(in: VertexOutput) -> vec4f {\n    let detailDx = dpdx(in.worldPos);\n    let detailDy = dpdy(in.worldPos);")
     .replace("    let V = normalize(frame.cameraPos - in.worldPos);", `    let detailResult = detailApply(in.worldPos, normalize(in.normal), detailDx, detailDy, frame.cameraPos, albedo, N, roughness);
     albedo = detailResult.albedo; N = detailResult.normal; roughness = detailResult.roughness;
     let V = normalize(frame.cameraPos - in.worldPos);`);

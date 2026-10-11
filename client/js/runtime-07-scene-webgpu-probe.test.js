@@ -374,6 +374,48 @@ test("Scene3D WebGPU probe keeps optional features opt-in for headless devices",
   }
 });
 
+for (const { name, supported, required, expected } of [
+  { name: "capable adapter requests the rich-material minimum", supported: 48, expected: 17 },
+  { name: "stricter manifest texture requirement survives", supported: 48, required: 24, expected: 24 },
+  { name: "baseline adapter keeps its default texture limit", supported: 16, expected: undefined },
+]) {
+  test("Scene3D WebGPU " + name, async () => {
+    let descriptor;
+    const adapter = {
+      features: new Set(),
+      limits: { maxSampledTexturesPerShaderStage: supported },
+      requestDevice: async (requested) => {
+        descriptor = requested;
+        const textures = requested?.requiredLimits?.maxSampledTexturesPerShaderStage;
+        assert.ok(textures == null || textures <= supported, "never request an unsupported automatic limit");
+        return {
+          lost: new Promise(() => {}), features: new Set(),
+          limits: { maxSampledTexturesPerShaderStage: textures || 16 },
+        };
+      },
+    };
+    const env = createContext({
+      enableWebGPU: true,
+      fetchRoutes: { "/gosx/bootstrap-feature-engines.js": { text: bootstrapFeatureEnginesSource } },
+      navigatorGPU: {
+        requestAdapter: async () => adapter,
+        getPreferredCanvasFormat: () => "rgba8unorm",
+      },
+      manifest: { engines: [{
+        id: "gosx-rich-material-probe", component: "GoSXScene3D", kind: "surface",
+        mountId: "probe-scene", props: {},
+        requiredCapabilities: required ? ["webgpu:limit:maxSampledTexturesPerShaderStage>=" + required] : ["webgpu"],
+      }] },
+    });
+    runScript(bootstrapRuntimeSource, env.context, "bootstrap-runtime.js");
+    runScript(bootstrapFeatureScene3DSource, env.context, "bootstrap-feature-scene3d.js");
+    await flushAsyncWork();
+    assert.equal(await env.context.__gosx_scene3d_webgpu_probe_ready(), true);
+    assert.equal(descriptor?.requiredLimits?.maxSampledTexturesPerShaderStage, expected);
+    assert.equal(env.context.__gosx_scene3d_webgpu_diagnostics().deviceLimits.maxSampledTexturesPerShaderStage, expected || 16);
+  });
+}
+
 test("Scene3D adaptive WebGPU requests only supported timestamp-query", async () => {
   let descriptor = null;
   const adapter = {

@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const vm = require("node:vm");
 const {
   bootstrapRuntimeSource, createContext, freshFeatureBundleSource,
-  createWebGLRendererForPost, runScript, flushAsyncWork, buildMinimalGLBBytes,
+  createWebGLRendererForPost, runScript, flushAsyncWork, buildMinimalGLBBytes, FakeWebGLContext,
 } = require("./runtime-test-harness.js");
 
 function importedMeshRuntime(options = {}) {
@@ -489,6 +489,116 @@ test("rigid instances of the same GLB share immutable geometry and keep independ
   assert.equal(objects[0].parentMatrix[12], -2);
   assert.equal(objects[1].parentMatrix[12], 8);
   assert.deepEqual(Array.from(vertices.positions), positions, "pose changes must never rebake the shared stream");
+});
+
+function ordinarySkinFixture(metadata = {}) {
+  const env = importedMeshRuntime({ enableWebGL2: true, disableCanvas2D: true });
+  env.context.WebGL2RenderingContext = FakeWebGLContext;
+  runScript(freshFeatureBundleSource("scene3d-compute"), env.context, "compute.js");
+  runScript(freshFeatureBundleSource("scene3d-webgl"), env.context, "webgl.js");
+  const api = env.context.__gosx_scene3d_api;
+  const canvas = env.document.createElement("canvas");
+  const backend = api.sceneBackendRegistry.select({ webgl: true, webgl2: true, canvas2d: false });
+  const renderer = backend.create(canvas, { background: "#000000" }, { tier: "full" });
+  const gl = canvas.getContext("webgl2");
+  const attribute = gl.getAttribLocation.bind(gl);
+  gl.getAttribLocation = (program, name) => name === "a_tangent" ? 6 : attribute(program, name);
+  const raw = vm.runInContext(`({id:"skin",kind:"gltf-mesh",wireframe:false,skinIndex:0,
+    material:{kind:"standard",color:"#557799",clearcoat:.4},
+    vertices:{count:3,positions:new Float32Array([0,0,0,1,0,0,0,1,0]),
+      normals:new Float32Array([0,0,1,0,0,1,0,0,1]),uvs:new Float32Array([0,0,1,0,0,1]),
+      tangents:new Float32Array([1,0,0,1,1,0,0,1,1,0,0,1]),
+      joints:new Float32Array(12),weights:new Float32Array([1,0,0,0,1,0,0,0,1,0,0,0])},
+    skin:{jointMatrices:new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1])}})`, env.context);
+  Object.assign(raw, metadata);
+  const instantiate = id => env.context.__meshTest.instantiate(raw,
+    env.context.__meshTest.normalize({ id, scaleX: 1, scaleY: 1, scaleZ: 1 }, 0), id, 0,
+    [{ jointMatrices: new raw.skin.jointMatrices.constructor(raw.skin.jointMatrices) }]);
+  const build = objects => buildWorldBakedBundle(env, objects);
+  const render = bundle => renderer.render(bundle, { cssWidth: 640, cssHeight: 360, width: 640, height: 360 });
+  return { env, api, raw, instantiate, build, render, renderer, gl };
+}
+
+test("ordinary imported skeletal bind streams stay resident while live joints and materials update", () => {
+  const h = ordinarySkinFixture();
+  const first = h.instantiate("first"), second = h.instantiate("second");
+  assert.equal(first.vertices.immutable, true);
+  assert.equal(first.vertices.revision, 0);
+  assert.notEqual(first.vertices, second.vertices, "independent instances own their bind snapshots");
+  assert.notEqual(first.skin, second.skin, "joint animation ownership stays independent");
+  const bundle = h.build([first, second]);
+  assert.equal(bundle.retainedMeshObjectCount, 2);
+  assert.equal(bundle.meshObjects[0].resourceOwner, first);
+  assert.equal(bundle.meshObjects[0].skin, first.skin);
+  assert.equal(bundle.materials[bundle.meshObjects[0].materialIndex].clearcoat, .4);
+  h.render(bundle);
+  const warm = h.renderer.diagnostics().retainedGeometry;
+  assert.equal(warm.allocations, 12, "all six bind attributes are uploaded once for each independent owner");
+  const start = h.gl.ops.length;
+  const joints = [];
+  const uploadMatrix = h.gl.uniformMatrix4fv.bind(h.gl);
+  h.gl.uniformMatrix4fv = (location, transpose, value) => {
+    if (location?.name === "u_jointMatrices[0]") joints.push(Array.from(value));
+    uploadMatrix(location, transpose, value);
+  };
+  first.skin.jointMatrices[12] = 5;
+  first.color = "#ff4422";
+  const changed = h.build([first, second]);
+  for (let frame = 0; frame < 4; frame++) h.render(changed);
+  assert.equal(changed.plannerTelemetry.fullVertexHashScans, 0, "the renderer planner never rescans fixed bind streams");
+  assert.equal(h.gl.ops.slice(start).filter(op => op[0] === "bufferData").length, 0,
+    "joint-only poses do not stream any bind attributes");
+  assert.ok(joints.some(matrix => matrix[12] === 5), "new joint matrices still reach the GPU");
+  assert.equal(second.skin.jointMatrices[12], 0);
+  assert.equal(h.renderer.diagnostics().retainedGeometry.allocations, warm.allocations);
+  first.vertices.positions[0] = .25;
+  first.vertices.revision++;
+  h.render(h.build([first, second]));
+  assert.equal(h.renderer.diagnostics().retainedGeometry.revisionInvalidations, 1,
+    "an explicit bind revision replaces this owner's buffers");
+  assert.equal(h.renderer.diagnostics().retainedGeometry.allocations, warm.allocations + 6);
+  assert.ok(Array.from(h.gl.bufferUploads.values()).some(data => data.length === 9 && data[0] === .25),
+    "revised bind positions reach the replacement GPU buffer");
+  h.render(h.build([second]));
+  assert.equal(h.renderer.diagnostics().retainedGeometry.liveBytes, warm.liveBytes / 2,
+    "removing an owner retires only its private buffers");
+  h.renderer.dispose();
+  assert.equal(h.renderer.diagnostics().retainedGeometry.liveBytes, 0);
+});
+
+for (const [name, metadata] of [["morph", { _morphAnim: { defaults: [0] } }],
+                              ["node", { _nodeAnim: { nodeIndex: 0 } }]]) {
+  test(`ordinary imported ${name} animation keeps mutable skeletal vertex uploads`, () => {
+    const h = ordinarySkinFixture(metadata);
+    const object = h.instantiate("animated");
+    assert.notEqual(object.vertices.immutable, true);
+    const first = h.build([object]);
+    assert.equal(first.meshObjects[0].retainedGeometry, false);
+    h.render(first);
+    const start = h.gl.ops.length;
+    object.vertices.positions[0] = .25;
+    const changed = h.build([object]);
+    h.render(changed);
+    assert.ok(changed.plannerTelemetry.fullVertexHashScans > 0,
+      "mutable pose changes still invalidate the renderer plan");
+    assert.ok(h.gl.ops.slice(start).some(op => op[0] === "bufferData"),
+      "changed deformation streams still upload");
+    h.renderer.dispose();
+  });
+}
+
+test("ordinary skeletal retention rejects authored mutable or unversioned snapshots", () => {
+  const h = ordinarySkinFixture();
+  for (const mutate of [object => { object.vertices.dynamic = true; },
+                        object => { object.vertices.dirty = true; },
+                        object => { object.geometryDynamic = true; },
+                        object => { object.computedMorph = {}; },
+                        object => { object.vertices.revision = null; }]) {
+    const object = h.instantiate("mutable");
+    mutate(object);
+    assert.equal(h.build([object]).meshObjects[0].retainedGeometry, false);
+  }
+  h.renderer.dispose();
 });
 
 function rigidBatchFixture(fresh, count = 100) {
