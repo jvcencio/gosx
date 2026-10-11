@@ -1236,8 +1236,11 @@ excludable. `build.runtime.exclude` never skips WASM compilation; a later
 `build.runtime.features` allow-list that also skips unneeded WASM builds is
 a separate, future change.
 
-Both fields default to today's behavior: `sourceMaps` true, nothing
-excluded. A project with no `build.runtime` block builds unchanged.
+Both fields default to `sourceMaps` true and nothing excluded. This includes
+every available source-map sidecar. Scene3D core, WebGL, and WebGPU release
+chunks omit maps because their second minification pass cannot compose them.
+For framework debugging, `GOSX_BUNDLE_DEBUG=1 make build-bootstrap` generates
+those chunks with matching source maps.
 
 ## Deploy
 
