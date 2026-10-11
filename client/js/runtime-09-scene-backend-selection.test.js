@@ -1220,6 +1220,53 @@ test("Scene3D WebGPU page does not fetch the WebGL chunk at mount", async () => 
   );
 });
 
+test("Scene3D baseline texture-limit adapter preserves renderer fallback", async () => {
+  const mount = new FakeElement("div", null);
+  mount.id = "scene-webgpu-texture-limit";
+  let descriptor;
+  const env = createContext({
+    elements: [mount], enableWebGPU: true,
+    createWebGL2Context: () => new FakeWebGLContext({ vendor: "Google Inc.", renderer: "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))" }),
+    navigatorGPU: {
+      requestAdapter: async () => ({
+        features: new Set(), limits: { maxSampledTexturesPerShaderStage: 16 },
+        requestDevice: async (requested) => {
+          descriptor = requested;
+          return { lost: new Promise(() => {}), features: new Set(), limits: { maxSampledTexturesPerShaderStage: 16 } };
+        },
+      }),
+      getPreferredCanvasFormat: () => "rgba8unorm",
+    },
+    fetchRoutes: {
+      "/gosx/bootstrap-feature-engines.js": { text: bootstrapFeatureEnginesSource },
+      "/gosx/bootstrap-feature-scene3d-webgl.js": { text: bootstrapFeatureScene3DWebGLSource },
+      "/gosx/bootstrap-feature-scene3d-webgpu.js": { text: `
+        window.__gosx_scene3d_webgpu_api = { createRenderer: function() {
+          window.__testTextureLimit = window.__gosx_scene3d_webgpu_diagnostics().deviceLimits.maxSampledTexturesPerShaderStage;
+          return null;
+        } };
+      ` },
+    },
+    manifest: scene3dWebGLSplitManifest(mount.id, {
+      preferWebGPU: true,
+      scene: {
+        backendCaps: { capable: ["webgpu", "webgl", "canvas2d"], degraded: {}, reasons: [] },
+        objects: [{ kind: "box", width: 1, height: 1, depth: 1, color: "#8de1ff" }],
+      },
+    }),
+  });
+  const raf = installManualRAF(env.context);
+  runScript(bootstrapRuntimeSource, env.context, "bootstrap-runtime.js");
+  runScript(bootstrapFeatureScene3DSource, env.context, "bootstrap-feature-scene3d.js");
+  await flushAsyncWork();
+  await flushSceneInitialFrameBoundary(raf);
+  await flushAsyncWork();
+  assert.equal(descriptor?.requiredLimits?.maxSampledTexturesPerShaderStage, undefined);
+  assert.equal(env.context.__testTextureLimit, 16);
+  assert.equal(mount.getAttribute("data-gosx-scene3d-renderer"), "canvas");
+  assert.ok(mount.children[0].contextCalls.some(call => call.kind === "2d"));
+});
+
 test("Scene3D null WebGPU adapter falls back through the lazy WebGL chunk", async () => {
   const mount = new FakeElement("div", null);
   mount.id = "scene-webgpu-null-adapter";

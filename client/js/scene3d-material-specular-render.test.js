@@ -92,7 +92,7 @@ function setupWebGLRenderer() {
     sliceBetween(source, "function scenePBRSRGBChannelToLinear", "const SCENE_PBR_VERTEX_SOURCE"),
     sliceBetween(source, "function scenePBRDielectricF0", "function scenePBRCacheBaseUniforms"),
     sliceBetween(source, "var sceneGLConstantCache", "function scenePBRHDRIBLAvailable"),
-    sliceBetween(source, "function scenePBRHDRIBLAvailable", "function scenePBRFragmentSourceForContext"),
+    sliceBetween(source, "function scenePBRHDRIBLTextureMinimum", "function scenePBRFragmentSourceForContext"),
     sliceBetween(source, "function scenePBRMaxTextureUnits", "function scenePBRTextureLayoutForFrame"),
     sliceBetween(source, "function scenePBRTextureLayoutForFrame", "// Upload both array samplers"),
     sliceBetween(source, "function uploadCustomUniforms", "function uploadMaterial"),
@@ -675,6 +675,9 @@ test("WebGL HDR IBL fits the core sampler minimum", () => {
   assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(15))"), false);
   assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(16))"), true);
   assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(32))"), true);
+  assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(16), true)"), false);
+  assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(17), true)"), true);
+  assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(32), true)"), true);
 });
 
 test("WebGL PBR shader consumes the uploaded factors in direct and IBL paths", () => {

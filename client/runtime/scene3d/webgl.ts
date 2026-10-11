@@ -4879,7 +4879,7 @@
           gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); // Replace retained pixels after additive geometry.
 
         // Per-effect render truth. Built only under the diagnostics tier.
         // Each apply* helper returns the INPUT texture unchanged when it takes
@@ -5810,7 +5810,8 @@
     return key;
   }
 
-  function scenePBRHDRIBLAvailable(gl) {
+  function scenePBRHDRIBLTextureMinimum(detail) { return detail ? 17 : 16; }
+  function scenePBRHDRIBLAvailable(gl, detail = false) {
     var maxUnits = 0;
     try {
       maxUnits = gl && typeof gl.getParameter === "function"
@@ -5819,14 +5820,13 @@
     } catch (_error) {
       maxUnits = 0;
     }
-    // 9 material + 2 depth arrays + legacy env + 3 IBL + transmission = 16 samplers.
-    return maxUnits >= 16;
+    return maxUnits >= scenePBRHDRIBLTextureMinimum(detail);
   }
 
   function scenePBRFragmentSourceForContext(gl, source) {
     return String(source || SCENE_PBR_FRAGMENT_SOURCE).replace(
       "#define GOSX_HDR_IBL 1",
-      "#define GOSX_HDR_IBL " + (scenePBRHDRIBLAvailable(gl) ? "1" : "0"),
+      "#define GOSX_HDR_IBL " + (scenePBRHDRIBLAvailable(gl, String(source || "").includes("u_detailAtlas")) ? "1" : "0"),
     );
   }
 
@@ -7319,7 +7319,7 @@
     var env = environment || {};
     var ibl = env.ibl && typeof env.ibl === "object" ? env.ibl : null;
     var envMap = typeof env.envMap === "string" ? env.envMap.trim() : "";
-    var hdrIBLAvailable = scenePBRHDRIBLAvailable(gl);
+    var hdrIBLAvailable = scenePBRHDRIBLAvailable(gl, Boolean(uniforms.detail));
     var maxUnits = scenePBRMaxTextureUnits(gl);
     var layout = scenePBRTextureLayoutForFrame(shadowSlots, shadowLightIndices, env, maxUnits);
     var unit = layout && layout.ibl ? layout.ibl.brdfLUT : null;
@@ -7356,7 +7356,7 @@
       var model = typeof ibl.brdfModel === "string" ? ibl.brdfModel.trim() : "";
       if (!hdrIBLAvailable) {
         iblStatus.state = "unsupported";
-        iblStatus.reason = "fragment-texture-units<16";
+        iblStatus.reason = "fragment-texture-units<" + scenePBRHDRIBLTextureMinimum(Boolean(uniforms.detail));
       } else if (!radianceDescriptor || !irradianceDescriptor || !brdfDescriptor) {
         iblStatus.state = "unsupported";
         iblStatus.reason = "descriptor-role-color-view-format";

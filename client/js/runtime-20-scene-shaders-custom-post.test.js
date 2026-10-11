@@ -1473,6 +1473,38 @@ test("custom post WebGL2: absent vertexGLSL/fragmentGLSL goes straight to identi
   renderer.dispose();
 });
 
+test("WebGL post passes replace targets after additive geometry across frames", () => {
+  const { renderer, canvas } = createWebGLRendererForPost({ fresh: true });
+  const gl = canvas.getContext("webgl2");
+  gl.deleteRenderbuffer = buffer => gl.ops.push(["deleteRenderbuffer", buffer]);
+  const drawArrays = gl.drawArrays.bind(gl), drawInstanced = gl.drawArraysInstanced.bind(gl);
+  const postBlending = [], geometryBlending = [];
+  gl.drawArrays = (mode, first, count) => {
+    if (mode === gl.TRIANGLE_STRIP) postBlending.push(gl.isEnabled(gl.BLEND));
+    drawArrays(mode, first, count);
+  };
+  gl.drawArraysInstanced = (...args) => {
+    geometryBlending.push(gl.isEnabled(gl.BLEND));
+    drawInstanced(...args);
+  };
+  const bundle = makeWebGLBundleWithCustomPost({
+    vertexGLSL: "attribute vec2 a_position; void main() { gl_Position = vec4(a_position, 0.0, 1.0); }",
+    fragmentGLSL: "precision mediump float; void main() { gl_FragColor = vec4(0.25, 0.5, 0.75, 1.0); }",
+  });
+  bundle.points = [];
+  bundle.materials = [{ key: "glow", kind: "standard", color: "#ffffff", renderPass: "additive", opacity: 0.2 }];
+  bundle.instancedMeshes = [{ id: "glow", kind: "box", materialIndex: 0, count: 1,
+    transforms: [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1] }];
+  bundle.postEffects.unshift({ kind: "bloom", intensity: 0.1 },
+    { kind: "toneMapping", exposure: 1 }, { kind: "vignette", intensity: 0.2 }, { kind: "fxaa" });
+  try {
+    for (let frame = 0; frame < 2; frame++) renderer.render(bundle, { width: 320, height: 180 });
+    assert.deepEqual(geometryBlending, [true, true], "each frame renders genuinely additive geometry");
+    assert.ok(postBlending.length >= 10, "built-in intermediate and custom final passes both draw");
+    assert.ok(postBlending.every(enabled => !enabled), "retained post targets must overwrite rather than accumulate prior pixels");
+  } finally { renderer.dispose(); }
+});
+
 test("custom post WebGL2: valid vertexGLSL+fragmentGLSL compiles and links the program", async () => {
   const { renderer, canvas, warnLog } = createWebGLRendererForPost();
   const viewport = { cssWidth: 320, cssHeight: 180, pixelWidth: 320, pixelHeight: 180, pixelRatio: 1 };
