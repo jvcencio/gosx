@@ -214,7 +214,7 @@ func TestBeachBeaconBrighterAtBlueHour(t *testing.T) {
 }
 
 func TestBeachBeaconCanBeSeenFromEasternShore(t *testing.T) {
-	checkBeachApproach(t, []scene.Vector3{scene.Vec3(.5, 0, 22), scene.Vec3(29, 0, 7), scene.Vec3(32, 0, 2)})
+	checkBeachApproach(t, []scene.Vector3{scene.Vec3(.5, 0, 22), scene.Vec3(29, 0, 10), scene.Vec3(32, 0, 6)})
 }
 
 func TestBeachMomentsIntegrated(t *testing.T) {

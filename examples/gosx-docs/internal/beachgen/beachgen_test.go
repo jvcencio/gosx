@@ -123,6 +123,50 @@ func TestBouldersAvoidMonolith(t *testing.T) {
 	}
 }
 
+func TestStackNormalUVsPreserveFullHeight(t *testing.T) {
+	g, err := stackGeometry(Seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, uv := range g.uvs {
+		if uv < 0 || uv > 1 {
+			t.Fatalf("UV %d = %g cannot be stored in UNORM8", i, uv)
+		}
+	}
+	encoded := encodeUVs(g.uvs)
+	// Samples above eight metres used to clamp to the same final texel.
+	// Their vertical separation must survive encoding and sampler tiling.
+	a, b := 40*49, 56*49
+	va, vb := float64(encoded[a*2+1])/255, float64(encoded[b*2+1])/255
+	height := g.positions[b*3+1] - g.positions[a*3+1]
+	if got := (vb - va) * 9; math.Abs(got-height*3/8) > 9.0/255 {
+		t.Fatalf("normal map repeats %g times over %gm of rock", got, height)
+	}
+}
+
+func TestCoveShorelineCurvesAndDuneTransitionIsContinuous(t *testing.T) {
+	var shore [3]float64
+	for i, x := range []float64{-24, 0, 24} {
+		lo, hi := -10.0, 15.0
+		for range 20 {
+			mid := (lo + hi) / 2
+			if TerrainHeight(x, mid, Seed) < 0 {
+				lo = mid
+			} else {
+				hi = mid
+			}
+		}
+		shore[i] = (lo + hi) / 2
+		z := 18 - shoreDistance(x, 0)
+		if jump := math.Abs(TerrainHeight(x, z+.001, Seed) - TerrainHeight(x, z-.001, Seed)); jump > .01 {
+			t.Fatalf("dune transition jumps %gm at x=%g", jump, x)
+		}
+	}
+	if math.Max(shore[0], shore[2])-shore[1] < 3.5 {
+		t.Fatalf("shoreline remains a straight strip: %v", shore)
+	}
+}
+
 func TestBathymetryIncludesStackA(t *testing.T) {
 	data, err := makeBathymetry(newNoise(generatorSeed))
 	if err != nil {
@@ -267,8 +311,8 @@ func checkGLBEncoding(t *testing.T, data []byte, doc *gltfedit.Document, texture
 				t.Fatalf("terrain has %d materials, want 1", len(root.Materials))
 			}
 			transform := root.Materials[0].NormalTexture.Extensions["KHR_texture_transform"].Scale
-			if root.Materials[0].NormalTexture.Scale != .6 || len(transform) != 2 || transform[0] != 60 || transform[1] != 45 {
-				t.Errorf("normal map parameters are scale=%g transform=%v, want 0.6 and [60 45]", root.Materials[0].NormalTexture.Scale, transform)
+			if root.Materials[0].NormalTexture.Scale != .24 || len(transform) != 2 || transform[0] != 60 || transform[1] != 45 {
+				t.Errorf("normal map parameters are scale=%g transform=%v, want 0.24 and [60 45]", root.Materials[0].NormalTexture.Scale, transform)
 			}
 			if (embedded.MIMEType != "image/png" && embedded.MIMEType != "image/jpeg") || embedded.BufferView < 0 || embedded.BufferView >= len(root.BufferViews) {
 				t.Errorf("invalid embedded image reference: %+v", embedded)
@@ -305,7 +349,7 @@ func checkRockMaterial(t *testing.T, data []byte) {
 	}
 	material := root.Materials[0]
 	transform := material.Normal.Extensions["KHR_texture_transform"].Scale
-	if !contains(root.ExtensionsUsed, "KHR_texture_transform") || material.PBR.Metallic != 0 || material.PBR.Roughness != .85 || material.Normal.Scale != .9 || len(transform) != 2 || transform[0] != 3 || transform[1] != 3 {
+	if !contains(root.ExtensionsUsed, "KHR_texture_transform") || material.PBR.Metallic != 0 || material.PBR.Roughness != .85 || material.Normal.Scale != .9 || len(transform) != 2 || transform[0] != 3 || transform[1] != 9 {
 		t.Errorf("unexpected rock material: %+v with normal transform %v", material, transform)
 	}
 }

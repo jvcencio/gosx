@@ -125,21 +125,35 @@ func Write(outDir string, seed int64) error {
 // TerrainHeight evaluates the deterministic terrain surface at x,z.
 func TerrainHeight(x, z float64, seed int64) float64 { return terrainHeight(newNoise(seed), x, z) }
 
+// A shallow cove bends around the headlands. Fade its offset in the deep
+// basin so the bathymetry keeps the same offshore depth and extent.
+func shoreDistance(x, z float64) float64 {
+	return z - (.005*x*x+2.2*math.Sin(x/17))*smoothstep(-38, -12, z)
+}
+
+func headlandProfile(t float64) float64 {
+	// Sloping talus, a ledge, the exposed face, then a broken upper shelf.
+	return .17*clamp(t/.18, 0, 1) + .59*clamp((t-.27)/.32, 0, 1) + .24*clamp((t-.72)/.25, 0, 1)
+}
+
 func terrainHeight(n noiseField, x, z float64) float64 {
+	shore := shoreDistance(x, z)
 	var h float64
 	switch {
-	case z < 0:
-		h = math.Max(-6, .12*z)
-	case z <= 18:
-		h = .045*z + .35*smoothstep(6, 18, z)
+	case shore < 0:
+		h = math.Max(-6, .12*shore)
+	case shore <= 18:
+		h = .055*shore + .65*smoothstep(4, 18, shore)
 	default:
-		h = 1.16 + 2.34*smoothstep(18, 50, z) + 1.2*n.fbm(x/12, z/12, 4)
+		h = 1.64 + 2.1*smoothstep(18, 50, shore) + n.fbm(x/12, z/12, 4)*smoothstep(18, 28, shore)
 	}
 	sand := n.fbm(x*.17+19, z*.17-7, 4) * .08
 	h += sand
 	zGate := smoothstep(-40, -30, z)
-	left := (1 - smoothstep(-34, -28, x)) * zGate
-	right := smoothstep(34, 40, x) * zGate
+	leftEdge := -31 + 1.9*math.Sin(z*.09) + n.value(z/9, 17)
+	rightEdge := 37 + 2.2*math.Sin(z*.07+1.3)
+	left := headlandProfile(clamp((leftEdge+2-x)/7, 0, 1)) * zGate
+	right := headlandProfile(clamp((x-rightEdge+2)/7, 0, 1)) * zGate
 	if left > 0 {
 		base := h
 		cliff := n.fbm(x/4.8+47, z/7.2-11, 5)
@@ -202,6 +216,7 @@ func makeAlbedo(seed int64, n noiseField) ([]byte, error) {
 		for px := 0; px < 1024; px++ {
 			x := -60 + 120*float64(px)/1023
 			h := terrainHeight(n, x, z)
+			shore := shoreDistance(x, z)
 			dx := terrainHeight(n, x+.5, z) - terrainHeight(n, x-.5, z)
 			dz := terrainHeight(n, x, z+.5) - terrainHeight(n, x, z-.5)
 			rock := math.Hypot(dx, dz) > .6 || (math.Abs(x) > 34 && h > 2)
@@ -210,7 +225,10 @@ func makeAlbedo(seed int64, n noiseField) ([]byte, error) {
 			base := [3]float64{80, 74, 68}
 			foam := 0.0
 			if rock {
-				base = [3]float64{58, 60, 63}
+				base = [3]float64{53, 59, 63}
+				fracture := 1 - smoothstep(.025, .12, math.Abs(n.value(x*.65+h*.12, z*.28)))
+				mineral := n.fbm(x*.9, z*.6+h*.45, 3)
+				factor *= 1 + .18*mineral - .28*fracture
 			} else {
 				mottle := n.fbm(x/3+float64(seed%19), z/3-float64(seed%23), 3) * .10
 				streaks := n.fbm(x/9+float64(seed%7), z*1.4, 3) * .08 // wind streaks run across the beach
@@ -218,8 +236,8 @@ func makeAlbedo(seed int64, n noiseField) ([]byte, error) {
 				factor *= 1 + mottle + streaks + grain
 				// Broken filaments left by the retreating wash. The live ocean
 				// supplies moving run-up; these narrow lines remain on sand.
-				if z > .6 && z < 6 && h < .6 {
-					contour := z + .35*n.fbm(x*.15, z*.2, 3) + .08*math.Sin(x*.8)
+				if shore > .6 && shore < 6 && h < .6 {
+					contour := shore + .35*n.fbm(x*.15, z*.2, 3) + .08*math.Sin(x*.8)
 					front := math.Exp(-math.Pow((contour-1.7)/.075, 2))
 					back := .48 * math.Exp(-math.Pow((contour-4.2)/.055, 2))
 					breakup := smoothstep(-.22, .3, n.value(x*2, z*3))
@@ -227,7 +245,7 @@ func makeAlbedo(seed int64, n noiseField) ([]byte, error) {
 				}
 				// Wet sand is darker; its roughness band makes it mirror the sky.
 				wet := smoothstep(.8, .12, h)
-				if z < 12 {
+				if shore < 12 {
 					factor *= 1 - .55*wet
 				}
 			}
@@ -280,7 +298,7 @@ func makeMetalRoughness(n noiseField) ([]byte, error) {
 				roughness = .70
 			} else if h < -.2 {
 				roughness = .25
-			} else if z < 12 {
+			} else if shoreDistance(x, z) < 12 {
 				roughness = .065 + .735*smoothstep(.12, .8, h)
 			}
 			img.SetColorIndex(px, py, uint8(math.Round(clamp(roughness, 0, 1)*15)))
@@ -377,7 +395,7 @@ func terrainMaterial() map[string]any {
 			"metallicFactor":           0.0, // sand is a dielectric; the paletted MR map repeats roughness in B
 			"roughnessFactor":          1.0,
 		},
-		"normalTexture": map[string]any{"index": 2, "scale": .6, "extensions": map[string]any{"KHR_texture_transform": transform}},
+		"normalTexture": map[string]any{"index": 2, "scale": .24, "extensions": map[string]any{"KHR_texture_transform": transform}},
 	}
 }
 
@@ -389,7 +407,7 @@ func rockMaterial() map[string]any {
 			"metallicFactor":  0,
 			"roughnessFactor": .85,
 		},
-		"normalTexture": map[string]any{"index": 0, "scale": .9, "extensions": map[string]any{"KHR_texture_transform": map[string]any{"scale": []float64{3, 3}}}},
+		"normalTexture": map[string]any{"index": 0, "scale": .9, "extensions": map[string]any{"KHR_texture_transform": map[string]any{"scale": []float64{3, 9}}}},
 	}
 }
 
@@ -404,6 +422,12 @@ func stackGeometry(seed int64) (*geometry, error) {
 	}
 	for _, boulder := range boulderSpecs(seed) {
 		addBoulder(g, boulder, newNoise(seed+int64(boulder.id)*101), newNoise(seed))
+	}
+	// UNORM8 UVs cannot represent negative or repeated coordinates. Store
+	// the full -6..18 m height in 0..1 and tile through KHR_texture_transform;
+	// clamping worldY/8 flattened most of each stack's normal map.
+	for vertex := range len(g.positions) / 3 {
+		g.uvs[vertex*2+1] = (g.positions[vertex*3+1] + 6) / 24
 	}
 	averageVertexNormals(g)
 	return g, nil
@@ -524,12 +548,17 @@ func addStack(g *geometry, stack stackSpec) {
 	for row := 0; row <= rings; row++ {
 		t := float64(row) / rings
 		y := lerp(baseY, topY, t)
-		domeStart := topY - math.Min((topY-baseY)*.16, stack.radius*.45)
+		domeStart := topY - math.Min((topY-baseY)*.09, stack.radius*.3)
 		dome := smoothstep(domeStart, topY, y)
-		profile := 1 - .45*dome
+		profile := 1 - .08*dome
 		for side := 0; side <= sides; side++ { // the last column repeats the first with u = 1
 			angle := 2 * math.Pi * float64(side%sides) / sides
 			dx, dz := math.Cos(angle), math.Sin(angle)
+			// Broad polygon faces carry the silhouette; small fissures weather
+			// them without turning the whole column into rounded pillows.
+			const faces = 8
+			sector := 2 * math.Pi / faces
+			facet := math.Cos(math.Pi/faces) / math.Cos(math.Mod(angle+math.Pi/faces, sector)-math.Pi/faces)
 			// A jagged crown: notch the top rows by noise around the circumference.
 			worldY := y - dome*stack.radius*.35*math.Abs(noiseValue3(noise, dx*1.7+stack.x, 3.3, dz*1.7+stack.z))
 			// Weathered basalt: broad lumps, sharper ridges, vertical fissures
@@ -539,16 +568,16 @@ func addStack(g *geometry, stack stackSpec) {
 			lumps := fbm3(noise, px/(r*1.3), worldY/(r*1.1), pz/(r*1.3), 4)
 			ridges := ridgeFbm3(noise, px/(r*.45)+5, worldY/(r*.45), pz/(r*.45)+9, 4)
 			cracks := fbm3(noise, px/(r*.22)+11, worldY*.07, pz/(r*.22)+7, 3)
-			strata := .03 * math.Sin(worldY*1.1+2.5*noiseValue3(noise, px*.1, worldY*.05, pz*.1))
-			taper := 1 - .22*(worldY-baseY)/(topY-baseY)
+			strata := .014 * math.Sin(worldY*2.6+2.5*noiseValue3(noise, px*.1, worldY*.05, pz*.1))
+			taper := 1 - .13*(worldY-baseY)/(topY-baseY)
 			// Bulges and waists that change with height break the bottle outline.
 			girth := noiseValue3(noise, stack.x*.31, worldY/(r*.9), stack.z*.31) + .5*noiseValue3(noise, stack.x*.7, worldY/(r*.4), stack.z*.7)
-			radius := r * profile * taper * (1 + .22*girth + .32*lumps + .16*ridges - .14*math.Abs(cracks) + strata)
+			radius := r * facet * profile * taper * (1 + .055*girth + .11*lumps + .10*ridges - .12*math.Abs(cracks) + strata)
 			notch := smoothstep(-1, -.6, worldY) * (1 - smoothstep(1.2, 1.6, worldY))
 			radius *= 1 - .18*notch
 			leanFactor := (worldY - baseY) * stack.lean
 			p := vec3{stack.x + dx*radius + leanFactor, worldY, stack.z + dz*radius}
-			appendVertex(g, p, float64(side)/sides, worldY/8) // v repeats through the sampler, no fract seam
+			appendVertex(g, p, float64(side)/sides, 0) // V is normalized for the entire rock mesh below.
 			if side == sides {
 				g.seams = append(g.seams, [2]int{first + row*(sides+1), first + row*(sides+1) + sides})
 			}

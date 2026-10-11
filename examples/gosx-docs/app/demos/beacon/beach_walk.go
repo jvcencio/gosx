@@ -46,23 +46,22 @@ func blackglassBeachLookRotation(position, target scene.Vector3) scene.Euler {
 	return scene.Euler{X: math.Atan2(fy, horizontal), Y: math.Atan2(-fx, -fz)}
 }
 
-// The generated normal maps add grain and basalt fissures without replacing
-// the terrain's wetness map: a dry detail roughness must not dull the tideline.
+// Scanned grain and fractured basalt use world-space projection so steep
+// faces keep their scale. The sand's roughness stays in the terrain wetness
+// map: a dry detail roughness must not dull the tideline.
 func blackglassBeachDetail() *scene.Detail {
-	root := blackglassBeachModelRoot
+	root := blackglassBeachModelRoot + "detail/"
 	return &scene.Detail{
-		Ground: &scene.DetailLayer{Normal: root + "sand-normal.jpg", Scale: 2.5, NormalScale: 0.32},
-		Steep: &scene.DetailLayer{Normal: root + "rock-normal.jpg", Roughness: root + "rock-rough.jpg",
-			Scale: 3, NormalScale: 0.85, RoughnessMix: 0.45},
-		SlopeStart: 28, SlopeEnd: 42, FadeStart: 12, FadeEnd: 24,
+		Ground: &scene.DetailLayer{Albedo: root + "sand-albedo.jpg", Normal: root + "sand-normal.jpg", Scale: 2.5, NormalScale: 0.35, AlbedoMix: .65},
+		Steep: &scene.DetailLayer{Albedo: root + "basalt-albedo.jpg", Normal: root + "basalt-normal.jpg", Roughness: root + "basalt-rough.jpg",
+			Scale: 2.8, NormalScale: 0.72, AlbedoMix: .78, RoughnessMix: 0.4},
+		SlopeStart: 28, SlopeEnd: 42, FadeStart: 24, FadeEnd: 100,
 	}
 }
 
 // blackglassBeachRockDetail gives the stacks basalt detail on every face.
 func blackglassBeachRockDetail() *scene.Detail {
-	d := blackglassBeachDetail()
-	d.Ground = d.Steep
-	d.SlopeStart, d.SlopeEnd = 0, 1
-	d.FadeStart, d.FadeEnd = 30, 85
-	return d
+	// A single triplanar layer covers every face, including the crowns.
+	// Avoid serializing and baking two identical basalt atlas layers.
+	return &scene.Detail{Ground: blackglassBeachDetail().Steep, Triplanar: scene.Bool(true), FadeStart: 55, FadeEnd: 140}
 }
