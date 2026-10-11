@@ -241,6 +241,7 @@
     },
     {
       "name": "bootstrap-feature-scene3d.js",
+      "sourceMap": "debug-only",
       "sources": [
         "bootstrap-src/26d-feature-scene3d-prefix.ts",
         "../runtime/scene3d/script-loader.ts",
@@ -286,6 +287,7 @@
     },
     {
       "name": "bootstrap-feature-scene3d-webgl.js",
+      "sourceMap": "debug-only",
       "sources": [
         "bootstrap-src/26j-feature-scene3d-webgl-prefix.ts",
         "bootstrap-src/15a1-scene-texture-budget.ts",
@@ -325,6 +327,7 @@
     },
     {
       "name": "bootstrap-feature-scene3d-webgpu.js",
+      "sourceMap": "debug-only",
       "sources": [
         "bootstrap-src/26e-feature-scene3d-webgpu-prefix.ts",
         "bootstrap-src/26e1-feature-scene3d-webgpu-compute-bridge.ts",

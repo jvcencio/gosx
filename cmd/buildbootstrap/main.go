@@ -1410,6 +1410,9 @@ func chunksManifestJSON() string {
 	for i, entry := range outputs {
 		b.WriteString("    {\n      \"name\": ")
 		b.WriteString(jsQuote(entry.name))
+		if compactSceneRelease(entry.name) {
+			b.WriteString(",\n      \"sourceMap\": \"debug-only\"")
+		}
 		b.WriteString(",\n      \"sources\": [\n")
 		for j, src := range entry.sources {
 			b.WriteString("        ")
