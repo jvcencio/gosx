@@ -16,7 +16,7 @@ func init() {
 			ctx.AddHead(server.LifecycleScript("/blackglass-content.js"))
 			view := blackglassBeachViewFor(ctx.Query("view"))
 			period := blackglassBeachPeriodFor(ctx.Query("period"))
-			instructions := "Click or drag to look · WASD or arrows to walk · Esc to release"
+			instructions := "Click or drag to look · WASD or arrows to walk · Shift to run · Esc to release"
 			touchInstructions := "Left thumb to move · drag the right side to look"
 			if view.ID == "glass" || view.ID == "cliff" {
 				instructions = "Drag or use arrows to orbit · scroll or +/− to zoom · Home to reset"

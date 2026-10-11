@@ -38,7 +38,10 @@
 :global(.bgb__link:hover), :global(.bgb__link:focus-visible) { color: #fff; background: rgba(255,255,255,.12); }
 :global(.bgb__link:focus-visible), :global(.bgb__close:focus-visible), :global(.bgb__reveal a:focus-visible), :global(.bgb canvas:focus-visible) { outline: 2px solid #f2c38c; outline-offset: 3px; }
 :global(.bgb__reset) { border: 0; background: transparent; font-family: inherit; cursor: pointer; }
+:global(.bgb [data-gosx-scene3d-vessel]:not([data-gosx-scene3d-vessel="sailing"]) .gosx-scene3d-vessel-controls) { padding: 0 !important; background: transparent !important; }
+:global(.bgb [data-gosx-scene3d-vessel]:not([data-gosx-scene3d-vessel="sailing"]) .gosx-scene3d-vessel-controls button) { min-height: 44px !important; border-radius: 999px !important; background: #f4e4c9 !important; color: #16130f !important; font: 600 13px ui-sans-serif, system-ui, sans-serif !important; box-shadow: 0 3px 16px #0004; }
 :global(.bgb__instructions) { flex-basis: 100%; margin: 0; font-size: 12px; color: rgba(255,255,255,.85); text-shadow: 0 1px 4px #101318; }
+:global(.bgb:has([data-gosx-scene3d-vessel="sailing"]) .bgb__instructions) { display: none !important; }
 :global(.bgb__discoveries) { max-width: 660px; font-size: 11px; color: rgba(255,255,255,.68); }
 :global(.bgb__reveal) { bottom: max(20px, env(safe-area-inset-bottom)); margin: 0; font-size: 12px; line-height: 1.6; color: rgba(255,255,255,.8); text-shadow: 0 1px 4px #101318; }
 :global(.bgb .bgb__reveal output[data-gosx-scene3d-status]) { display: inline !important; font-variant-numeric: tabular-nums; }

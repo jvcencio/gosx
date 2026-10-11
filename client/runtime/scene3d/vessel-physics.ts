@@ -18,8 +18,8 @@
     return { config: c, collision: collision || {}, ocean: ocean || {}, x: p.x || 0, y: p.y || 0, z: p.z || 0,
       heading: c.heading || 0, pitch: 0, roll: 0, vy: 0, vp: 0, vr: 0, vx: 0, vz: 0, yawVelocity: 0,
       length: c.length || 22, beam: c.beam || 5, draft: c.draft || 1.4, deck: c.deckHeight || 2.5,
-      helm: { x: helm.x == null ? .65 : helm.x, y: helm.y || 4.2, z: helm.z || 8 }, trim: c.sailTrim == null ? .55 : c.sailTrim, rudder: 0,
-      wind: (c.windDirection == null ? (ocean.windDirection || 0) : c.windDirection) * radians,
+      helm: { x: helm.x ?? .65, y: helm.y || 4.2, z: helm.z || 8 }, trim: c.sailTrim ?? .55, rudder: 0,
+      wind: (c.windDirection ?? ocean.windDirection ?? 0) * radians,
       strength: c.windStrength || 8, maxSpeed: c.maxSpeed || 10, mode: "moored", cameraMode: "stern",
       pressure: 0, luff: 1, bowImpact: 0, bowWater: NaN, reduced: false,
       grounded: false, accumulator: 0, speed: 0, tack: 0, cameraReady: false, camera: {x:0,y:0,z:0,rotationX:0,rotationY:0,rotationZ:0} };
@@ -38,9 +38,9 @@
     return Math.hypot(camera.x-h.x,camera.y-h.y,camera.z-h.z) <= (s.config.boardRadius || 4);
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-  function helm(s, camera) {
+  function helm(s, camera, quick=false) {
     if (s.mode === "sailing") { s.mode = "deck"; s.trim = 0; s.rudder = 0; return "leave"; }
-    if (!canBoard(s,camera)) return "far";
+    if (!canBoard(s,camera) && !(quick && s.config.quickBoard)) return "far";
     s.mode = "sailing"; s.rudder = 0; return "take";
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.

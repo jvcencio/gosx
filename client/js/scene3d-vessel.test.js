@@ -2,11 +2,13 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {FakeElement,createContext,installManualRAF,runScript,flushAsyncWork,bootstrapSource}=require('./runtime-test-harness.js');
 const sources={};for(const part of ['walk','ocean-query','vessel'])sources[part]=fs.readFileSync(path.join(__dirname,'bootstrap-feature-scene3d-'+part+'.js'),'utf8');
-async function mountScene(vessel=true,maxFPS=60,realShip=false,coarse=false,spectator=false,reduced=false) {
+async function mountScene(vessel=true,maxFPS=60,realShip=false,coarse=false,spectator=false,reduced=false,options={}) {
  const mount=new FakeElement('div',null);mount.id='mounted-vessel';mount.setAttribute('data-gosx-engine','GoSXScene3D');
  const camera={x:0,y:4.2,z:6.5,rotationX:0,rotationY:0,fov:60,near:.1,far:200};
  const props={controls:'first-person',walk:{headBob:0},camera,maxFPS,scene:{camera,objects:[{id:'ship/hull',kind:'box',geometry:'box',size:3}]}};
  if(vessel) {props.vessel={nodeId:'ship',heading:Math.PI/2,windStrength:8,helm:{x:0,y:4.2,z:6.5},wake:false};props.camera={...camera,x:6.5,z:0};props.scene.camera=props.camera;props.scene.environment={ocean:{waveHeight:.9,waveLength:17,choppiness:.7}};}
+ if(vessel&&options.quickBoard)props.vessel.quickBoard=true;
+ if(options.far)props.scene.camera=props.camera={...props.camera,x:80,z:80};
  const routes=Object.fromEntries(Object.entries(sources).map(([name,text])=>['/'+name+'.js',{text}]));
  if(realShip) {
   if(spectator)props.camera=props.scene.camera={...props.camera,x:180,z:0,rotationY:Math.PI/2};
@@ -30,6 +32,22 @@ async function mountScene(vessel=true,maxFPS=60,realShip=false,coarse=false,spec
  function event(target,type,extra={}) {const e={type,preventDefault(){this.defaultPrevented=true;},...extra};target.dispatchEvent(e);return e;}
  return {env,mount,canvas,gl,raf,event,handle:mounted.handle};
 }
+test('Pilot ship is visible from shore, boards in one click, and returns to the authored camera on reset',async()=>{
+ const h=await mountScene(true,60,false,false,false,false,{quickBoard:true,far:true});
+ const panel=h.mount.querySelector('.gosx-scene3d-vessel-controls'),pilot=panel.querySelector('button');
+ assert.equal(panel.hidden,false);assert.equal(pilot.textContent,'Pilot ship');
+ h.canvas.focus();h.event(h.env.document,'keydown',{code:'KeyE'});h.raf.flush(230);
+ assert.equal(h.mount.getAttribute('data-gosx-scene3d-vessel'),'moored','E cannot board remotely');
+ const programs=h.gl.programs.length;h.event(pilot,'click');h.raf.flush(250);
+ assert.equal(h.mount.getAttribute('data-gosx-scene3d-vessel'),'sailing');
+ const aboard=h.handle.getCamera();assert.ok(Math.hypot(aboard.x-80,aboard.z-80)>50);assert.ok(aboard.y>2);
+ assert.equal(h.env.document.activeElement,h.canvas);assert.match(pilot.textContent,/Leave helm/);
+ assert.equal(h.gl.programs.length,programs,'boarding reuses the renderer');
+ h.event(pilot,'click');h.raf.flush(300);assert.equal(h.mount.getAttribute('data-gosx-scene3d-vessel'),'deck');
+ h.handle.resetCamera();h.raf.flush(350);const reset=h.handle.getCamera();
+ assert.ok(Math.abs(reset.x-80)<.01&&Math.abs(reset.z-80)<.01);
+ h.handle.dispose();assert.equal(h.mount.querySelector('.gosx-scene3d-vessel-controls'),null);
+});
 test('a scene without a vessel fetches neither vessel nor ocean query even when URLs are advertised',async()=>{
  const h=await mountScene(false);assert.equal(h.env.context.__gosx_scene3d_vessel_api,undefined);assert.equal(h.env.context.__gosx_scene3d_ocean_query,undefined);
  assert.ok(!h.env.fetchCalls.some(c=>/vessel\.js|ocean-query\.js/.test(String(c.url||c))));h.handle.dispose();
