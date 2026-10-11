@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/andybalholm/brotli"
@@ -21,9 +22,19 @@ func testMeasureHash(body []byte) string {
 
 // Algorithm tests inject encoders without claiming a certified toolchain. The
 // production entry points enforce the exact compressor build identity.
+// Reuse deterministic sizes for identical fixture bytes: generated catalog
+// cases measure the same bodies repeatedly with both collection modes.
+var testBodySizes sync.Map
+
 func testBodyNormalizer(body []byte) (assetmeasure.Sizes, error) {
+	key := string(body)
+	if cached, ok := testBodySizes.Load(key); ok {
+		return cached.(assetmeasure.Sizes), nil
+	}
 	gzipBody, brotliBody := testMeasureEncodings(body)
-	return assetmeasure.Sizes{Raw: int64(len(body)), Gzip: int64(len(gzipBody)), Brotli: int64(len(brotliBody)), SHA256: testMeasureHash(body)}, nil
+	sizes := assetmeasure.Sizes{Raw: int64(len(body)), Gzip: int64(len(gzipBody)), Brotli: int64(len(brotliBody)), SHA256: testMeasureHash(body)}
+	testBodySizes.Store(key, sizes)
+	return sizes, nil
 }
 func testMeasureEncodings(body []byte) ([]byte, []byte) {
 	var gz, br bytes.Buffer
@@ -36,6 +47,28 @@ func testMeasureEncodings(body []byte) ([]byte, []byte) {
 	b.Close()
 	return gz.Bytes(), br.Bytes()
 }
+
+func TestBodyNormalizerKeepsExactBytesWhenFixtureBufferChanges(t *testing.T) {
+	body := []byte("mutable fixture body")
+	first, err := testBodyNormalizer(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body[0] = 'M'
+	changed, err := testBodyNormalizer(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz, br := testMeasureEncodings(body)
+	if changed.Raw != int64(len(body)) || changed.Gzip != int64(len(gz)) || changed.Brotli != int64(len(br)) || changed.SHA256 != testMeasureHash(body) || changed.SHA256 == first.SHA256 {
+		t.Fatal("mutating a fixture buffer reused another body's compressed sizes")
+	}
+	body[0] = 'm'
+	if restored, err := testBodyNormalizer(body); err != nil || restored != first {
+		t.Fatal("original fixture no longer has its exact measured sizes", err)
+	}
+}
+
 func testInlineOptions() HTMLMeasureOptions {
 	return HTMLMeasureOptions{Fields: []HTMLField{{Element: "script", Attribute: "nonce"}, {Element: "body", Attribute: "data-gosx-session"}}, FrameworkScriptSHA256: []string{testMeasureHash([]byte("window.fixtureRuntime = function(){ return 7; };"))}}
 }
