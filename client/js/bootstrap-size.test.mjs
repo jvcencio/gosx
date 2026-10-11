@@ -38,6 +38,8 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 // Retaining ordinary skeletal bind streams adds 416 raw and 133 Brotli bytes
 // to Scene3D. Five breached targets move to their exact measured minimum;
 // shared allowances and every unaffected metric remain unchanged.
+// Supported rich-material device negotiation adds 155 monolith / 153 route raw
+// and 21 route Brotli bytes; only breached targets move to exact minima.
 const budgets = [
   // Finite choreography remains demand-loaded; existing route limits are unchanged.
   { file: "bootstrap-feature-scene3d-timeline.js", raw: 5_400, gzip: 2_400, brotli: 2_200 },
@@ -760,7 +762,7 @@ const budgets = [
     // Rendering integration measures 1934026 raw, +193 over the rendering
     // branch. Carry that merged chord cost into its exact raw target only;
     // retain the 65536 allowance and unchanged gzip/Brotli targets.
-    file: "bootstrap.js", raw: 1868906, gzip: 524100,
+    file: "bootstrap.js", raw: 1869061, gzip: 524100,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->
@@ -1997,7 +1999,7 @@ const routeBudgets = [
     // Merged runtime navigation adds 63 raw bytes; retain the existing measured allowance.
     // Detail resource reuse and retirement adds 1,086 raw, 314 gzip and 280
     // Brotli bytes to this route. Keep the shared allowances unchanged.
-    raw: 1394528,
+    raw: 1394681,
     gzip: 383800,
     // Retained pending poses and CPU playback add 564 measured Brotli bytes;
     // move only this exceeded route target, keeping allowances unchanged.
@@ -2203,7 +2205,7 @@ const routeBudgets = [
     raw: 1241400,
     gzip: 357200,
     // Binding PBR after the ocean changes the Brotli dictionary: measured 307,863 bytes.
-    brotli: 301213,
+    brotli: 301233,
   },
   // Volume transmission adds 12965 raw / 4142 gzip / 2712 Brotli bytes for scene capture, mip filtering and volume controls. Targets move only by this measured delta.
   // Integrated renderer changes: raw 1657700 -> 1670800 (measured 1736261); gzip 461900 -> 465500 (measured 481796); brotli 385400 -> 388000 (measured 404295). Existing allowances stay fixed.
@@ -2399,7 +2401,7 @@ const routeBudgets = [
     raw: 1696300,
     gzip: 473600,
     // The PBR binding also changes the dual-backend Brotli sum: 401,686 bytes.
-    brotli: 399353,
+    brotli: 399374,
   },
   // Volume transmission adds 8052 raw / 2713 gzip / 1689 Brotli bytes for scene capture, mip filtering and volume controls. Targets move only by this measured delta.
   // Integrated renderer changes: raw 1220200 -> 1227800 (measured 1289171); gzip 335300 -> 337500 (measured 353851); brotli 279200 -> 280800 (measured 294775). Existing allowances stay fixed.
@@ -2565,7 +2567,7 @@ const routeBudgets = [
     // The physical sky measures 1_217_282 / 329_134 / 274_908; targets rise by the
     // smallest 100-byte steps that clear the hard limits.
     // Mip-chain bloom and RenderBeforeModels on top of the ocean: targets rise by the smallest 100-byte steps that clear the measured sizes.
-    raw: 1242006,
+    raw: 1242159,
     gzip: 340400,
     // The same 564-byte shared runtime addition exceeds this route's cap.
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 299314.

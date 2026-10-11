@@ -35,6 +35,9 @@
   var _webgpuRequestedFeatures = [];
   var _webgpuRequiredFeatures = [];
   var _webgpuRequiredLimits = {};
+  // Rich PBR layouts bind six frame, nine material and two detail textures.
+  // Request their 17 slots only on capable adapters; baseline adapters keep defaults.
+  var SCENE_WEBGPU_RICH_MATERIAL_TEXTURES = 17;
   var _webgpuAdapterLimits = {};
   var _webgpuDeviceLimits = {};
   var _webgpuAdapterInfo = {};
@@ -731,6 +734,9 @@
     _webgpuRequestedFeatures = sceneWebGPUMergeFeatureLists(sceneWebGPURequestedFeatureList(adapter), _webgpuRequiredFeatures);
     _webgpuRequiredLimits = sceneWebGPURequiredLimitsFromManifest();
     _webgpuAdapterLimits = sceneWebGPULimitsSnapshot(adapter.limits);
+    if (Number(_webgpuAdapterLimits.maxSampledTexturesPerShaderStage) >= SCENE_WEBGPU_RICH_MATERIAL_TEXTURES) {
+      _webgpuRequiredLimits.maxSampledTexturesPerShaderStage = Math.max(SCENE_WEBGPU_RICH_MATERIAL_TEXTURES, Number(_webgpuRequiredLimits.maxSampledTexturesPerShaderStage) || 0);
+    }
     _webgpuAdapterInfo = sceneWebGPUAdapterInfoSnapshot(adapter);
   }
 
