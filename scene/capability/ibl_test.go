@@ -47,7 +47,8 @@ func TestWebGL2ConsumesIBLAtTheCoreMinimum(t *testing.T) {
 			"uniform highp sampler2DArray u_shadowMap0;",
 			"uniform highp sampler2DArray u_shadowMap1;",
 			"gl.framebufferTextureLayer", "gl.texImage3D",
-			"maxUnits >= 16", "textureLod(u_iblRadiance",
+			"function scenePBRHDRIBLTextureMinimum(detail) { return detail ? 17 : 16; }",
+			"maxUnits >= scenePBRHDRIBLTextureMinimum(detail)", "textureLod(u_iblRadiance",
 			"u_iblIrradiance", "u_iblBRDFLUT").
-		assertAgrees("Two depth arrays preserve four cascades per light and fit IBL at the WebGL2 core minimum.")
+		assertAgrees("Two depth arrays preserve four cascades per light and fit base IBL at the WebGL2 core minimum; detail HDR requires 17 samplers.")
 }
