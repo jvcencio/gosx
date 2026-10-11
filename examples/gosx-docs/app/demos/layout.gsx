@@ -15,7 +15,7 @@ func Layout() Node {
 				<nav id="demo-dock" class="demo-dock" aria-label="Demos">
 					<div class="demo-dock__header">
 						<p>Explore the demos</p>
-						<a class="demo-dock__overview" href="/demos" data-gosx-link="true">
+						<a class="demo-dock__overview" href="/demos" data-gosx-native={demoNativeNavigation("")} data-gosx-link="true">
 							All studies
 							<span aria-hidden="true">↗</span>
 						</a>
@@ -24,7 +24,7 @@ func Layout() Node {
 						<Each of={Demos()} as="demo">
 							<li class="demo-dock__item" role="listitem">
 								<a
-									href={"/demos/" + demo.Slug}
+									href={"/demos/" + demo.Slug} data-gosx-native={demoNativeNavigation(demo.Slug)}
 									class="demo-dock__link"
 									data-gosx-link="true"
 									data-demo={demo.Slug}

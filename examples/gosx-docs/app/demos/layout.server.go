@@ -51,6 +51,12 @@ func demoLayoutBindings(ctx *route.RouteContext, page route.FilePage, _ any) rou
 	return route.FileTemplateBindings{
 		Values: values,
 		Funcs: map[string]any{
+			"demoNativeNavigation": func(slug string) any {
+				if hasCurrent && demoNativeNavigation(current.Slug) != nil {
+					return "true"
+				}
+				return demoNativeNavigation(slug)
+			},
 			"Demos":         Demos,
 			"demoValues":    demoValues,
 			"demoSourceURL": demoSourceURL,

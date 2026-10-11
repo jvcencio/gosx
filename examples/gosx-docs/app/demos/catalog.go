@@ -256,3 +256,15 @@ func RelatedGuides(demoSlug string) []docsapp.DocEntry {
 	}
 	return guides
 }
+
+// demoNativeNavigation marks demos whose page-owned scripts require a fresh
+// document. These scripts are not managed runtime modules and do not replay
+// when enhanced navigation adopts their HTML.
+func demoNativeNavigation(slug string) any {
+	switch slug {
+	case "checkers", "playground", "fluid", "livesim", "collab", "cms", "scene3d-bench":
+		return "true"
+	default:
+		return nil
+	}
+}

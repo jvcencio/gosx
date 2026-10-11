@@ -24,7 +24,7 @@ func Page() Node {
 					<article class="demo-card demo-card--featured" data-demo={demo.Slug}>
 						<a
 							class="demo-card__poster"
-							href={"/demos/" + demo.Slug}
+							href={"/demos/" + demo.Slug} data-gosx-native={demoNativeNavigation(demo.Slug)}
 							data-gosx-link="true"
 							aria-label={"Open " + demo.Title}
 						>
@@ -33,7 +33,7 @@ func Page() Node {
 						<div class="demo-card__body">
 							<p class="demo-card__status">Featured</p>
 							<h3 class="demo-card__title">
-								<a href={"/demos/" + demo.Slug} data-gosx-link="true">{demo.Title}</a>
+								<a href={"/demos/" + demo.Slug} data-gosx-native={demoNativeNavigation(demo.Slug)} data-gosx-link="true">{demo.Title}</a>
 							</h3>
 							<p class="demo-card__summary">{demo.Summary}</p>
 							<ul class="demo-card__facets" aria-label={demo.Title + " capabilities"}>
@@ -45,7 +45,7 @@ func Page() Node {
 								{"Runs on " + demoBackendSummary(demo.Backends)}
 							</p>
 							<footer class="demo-card__actions">
-								<a class="demo-card__open" href={"/demos/" + demo.Slug} data-gosx-link="true">Open demo</a>
+								<a class="demo-card__open" href={"/demos/" + demo.Slug} data-gosx-native={demoNativeNavigation(demo.Slug)} data-gosx-link="true">Open demo</a>
 								<a href={demoSourceURL(demo.SourcePath)} target="_blank" rel="noopener noreferrer">View source</a>
 								<Each of={demoGuides(demo.Slug)} as="guide">
 									<a class="demo-card__guide" href={guide.Href} data-gosx-link="true">
@@ -84,7 +84,7 @@ func Page() Node {
 						<article class="demo-card" data-demo={demo.Slug}>
 							<a
 								class="demo-card__poster"
-								href={"/demos/" + demo.Slug}
+								href={"/demos/" + demo.Slug} data-gosx-native={demoNativeNavigation(demo.Slug)}
 								data-gosx-link="true"
 								aria-label={"Open " + demo.Title}
 							>
@@ -93,7 +93,7 @@ func Page() Node {
 							<div class="demo-card__body">
 								<p class="demo-card__status">{demoStatusLabel(demo.Status)}</p>
 								<h3 class="demo-card__title">
-									<a href={"/demos/" + demo.Slug} data-gosx-link="true">{demo.Title}</a>
+									<a href={"/demos/" + demo.Slug} data-gosx-native={demoNativeNavigation(demo.Slug)} data-gosx-link="true">{demo.Title}</a>
 								</h3>
 								<p class="demo-card__summary">{demo.Summary}</p>
 								<ul class="demo-card__facets" aria-label={demo.Title + " capabilities"}>
@@ -105,7 +105,7 @@ func Page() Node {
 									{"Runs on " + demoBackendSummary(demo.Backends)}
 								</p>
 								<footer class="demo-card__actions">
-									<a class="demo-card__open" href={"/demos/" + demo.Slug} data-gosx-link="true">Open demo</a>
+									<a class="demo-card__open" href={"/demos/" + demo.Slug} data-gosx-native={demoNativeNavigation(demo.Slug)} data-gosx-link="true">Open demo</a>
 									<a href={demoSourceURL(demo.SourcePath)} target="_blank" rel="noopener noreferrer">View source</a>
 									<Each of={demoGuides(demo.Slug)} as="guide">
 										<a class="demo-card__guide" href={guide.Href} data-gosx-link="true">

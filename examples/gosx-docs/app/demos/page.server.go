@@ -24,6 +24,7 @@ func init() {
 			},
 			Bindings: func(_ *route.RouteContext, _ route.FilePage, _ any) route.FileTemplateBindings {
 				return route.FileTemplateBindings{Funcs: map[string]any{
+					"demoNativeNavigation": demoNativeNavigation,
 					"demoBackendSummary":   demoBackendSummary,
 					"demoSourceCountLabel": demoSourceCountLabel,
 					"demoSourceURL":        demoSourceURL,
