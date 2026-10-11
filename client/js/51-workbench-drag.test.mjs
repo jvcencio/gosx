@@ -30,6 +30,46 @@ function ends(env, el) {
   return seen;
 }
 
+for (const reason of ["Escape", "pointercancel", "lostpointercapture", "blur"]) test(`pending input ${reason} cancels before loading can capture or write`, async () => {
+  const el = handle({ axis: "x", min: 160, max: 640, step: 8, scale: 1, end: "$mix.commit" });
+  el.clientWidth = el.clientHeight = 8;
+  const env = bootHandles([el]);
+  const load = env.document.scriptLoader;
+  let resolveInput;
+  env.document.scriptLoader = (src, script) => {
+    if (src === INPUT_URL) resolveInput = () => load(src, script);
+    else load(src, script);
+  };
+  await flushAsyncWork(); assert.equal(typeof resolveInput, "function");
+  const set = env.context.__gosx.workbench.debug.setSignal;
+  set("$mix.vol", 280);
+  const finished = ends(env, el), commits = subscribe(env, "$mix.commit");
+  pointer(env, "pointerdown", el); await flushAsyncWork();
+  assert.equal(el.capture, undefined, "input is still unavailable");
+  // Another source may update the signal while this gesture owns its start value.
+  set("$mix.vol", 320);
+  if (reason === "Escape") assert.equal(keydown(env, { key: reason }).prevented, true);
+  else if (reason === "blur") env.context.dispatchEvent({ type: reason });
+  // Deliver the native event's document phase explicitly in this fake DOM.
+  else pointer(env, reason, el);
+  const canceled = { signal: "$mix.vol", value: 280, commit: false };
+  assert.equal(el.getAttribute("aria-valuenow"), "280");
+  assert.deepEqual(finished, [canceled]); assert.deepEqual(commits, [canceled]);
+  // Repeated cancellation and a late input resolution cannot revive this owner.
+  keydown(env, { key: "Escape" }); env.context.dispatchEvent({ type: "blur" });
+  resolveInput(); await flushAsyncWork();
+  assert.equal(el.capture, undefined);
+  pointer(env, "pointermove", el, { clientX: 28 }); pointer(env, "pointerup", el, { clientX: 28 });
+  assert.equal(el.getAttribute("aria-valuenow"), "280"); assert.deepEqual(finished, [canceled]);
+  assert.deepEqual(commits, [canceled]);
+  // The input is usable by a subsequent gesture, and page cleanup still works.
+  pointer(env, "pointerdown", el); await flushAsyncWork();
+  assert.equal(el.capture, 1);
+  pointer(env, "pointermove", el, { clientX: 28 }); pointer(env, "pointerup", el, { clientX: 28 });
+  assert.equal(el.getAttribute("aria-valuenow"), "288"); assert.equal(finished.at(-1).commit, true);
+  await env.context.__gosx_dispose_page();
+});
+
 test("recipe pixel handles move eight units across their eight pixel thickness", async () => {
   const recipe = fs.readFileSync(new URL("../../internal/uirecipe/recipes/v1/splitpane/splitpane.gsx", import.meta.url), "utf8");
   for (const axis of ["x", "y"]) {

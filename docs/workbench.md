@@ -47,6 +47,8 @@ would otherwise multiply movement by 60. Use `-1` to reverse the direction.
 Pointer values snap to `step`, measured from `min` when finite, otherwise zero.
 The handle captures the primary pointer. Release commits; Escape, pointer cancel,
 lost capture, blur and page disposal restore the value from pointer-down.
+Cancellation also applies while the input chunk loads. A canceled pending handle
+emits `commit: false` and cannot capture the pointer when loading finishes.
 
 | Key | Change |
 |---|---|

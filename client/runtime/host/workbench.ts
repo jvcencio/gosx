@@ -255,7 +255,10 @@
         event.preventDefault();
         if (activeHandles.has(el)) activeHandles.get(el).cancel("replaced");
         const h = parseDragHandle(el), start = currentValue(h), owner = generation;
-        const pending = { pointerId: event.pointerId, pending: true, cancel() { activeHandles.delete(el); } };
+        const pending = { pointerId: event.pointerId, pending: true, cancel() {
+          if (activeHandles.get(el) !== pending) return;
+          activeHandles.delete(el); writeHandle(h, start); endHandle(h, start, false);
+        } };
         activeHandles.set(el, pending);
         ensureInputChunk().then(pointerGesture => {
           if (owner !== generation || activeHandles.get(el) !== pending || el.isConnected === false) return;
@@ -267,13 +270,17 @@
           activeHandles.set(el, gesture);
         }).catch(error => { pending.cancel(); console.error("[gosx] workbench drag:", error); });
       });
-      // A release before an asynchronous input load must not start a stale drag.
+      // Pending input owns the gesture too; cancellation must invalidate it.
       function cancelPending(event) {
+        if (event.type === "keydown" && event.key !== "Escape") return;
         for (const gesture of activeHandles.values()) {
-          if (gesture.pending && (event.type === "blur" || gesture.pointerId === event.pointerId)) gesture.cancel();
+          if (gesture.pending && (event.type === "blur" || event.type === "keydown" || gesture.pointerId === event.pointerId)) {
+            if (event.type === "keydown") event.preventDefault();
+            gesture.cancel();
+          }
         }
       }
-      for (const type of ["pointerup", "pointercancel", "blur"]) listen(type, cancelPending, type === "blur" ? window : document);
+      for (const type of ["pointerup", "pointercancel", "lostpointercapture", "keydown", "blur"]) listen(type, cancelPending, type === "blur" ? window : document, true);
       listen("dblclick", event => {
         const el = dragElement(event);
         if (!el || activeHandles.has(el)) return;
