@@ -20,8 +20,8 @@ const blackglassBeachModelRoot = "/models/blackglass/"
 
 // Raster assets are cached longer than models. Fingerprint changed content
 // so returning visitors get the new preview and matching ocean depth field.
-const blackglassBeachPosterSrc = "/demos/posters/beacon.webp?v=ad0b6c41a360"
-const blackglassBeachHeightSrc = blackglassBeachModelRoot + "beach-v2-height.png?v=2121bd3f9a20"
+const blackglassBeachPosterSrc = "/demos/posters/beacon.webp?v=e16c512d1cbf"
+const blackglassBeachHeightSrc = blackglassBeachModelRoot + "beach-v2-height.png?v=3da58ae7a1fb"
 
 type blackglassBeachPeriod struct {
 	ID, Name string
@@ -37,7 +37,7 @@ func blackglassBeachPeriodFor(raw string) blackglassBeachPeriod {
 	case beachgen.PeriodNoon:
 		return blackglassBeachPeriod{beachgen.PeriodNoon, "Midday", "#fff4e6", 9, 0.5}
 	default:
-		return blackglassBeachPeriod{beachgen.PeriodGolden, "Golden hour", "#ffb578", 8, 0.62}
+		return blackglassBeachPeriod{beachgen.PeriodGolden, "Golden hour", "#ffc58d", 6.4, 0.68}
 	}
 }
 
@@ -123,7 +123,7 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 	period := blackglassBeachPeriodFor(periodID)
 	view := blackglassBeachViewFor(viewID)
 	sky := beachgen.PeriodSky(period.ID)
-	sky.Clouds = &scene.SkyClouds{Coverage: 0.28, Opacity: 0.68, Direction: 20}
+	sky.Clouds = &scene.SkyClouds{Coverage: 0.50, Altitude: 1100, Scale: 4800, Opacity: 0.72, Direction: 20}
 	sun := sky.SunDirection
 	horizon := blackglassBeachHorizon(sky, period.Exposure)
 	return scene.Props{
@@ -140,14 +140,14 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 		AdaptiveQuality:    scene.Bool(true), AdaptiveTargetFrameMS: 16.7, AdaptiveWarmupFrames: 24, AdaptivePostFX: scene.Bool(true),
 		Camera: scene.PerspectiveCamera{Position: view.Position, Rotation: blackglassBeachLookRotation(view.Position, view.Target), FOV: 50, PortraitFOV: 70, Near: 0.1, Far: 900},
 		Environment: scene.Environment{
-			IBL: blackglassBeachPeriodIBL(period.ID), EnvIntensity: 0.7,
+			IBL: blackglassBeachPeriodIBL(period.ID), EnvIntensity: 0.85,
 			Sky:      &sky,
-			FogColor: horizon, FogDensity: 0.0018,
-			Haze: &scene.Haze{Density: 0.0032, HeightFalloff: 0.07, SunScatter: 0.32},
+			FogColor: horizon, FogDensity: 0.0008,
+			Haze: &scene.Haze{Density: 0.0011, HeightFalloff: 0.07, SunScatter: 0.32},
 			Ocean: &scene.Ocean{
-				WindDirection: 14, WaveHeight: 0.9, WaveLength: 23, Choppiness: 0.44, Speed: 1,
-				DeepColor: "#021019", ShallowColor: "#1b5d63", ScatterColor: "#1f8f7c", FoamColor: "#eef3f2",
-				Clarity: 4.5, Roughness: 0.16, Foam: 0.55, Surf: 0.52, Extent: 4000,
+				WindDirection: -28, WaveHeight: 1.7, WaveLength: 22, Choppiness: 0.58, Speed: 0.85,
+				DeepColor: "#03121b", ShallowColor: "#123b43", ScatterColor: "#16695e", FoamColor: "#dde9e5",
+				Clarity: 3.2, Roughness: 0.12, Foam: 0.42, Surf: 0.6, Extent: 4000,
 				Reflections: &scene.OceanReflections{Mode: "ssr+planar", Resolution: 0.5, Strength: 1},
 				Bathymetry: &scene.OceanBathymetry{
 					Src:  blackglassBeachHeightSrc,

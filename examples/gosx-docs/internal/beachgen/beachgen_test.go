@@ -124,6 +124,39 @@ func TestBouldersAvoidMonolith(t *testing.T) {
 	}
 }
 
+func TestSculptedTerrainKeepsWalkableGroundAndValidNormals(t *testing.T) {
+	g, err := terrainGeometry(newNoise(Seed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < len(g.positions); i += 3 {
+		x, y, z := g.positions[i], g.positions[i+1], g.positions[i+2]
+		if y <= 3 {
+			if ground := TerrainHeight(x, z, Seed); math.Abs(y-ground) > 1e-8 {
+				t.Fatalf("sculpting moved the walkable ground at %g,%g: mesh %g, ground %g", x, z, y, ground)
+			}
+		}
+		length := math.Hypot(g.normals[i], math.Hypot(g.normals[i+1], g.normals[i+2]))
+		if math.IsNaN(length) || math.Abs(length-1) > 1e-8 {
+			t.Fatalf("sculpted terrain normal %d has length %g", i/3, length)
+		}
+	}
+}
+
+func TestBrokenBouldersStayInsideWalkColliders(t *testing.T) {
+	shapes := WalkColliders(Seed)[len(stackSpecs(Seed)):]
+	for i, boulder := range boulderSpecs(Seed) {
+		g := &geometry{}
+		addBoulder(g, boulder, newNoise(Seed+int64(boulder.id)*101), newNoise(Seed))
+		for v := 0; v < len(g.positions); v += 3 {
+			x, y, z := g.positions[v]-shapes[i].X, g.positions[v+1]-shapes[i].Y, g.positions[v+2]-shapes[i].Z
+			if math.Hypot(x, math.Hypot(y, z)) > shapes[i].Radius {
+				t.Fatalf("boulder %d protrudes beyond its walk collider", i)
+			}
+		}
+	}
+}
+
 func TestRockWetnessStaysAtSeaLevel(t *testing.T) {
 	albedo, roughness, err := makeRockSurface(newNoise(Seed))
 	if err != nil {

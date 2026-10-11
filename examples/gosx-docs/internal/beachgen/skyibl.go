@@ -33,7 +33,7 @@ func PeriodSky(period string) scene.Sky {
 	default:
 		// A low side light exposes the basalt faces and casts long shadows
 		// across the cove without washing out the sea directly behind them.
-		return scene.Sky{Mode: "physical", SunDirection: scene.SunDirectionFromAngles(6, 112), Turbidity: 6, Rayleigh: 1.7, MieCoefficient: 0.006, MieDirectionalG: 0.82}
+		return scene.Sky{Mode: "physical", SunDirection: scene.SunDirectionFromAngles(7.5, 112), Turbidity: 3.2, Rayleigh: 1.4, MieCoefficient: 0.004, MieDirectionalG: 0.8, Intensity: .65}
 	}
 }
 

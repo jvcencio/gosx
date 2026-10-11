@@ -54,7 +54,7 @@ func blackglassBeachDetail() *scene.Detail {
 	return &scene.Detail{
 		Ground: &scene.DetailLayer{Albedo: root + "sand-albedo.jpg", Normal: root + "sand-normal.jpg", Scale: 2.5, NormalScale: 0.35, AlbedoMix: .65},
 		Steep: &scene.DetailLayer{Albedo: root + "basalt-albedo.jpg", Normal: root + "basalt-normal.jpg", Roughness: root + "basalt-rough.jpg",
-			Scale: 2.8, NormalScale: 0.72, AlbedoMix: .78, RoughnessMix: 0.4},
+			Scale: 4.5, NormalScale: 0.55, AlbedoMix: .62, RoughnessMix: 0.25},
 		SlopeStart: 28, SlopeEnd: 42, FadeStart: 24, FadeEnd: 100,
 	}
 }
