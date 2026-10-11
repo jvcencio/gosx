@@ -20,6 +20,7 @@ build/
 !/docs/expression-support-matrix.md
 !/docs/immutable-asset-caching.md
 !/docs/shutdown-hooks.md
+!/docs/hub-snapshots.md
 /gosx
 node_modules/
 
