@@ -791,7 +791,11 @@ test("bootstrap derives selective runtime utilities from the Scene3D core source
     1,
   );
   assert.equal(
-    (bootstrapSourceMapSource("bootstrap-feature-scene3d.js.map", "bootstrap-src/12-scene-geometry.ts").match(/function scenePrimitiveSegmentResolution\(/g) || []).length,
+    // Release Scene3D uses a second minifier without map composition. Check
+    // its authored chunk inventory; matching debug maps are tested by Go.
+    (bootstrapChunkSources("bootstrap-feature-scene3d.js")
+      .map((source) => fs.readFileSync(path.join(__dirname, source), "utf8"))
+      .join("\n").match(/function scenePrimitiveSegmentResolution\(/g) || []).length,
     1,
   );
 });

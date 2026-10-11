@@ -124,9 +124,11 @@ func TestDocsGalleryInitializesPageOwnedDemoScripts(t *testing.T) {
 	chrome := e2eChromePath(t)
 	baseURL := os.Getenv("GOSX_E2E_BASE_URL")
 	if baseURL == "" {
-		baseURL = startDocsApp(t, fmt.Sprintf("http://127.0.0.1:%d", freeE2EPort(t))).baseURL
+		// Hubs need the verified production WASM manifest. The dev server's
+		// compatibility URL does not establish that immutable asset contract.
+		baseURL = startProductionDocsApp(t).baseURL
 	}
-	page := newBrowserPage(t, chrome, nil, 1280, 900, "", 180*time.Second)
+	page := newBrowserPage(t, chrome, nil, 1280, 900, "", 5*time.Minute)
 	cases := []struct{ slug, ready string }{
 		{"collab", `document.querySelector('#collab-preview')?.textContent.length > 0 && ['connected','synced'].includes(document.querySelector('#collab-status')?.textContent)`},
 		{"cms", `!!document.querySelector('#cms-content-form')`},
@@ -146,6 +148,11 @@ func TestDocsGalleryInitializesPageOwnedDemoScripts(t *testing.T) {
 				t.Fatal(err)
 			}
 			page.waitFor(t, `typeof window.__demoGalleryDocument === 'undefined'`, 10*time.Second, "fresh demo document")
+			// Click does not await a native navigation's load event. The browser
+			// can still be loading the deferred runtime while the new document
+			// already exists, so give loading its own bounded deadline before
+			// checking whether the page-owned script initialized.
+			page.waitFor(t, `document.readyState === 'complete'`, 60*time.Second, tc.slug+" document load")
 			page.waitFor(t, tc.ready, 20*time.Second, tc.slug+" script initialization")
 			if tc.slug == "cms" {
 				if err := chromedp.Run(page.ctx, chromedp.SendKeys(`[data-preview-field="title"]`, " gallery edit", chromedp.ByQuery)); err != nil {

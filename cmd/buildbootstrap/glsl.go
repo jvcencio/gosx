@@ -1,6 +1,6 @@
 package main
 
-// Shorten built-in shader locals while retaining readable authored GLSL.
+// Shorten built-in shader locals while retaining readable authored GLSL/WGSL.
 // Interface names and shader hook replacement text stay unchanged. Edits keep
 // every newline, so the compacted source maps remain composable.
 import (
@@ -90,15 +90,24 @@ func shaderAlias(i int) string {
 	return string([]rune{rune('a' + i/26), rune('a' + i%26)})
 }
 func shaderLocalEdits(code string, pinned map[string]bool) []shaderEdit {
+	return shaderLocalEditsLanguage(code, pinned, false)
+}
+func shaderLocalEditsLanguage(code string, pinned map[string]bool, wgsl bool) []shaderEdit {
 	tokens := shaderTokens(code)
 	type function struct{ start, end, name int }
 	var functions []function
 	covered := make([]bool, len(tokens))
 	for i := 0; i+3 < len(tokens); i++ {
-		if !shaderType(tokens[i].text) || !tokens[i+1].identifier || tokens[i+2].text != "(" {
+		if !(wgsl && tokens[i].text == "fn" || !wgsl && shaderType(tokens[i].text)) || !tokens[i+1].identifier || tokens[i+2].text != "(" {
 			continue
 		}
 		close := shaderPair(tokens, i+2, "(", ")")
+		if wgsl && close >= 0 {
+			// WGSL return types and attributes sit between ')' and the body.
+			for close+1 < len(tokens) && tokens[close+1].text != "{" {
+				close++
+			}
+		}
 		if close < 0 || close+1 >= len(tokens) || tokens[close+1].text != "{" {
 			continue
 		}
@@ -133,6 +142,18 @@ func shaderLocalEdits(code string, pinned map[string]bool) []shaderEdit {
 			names = append(names, name)
 		}
 		for i := fn.start; i+1 <= fn.end; i++ {
+			if wgsl {
+				// WGSL declares locals with let/var and annotates parameters
+				// (and typed locals) with name: type. Interface members live
+				// outside these functions and remain pinned as globals.
+				if (tokens[i].text == "let" || tokens[i].text == "var") && tokens[i+1].identifier {
+					add(tokens[i+1].text)
+				}
+				if tokens[i].identifier && tokens[i+1].text == ":" {
+					add(tokens[i].text)
+				}
+				continue
+			}
 			if !shaderType(tokens[i].text) || !tokens[i+1].identifier || i+1 == fn.name {
 				continue
 			}
@@ -182,9 +203,16 @@ func shaderLocalEdits(code string, pinned map[string]bool) []shaderEdit {
 		index := 0
 		for _, name := range names {
 			alias := shaderAlias(index)
+			if wgsl {
+				// A single underscore prefix avoids WGSL reserved words.
+				alias = "_" + alias
+			}
 			index++
 			for blocked[alias] {
 				alias = shaderAlias(index)
+				if wgsl {
+					alias = "_" + alias
+				}
 				index++
 			}
 			aliases[name] = alias
@@ -232,11 +260,11 @@ func packBuiltinGLSL(code string) string {
 	return packBuiltinShaders(code, false)
 }
 
-func packBuiltinPostWGSL(code string) string {
+func packBuiltinWGSL(code string) string {
 	return packBuiltinShaders(code, true)
 }
 
-func packBuiltinShaders(code string, postWGSL bool) string {
+func packBuiltinShaders(code string, wgsl bool) string {
 	grammar := grammars.TypescriptLanguage()
 	tree, err := gotreesitter.NewParser(grammar).Parse([]byte(code))
 	if err != nil || tree.RootNode() == nil {
@@ -280,8 +308,8 @@ func packBuiltinShaders(code string, postWGSL bool) string {
 			if name != nil && value != nil {
 				text := name.Text(bytes)
 				selected := strings.HasPrefix(text, "SCENE_") && (strings.Contains(text, "SOURCE") || strings.Contains(text, "GLSL") || text == "SCENE_SKY_FRAGMENT")
-				if postWGSL {
-					selected = strings.HasPrefix(text, "WGSL_POST_")
+				if wgsl {
+					selected = strings.HasPrefix(text, "WGSL_") || strings.HasPrefix(text, "SCENE_") && (strings.Contains(text, "SOURCE") || strings.Contains(text, "WGSL"))
 				}
 				if selected {
 					if !strings.Contains(value.Text(bytes), ".replace(") {
@@ -353,10 +381,7 @@ func packBuiltinShaders(code string, postWGSL bool) string {
 				row = next + 1
 			}
 		}
-		if postWGSL {
-			continue
-		}
-		for _, edit := range shaderLocalEdits(joined.String(), pinned) {
+		for _, edit := range shaderLocalEditsLanguage(joined.String(), pinned, wgsl) {
 			for _, piece := range pieces {
 				if edit.start >= piece.offset && edit.end <= piece.offset+piece.end-piece.start {
 					edits = append(edits, shaderEdit{piece.start + edit.start - piece.offset, piece.start + edit.end - piece.offset, edit.text})

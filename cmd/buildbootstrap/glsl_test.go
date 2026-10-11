@@ -101,12 +101,25 @@ func TestBuiltinShaderPackingPreservesIndentedReplacementTargets(t *testing.T) {
 	}
 }
 
-func TestPostWGSLPackingPreservesShaderTextAndPinnedBase(t *testing.T) {
-	source := "const WGSL_PBR_FRAGMENT = [\"    pinned base shader\"].join(\"\\n\");\n" +
-		"const WGSL_POST_TEST = [\"fn shade() {\", \"    let originalName = 1.0;\", \"    return originalName;\", \"}\"].join(\"\\n\");\n"
-	packed := packBuiltinPostWGSL(source)
-	if !strings.Contains(packed, "\"    pinned base shader\"") || !strings.Contains(packed, "\"let originalName = 1.0;\"") || !strings.Contains(packed, "\"return originalName;\"") {
-		t.Fatalf("WGSL packing changed tokens or the base shader: %s", packed)
+func TestWGSLPackingKeepsInterfacesHooksAndJavaScript(t *testing.T) {
+	source := "const userShader = `fn shade(userValue: f32) -> f32 { return userValue; }`;\n" +
+		"const WGSL_PBR_FRAGMENT = [\"struct Input { position: vec4f, };\", \"@fragment fn main(vertexInput: Input) -> @location(0) vec4f {\", \"    let _a = 1.0;\", \"    let scaledPosition = vertexInput.position * _a;\", \"    let protectedValue = scaledPosition;\", \"    return protectedValue;\", \"}\"].join(\"\\n\");\n" +
+		"WGSL_PBR_FRAGMENT.replace(\"    let protectedValue = scaledPosition;\", \"    let protectedValue = scaledPosition * 2.0;\");\n" +
+		"const SCENE_WATER_TEST_SOURCE = [\"fn shade(inputValue: f32) -> f32 {\", \"    var localValue = inputValue + 1e-6;\", \"    return localValue;\", \"}\"].join(\"\\n\");\n"
+	packed := packBuiltinWGSL(source)
+	for _, text := range []string{
+		"const userShader = `fn shade(userValue: f32) -> f32 { return userValue; }`;",
+		"struct Input { position: vec4f, };", "@fragment fn main(", "@location(0) vec4f", ".position * _a", "let _a = 1.0;",
+		"    let protectedValue = scaledPosition;", "    let protectedValue = scaledPosition * 2.0;", "1e-6",
+	} {
+		if !strings.Contains(packed, text) {
+			t.Errorf("lost %q: %s", text, packed)
+		}
+	}
+	for _, text := range []string{"vertexInput", "inputValue", "localValue"} {
+		if strings.Contains(packed, text) {
+			t.Errorf("local %s was not packed: %s", text, packed)
+		}
 	}
 	if strings.Count(packed, "\n") != strings.Count(source, "\n") {
 		t.Fatal("line map changed")
