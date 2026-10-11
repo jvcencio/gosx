@@ -22,6 +22,7 @@ func Page() Node {
 			 />
 			<Scene3D {...data.scene} stats={false} />
 		</div>
+		<p class="bgb__preview-state" role="status">Still preview · interactive 3D needs JavaScript and graphics support.</p>
 		<a class="bgb__close" href="/demos" aria-label="Back to the demos">×</a>
 		<div class="bgb__controls">
 			<p class="bgb__instructions bgb__instructions-desktop">{data.instructions}</p>
