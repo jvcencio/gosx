@@ -109,7 +109,7 @@ test("WebGL constant, color, and rigid key caches hit and invalidate", () => {
     sceneColorRGBA: value => { parses += 1; return [value, 1, 1, 1]; },
   });
   sourceSection(readSceneRendererBackendSrc("webgl"), "  var sceneGLConstantCache = new WeakMap();",
-    "  function scenePBRHDRIBLAvailable(gl)", api);
+    "  function scenePBRHDRIBLTextureMinimum(", api);
   let queries = 0;
   const gl = { getParameter: () => ++queries };
   assert.equal(api.sceneCachedGLParameter(gl, 1), 1);

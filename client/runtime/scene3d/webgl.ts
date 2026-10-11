@@ -5810,6 +5810,7 @@
     return key;
   }
 
+  function scenePBRHDRIBLTextureMinimum(detail) { return detail ? 17 : 16; }
   function scenePBRHDRIBLAvailable(gl, detail = false) {
     var maxUnits = 0;
     try {
@@ -5819,8 +5820,7 @@
     } catch (_error) {
       maxUnits = 0;
     }
-    // Base HDR uses 16 samplers; the detail atlas adds one.
-    return maxUnits >= (detail ? 17 : 16);
+    return maxUnits >= scenePBRHDRIBLTextureMinimum(detail);
   }
 
   function scenePBRFragmentSourceForContext(gl, source) {
@@ -7356,7 +7356,7 @@
       var model = typeof ibl.brdfModel === "string" ? ibl.brdfModel.trim() : "";
       if (!hdrIBLAvailable) {
         iblStatus.state = "unsupported";
-        iblStatus.reason = "fragment-texture-units<" + (uniforms.detail ? 17 : 16);
+        iblStatus.reason = "fragment-texture-units<" + scenePBRHDRIBLTextureMinimum(Boolean(uniforms.detail));
       } else if (!radianceDescriptor || !irradianceDescriptor || !brdfDescriptor) {
         iblStatus.state = "unsupported";
         iblStatus.reason = "descriptor-role-color-view-format";

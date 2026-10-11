@@ -40,8 +40,8 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 // shared allowances and every unaffected metric remain unchanged.
 // Supported rich-material device negotiation adds 155 monolith / 153 route raw
 // and 21 route Brotli bytes; only breached targets move to exact minima.
-// Detail shader scope and the WebGL sampler boundary add 52 monolith raw
-// and 149 WebGL Brotli bytes; only exhausted targets move to exact minima.
+// Detail shader scope and the WebGL sampler boundary add 78 monolith raw
+// and 141 WebGL Brotli bytes; only exhausted targets move to exact minima.
 const budgets = [
   // Finite choreography remains demand-loaded; existing route limits are unchanged.
   { file: "bootstrap-feature-scene3d-timeline.js", raw: 5_400, gzip: 2_400, brotli: 2_200 },
@@ -764,7 +764,7 @@ const budgets = [
     // Rendering integration measures 1934026 raw, +193 over the rendering
     // branch. Carry that merged chord cost into its exact raw target only;
     // retain the 65536 allowance and unchanged gzip/Brotli targets.
-    file: "bootstrap.js", raw: 1869113, gzip: 524100,
+    file: "bootstrap.js", raw: 1869139, gzip: 524100,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->

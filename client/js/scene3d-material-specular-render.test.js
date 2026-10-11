@@ -92,7 +92,7 @@ function setupWebGLRenderer() {
     sliceBetween(source, "function scenePBRSRGBChannelToLinear", "const SCENE_PBR_VERTEX_SOURCE"),
     sliceBetween(source, "function scenePBRDielectricF0", "function scenePBRCacheBaseUniforms"),
     sliceBetween(source, "var sceneGLConstantCache", "function scenePBRHDRIBLAvailable"),
-    sliceBetween(source, "function scenePBRHDRIBLAvailable", "function scenePBRFragmentSourceForContext"),
+    sliceBetween(source, "function scenePBRHDRIBLTextureMinimum", "function scenePBRFragmentSourceForContext"),
     sliceBetween(source, "function scenePBRMaxTextureUnits", "function scenePBRTextureLayoutForFrame"),
     sliceBetween(source, "function scenePBRTextureLayoutForFrame", "// Upload both array samplers"),
     sliceBetween(source, "function uploadCustomUniforms", "function uploadMaterial"),

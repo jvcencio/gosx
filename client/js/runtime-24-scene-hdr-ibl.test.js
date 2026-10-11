@@ -232,7 +232,7 @@ test("WebGL HDR IBL compiles the bounded variant and consumes split-sum products
 
   assert.doesNotMatch(vertex, /#define GOSX_HDR_IBL/);
   assert.match(fragment, /"#define GOSX_HDR_IBL 1"/);
-  assert.match(source, /scenePBRHDRIBLAvailable\(gl, detail = false\)[\s\S]*maxUnits >= \(detail \? 17 : 16\)/);
+  assert.match(source, /scenePBRHDRIBLAvailable\(gl, detail = false\)[\s\S]*maxUnits >= scenePBRHDRIBLTextureMinimum\(detail\)/);
   assert.match(fragment, /"uniform sampler2D u_specularIntensityMap;",/);
   assert.match(fragment, /"uniform bool u_hasSpecularIntensityMap;",/);
   assert.match(source, /scenePBRFragmentSourceForContext\(gl, SCENE_PBR_FRAGMENT_SOURCE\)/);
