@@ -83,7 +83,8 @@ func NextFrame(ctx context.Context) error {
 // PlayFrames runs a finite procedural presentation and returns only after its
 // final command transaction and subsequent visible frame. The sampler receives
 // an exact final=true endpoint, even when Offset skips the complete animation.
-// Hidden time is paused. Cancellation prevents all later samples and writes.
+// Explicitly skipped playbacks settle immediately when hidden; active playback
+// pauses hidden time. Cancellation prevents all later samples and writes.
 func (s Scene3D) PlayFrames(ctx context.Context, options FramePlaybackOptions, sample func(float64, bool) []scene.Command) error {
 	if sample == nil {
 		return fmt.Errorf("playback requires a sampler")
@@ -91,6 +92,12 @@ func (s Scene3D) PlayFrames(ctx context.Context, options FramePlaybackOptions, s
 	return playFrames(ctx, options, func(at float64, final bool) error { return s.Dispatch(ctx, sample(at, final)) })
 }
 func playFrames(ctx context.Context, options FramePlaybackOptions, apply func(float64, bool) error) error {
+	return playFramesOnClock(ctx, options, apply, func() float64 {
+		return js.Global().Get("performance").Call("now").Float()
+	})
+}
+
+func playFramesOnClock(ctx context.Context, options FramePlaybackOptions, apply func(float64, bool) error, now func() float64) error {
 	o, err := options.validate()
 	if err != nil {
 		return err
@@ -98,13 +105,25 @@ func playFrames(ctx context.Context, options FramePlaybackOptions, apply func(fl
 	if ctx == nil || apply == nil {
 		return fmt.Errorf("playback requires context and sampler")
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	waiter := newSceneFrameWaiter()
 	defer waiter.dispose()
 	elapsed := o.Offset
-	previous, _, err := waiter.next(ctx)
+	// Skipping has no frames left to present. Commit its endpoint even when a
+	// hidden document cannot deliver RAF, so callers can finish catching up.
+	if elapsed >= o.Duration && waiter.source.Hidden() {
+		return apply(o.Duration, true)
+	}
+	_, _, err = waiter.next(ctx)
 	if err != nil {
 		return err
 	}
+	// RAF timestamps describe the frame, rather than callback delivery. Earlier
+	// callbacks can spend seconds rendering before this playback receives that
+	// same timestamp. Only time after our first delivery belongs to this player.
+	previous := now()
 	for {
 		if err = ctx.Err(); err != nil {
 			return err
@@ -117,10 +136,11 @@ func playFrames(ctx context.Context, options FramePlaybackOptions, apply func(fl
 			_, _, err := waiter.next(ctx)
 			return err
 		}
-		at, paused, err := waiter.next(ctx)
+		_, paused, err := waiter.next(ctx)
 		if err != nil {
 			return err
 		}
+		at := now()
 		if !paused {
 			elapsed = math.Min(o.Duration, elapsed+math.Max(0, at-previous)/1000*o.Rate)
 		}
