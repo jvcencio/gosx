@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -1157,6 +1158,41 @@ func TestShardLaneMutationsFailClosed(t *testing.T) {
 			want:   "browser-tests-c job is missing",
 		},
 		{
+			name:   "js-tests-b repeats the runtime group",
+			mutate: replaceJobOnce("js-tests-b", "NODE_TEST_GROUP=other", "NODE_TEST_GROUP=runtime"),
+			want:   "js-tests-b job shard step.run",
+		},
+		{
+			name:   "js-tests runs the whole Node suite",
+			mutate: replaceJobOnce("js-tests", "make test-js NODE_TEST_GROUP=runtime", "make test-js"),
+			want:   "js-tests job shard step.run",
+		},
+		{
+			name:   "js-tests-b shard step ignores failure",
+			mutate: replaceJobOnce("js-tests-b", "make test-js-node NODE_TEST_GROUP=other", "make test-js-node NODE_TEST_GROUP=other || true"),
+			want:   "js-tests-b job shard step.run",
+		},
+		{
+			name:   "js-tests-b skips draft pull requests",
+			mutate: replaceJobOnce("js-tests-b", "    runs-on: ubuntu-latest\n", "    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}\n    runs-on: ubuntu-latest\n"),
+			want:   "js-tests-b job: unexpected field \"if\"",
+		},
+		{
+			name:   "js-tests-b timeout raised",
+			mutate: replaceJobOnce("js-tests-b", "timeout-minutes: 10", "timeout-minutes: 30"),
+			want:   "js-tests-b job.timeout-minutes",
+		},
+		{
+			name:   "js-tests-b job removed",
+			mutate: removeJobAndSlot("js-tests-b", "JS_TESTS_B_RESULT"),
+			want:   "js-tests-b job is missing",
+		},
+		{
+			name:   "aggregate drops js-tests-b",
+			mutate: removeAggregateSlot("js-tests-b", "JS_TESTS_B_RESULT"),
+			want:   "aggregate test job.needs",
+		},
+		{
 			name:   "go-cli-tests-c draft gate removed",
 			mutate: replaceJobOnce("go-cli-tests-c", draftGate, ""),
 			want:   "go-cli-tests-c job: missing field \"if\"",
@@ -1253,11 +1289,19 @@ func removeAggregateSlot(job, envName string) func(*testing.T, string) string {
 			t.Fatal("aggregate failure message is missing")
 		}
 		line := "\"" + job + "=$" + envName + "\""
-		if got := strings.Count(source, line); got != 1 {
-			t.Fatalf("aggregate run entry %s occurs %d times, want 1", line, got)
+		// A draft fast-check lane is listed twice: in the draft block and in
+		// the full block. Every other lane is listed once.
+		want := 1
+		if slices.Contains(draftFastNeeds, job) {
+			want = 2
 		}
-		source = strings.Replace(source, "            "+line+" \\\n", "", 1)
-		source = strings.Replace(source, " \\\n            "+line+"\n", "\n", 1)
+		if got := strings.Count(source, line); got != want {
+			t.Fatalf("aggregate run entry %s occurs %d times, want %d", line, got, want)
+		}
+		for _, indent := range []string{"              ", "            "} {
+			source = strings.Replace(source, indent+line+" \\\n", "", -1)
+			source = strings.Replace(source, " \\\n"+indent+line+"\n", "\n", -1)
+		}
 		return source
 	}
 }
