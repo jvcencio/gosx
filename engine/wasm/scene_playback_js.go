@@ -91,6 +91,12 @@ func (s Scene3D) PlayFrames(ctx context.Context, options FramePlaybackOptions, s
 	return playFrames(ctx, options, func(at float64, final bool) error { return s.Dispatch(ctx, sample(at, final)) })
 }
 func playFrames(ctx context.Context, options FramePlaybackOptions, apply func(float64, bool) error) error {
+	return playFramesOnClock(ctx, options, apply, func() float64 {
+		return js.Global().Get("performance").Call("now").Float()
+	})
+}
+
+func playFramesOnClock(ctx context.Context, options FramePlaybackOptions, apply func(float64, bool) error, now func() float64) error {
 	o, err := options.validate()
 	if err != nil {
 		return err
@@ -101,10 +107,14 @@ func playFrames(ctx context.Context, options FramePlaybackOptions, apply func(fl
 	waiter := newSceneFrameWaiter()
 	defer waiter.dispose()
 	elapsed := o.Offset
-	previous, _, err := waiter.next(ctx)
+	_, _, err = waiter.next(ctx)
 	if err != nil {
 		return err
 	}
+	// RAF timestamps describe the frame, rather than callback delivery. Earlier
+	// callbacks can spend seconds rendering before this playback receives that
+	// same timestamp. Only time after our first delivery belongs to this player.
+	previous := now()
 	for {
 		if err = ctx.Err(); err != nil {
 			return err
@@ -117,10 +127,11 @@ func playFrames(ctx context.Context, options FramePlaybackOptions, apply func(fl
 			_, _, err := waiter.next(ctx)
 			return err
 		}
-		at, paused, err := waiter.next(ctx)
+		_, paused, err := waiter.next(ctx)
 		if err != nil {
 			return err
 		}
+		at := now()
 		if !paused {
 			elapsed = math.Min(o.Duration, elapsed+math.Max(0, at-previous)/1000*o.Rate)
 		}
