@@ -134,7 +134,7 @@ func TestDocsGalleryInitializesPageOwnedDemoScripts(t *testing.T) {
 		{"livesim", `document.querySelector('#livesim-state')?.textContent === 'live'`},
 		{"checkers", `document.querySelector('#checkers-status') && !document.querySelector('#checkers-status').textContent.includes('Connecting')`},
 		{"playground", `document.querySelector('[data-editor-stat="chars"]')?.textContent.includes('char')`},
-		{"scene3d-bench", `document.querySelector('#bench3d-fps')?.textContent !== '—'`},
+		{"scene3d-bench", `!!document.querySelector('#bench3d-fps') && document.querySelector('#bench3d-fps').textContent !== '—'`},
 		{"collab", `document.querySelector('#collab-preview')?.textContent.length > 0 && ['connected','synced'].includes(document.querySelector('#collab-status')?.textContent)`},
 	}
 	for _, tc := range cases {
