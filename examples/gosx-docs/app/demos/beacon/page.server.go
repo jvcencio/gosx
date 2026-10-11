@@ -25,7 +25,7 @@ func init() {
 			return map[string]any{
 				"instructions": instructions, "touchInstructions": touchInstructions,
 				"scene": BlackglassBeachProgram(view.ID, period.ID), "posterSrc": blackglassBeachPosterSrc,
-				"view":  view.ID, "period": period.ID,
+				"view": view.ID, "period": period.ID,
 				"shoreHref":  "?view=shore&period=" + period.ID,
 				"glassHref":  "?view=glass&period=" + period.ID,
 				"cliffHref":  "?view=cliff&period=" + period.ID,
