@@ -643,7 +643,7 @@ var outputs = []output{
 	{
 		// Grounded controls ship only for scenes with an authored Walk contract.
 		name:    "bootstrap-feature-scene3d-walk.js",
-		sources: []source{sourceFile("../runtime/scene3d/walk-surfaces.ts"), sourceFile("../runtime/scene3d/mount-walk.ts")},
+		sources: []source{sourceFile("../runtime/scene3d/walk-surfaces.ts"), sourceFile("../runtime/scene3d/walk-input.ts"), sourceFile("../runtime/scene3d/mount-walk.ts")},
 	},
 	{
 		// Decompress chunk: the quantized-array decoder, the progressive and

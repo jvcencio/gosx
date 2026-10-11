@@ -45,12 +45,12 @@ def shader(kind, source):
 sources = json.loads(sys.stdin.read())
 vertex = """#version 300 es
 precision highp float;
-out vec3 v_world; out vec3 v_normal; out float v_jacobian; out float v_crest; out float v_depth0;
+out vec3 v_w; out vec3 v_n; out float v_j; out float v_crest; out float v_d0;
 void main() {
  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
- v_world = vec3(p.x * 4.0 - 2.0, 0.0, p.y * 4.0 - 2.0);
- v_normal = vec3(0.0, 1.0, 0.0); v_jacobian = 1.0; v_crest = 0.0; v_depth0 = 1.0;
+ v_w = vec3(p.x * 4.0 - 2.0, 0.0, p.y * 4.0 - 2.0);
+ v_n = vec3(0.0, 1.0, 0.0); v_j = 1.0; v_crest = 0.0; v_d0 = 1.0;
 }
 """
 program = api("glCreateProgram", uint)()

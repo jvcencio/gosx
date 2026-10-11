@@ -67,7 +67,8 @@ func TestGenerateAssets(t *testing.T) {
 	if beachLow[1] < -5.1 || beachLow[1] > -4.5 || beachHigh[1] < 20.5 || beachHigh[1] > 21.5 {
 		t.Errorf("terrain vertical bounds are [%.3f, %.3f], expected the sea basin and ridged headlands", beachLow[1], beachHigh[1])
 	}
-	stackLow, stackHigh := checkBounds(t, first["stacks-v2.glb"], stacks, [3]float64{-27, -6.1, -52}, [3]float64{34, 18.1, 2.5})
+	// Fallen blocks now extend the same mesh along the western cliff toe.
+	stackLow, stackHigh := checkBounds(t, first["stacks-v2.glb"], stacks, [3]float64{-33, -6.1, -52}, [3]float64{34, 18.1, 9})
 	checkNear(t, "stack bottoms", stackLow[1], -6, .01)
 	if stackHigh[1] < 17.9 || stackHigh[1] > 18.1 {
 		t.Errorf("stack tops reach %.3f m; want the main stack near 18 m", stackHigh[1])
@@ -119,6 +120,48 @@ func TestBouldersAvoidMonolith(t *testing.T) {
 			if distance := math.Hypot(boulder.x-other.x, boulder.z-other.z); distance < 1.5 {
 				t.Errorf("boulders %d and %d are %.3fm apart, want at least 1.5m", j, i, distance)
 			}
+		}
+	}
+}
+
+func TestRockWetnessStaysAtSeaLevel(t *testing.T) {
+	albedo, roughness, err := makeRockSurface(newNoise(Seed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	colorMap, _, err := image.Decode(bytes.NewReader(albedo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roughnessMap, _, err := image.Decode(bytes.NewReader(roughness))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rowAt := func(y float64) int { return int(math.Round((y + 6) / 24 * 255)) }
+	for x := 8; x < 128; x += 16 {
+		wet := color.NRGBAModel.Convert(colorMap.At(x, rowAt(0))).(color.NRGBA)
+		dry := color.NRGBAModel.Convert(colorMap.At(x, rowAt(8))).(color.NRGBA)
+		wetRough := color.NRGBAModel.Convert(roughnessMap.At(x, rowAt(0))).(color.NRGBA)
+		dryRough := color.NRGBAModel.Convert(roughnessMap.At(x, rowAt(8))).(color.NRGBA)
+		if float64(wet.R) >= float64(dry.R)*.8 || wetRough.G >= dryRough.G/2 || wetRough.B != 0 || dryRough.B != 0 {
+			t.Fatalf("wet rock must be darker, smoother and dielectric: wet=%v/%v dry=%v/%v", wet, wetRough, dry, dryRough)
+		}
+	}
+}
+
+func TestStackWaterlineTracksErodedMesh(t *testing.T) {
+	for _, stack := range stackSpecs(Seed) {
+		footprint := stackWaterline(stack)
+		if len(footprint.points) != 48 || footprint.distance(stack.x, stack.z) >= 0 {
+			t.Fatalf("stack at (%g,%g) has no closed waterline", stack.x, stack.z)
+		}
+		for i, p := range footprint.points {
+			if math.Abs(footprint.distance(p.x, p.z)) > 1e-7 {
+				t.Fatalf("waterline does not meet mesh at side %d", i)
+			}
+		}
+		if footprint.distance(footprint.maxX+2, stack.z) < 1 {
+			t.Fatal("waterline extends beyond the rock")
 		}
 	}
 }
@@ -344,12 +387,12 @@ func checkRockMaterial(t *testing.T, data []byte) {
 	if err := json.Unmarshal(glbJSON(t, data), &root); err != nil {
 		t.Fatal(err)
 	}
-	if len(root.Images) != 1 || (root.Images[0].MIMEType != "image/png" && root.Images[0].MIMEType != "image/jpeg") || len(root.Materials) != 1 {
+	if len(root.Images) != 3 || root.Images[0].MIMEType != "image/jpeg" || root.Images[1].MIMEType != "image/jpeg" || root.Images[2].MIMEType != "image/png" || len(root.Materials) != 1 {
 		t.Fatalf("rock material has %d embedded images and %d materials", len(root.Images), len(root.Materials))
 	}
 	material := root.Materials[0]
 	transform := material.Normal.Extensions["KHR_texture_transform"].Scale
-	if !contains(root.ExtensionsUsed, "KHR_texture_transform") || material.PBR.Metallic != 0 || material.PBR.Roughness != .85 || material.Normal.Scale != .9 || len(transform) != 2 || transform[0] != 3 || transform[1] != 9 {
+	if !contains(root.ExtensionsUsed, "KHR_texture_transform") || material.PBR.Metallic != 0 || material.PBR.Roughness != 1 || material.Normal.Scale != .9 || len(transform) != 2 || transform[0] != 3 || transform[1] != 9 {
 		t.Errorf("unexpected rock material: %+v with normal transform %v", material, transform)
 	}
 }

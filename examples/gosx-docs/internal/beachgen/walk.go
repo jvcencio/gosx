@@ -1,6 +1,9 @@
 package beachgen
 
-import "math"
+import (
+	"math"
+	"sync"
+)
 
 // Walk data for first-person navigation. The heightfield samples the same
 // terrain function the beach mesh uses, so the eye follows the sand the
@@ -54,13 +57,31 @@ const (
 
 // WalkColliders returns the solid shapes a walker must not enter.
 func WalkColliders(seed int64) []WalkShape {
+	if seed == Seed {
+		seedCollidersOnce.Do(func() { seedColliders = walkColliders(seed) })
+		return append([]WalkShape(nil), seedColliders...)
+	}
+	return walkColliders(seed)
+}
+
+var seedCollidersOnce sync.Once
+var seedColliders []WalkShape
+
+func walkColliders(seed int64) []WalkShape {
 	n := newNoise(seed)
 	var out []WalkShape
 	for _, s := range stackSpecs(seed) {
-		// Stacks lean up to 4 degrees and carry lumps: pad the radius so the
-		// walker never clips into rock at eye height.
-		base := terrainHeight(n, s.x, s.z)
-		out = append(out, WalkShape{Kind: "cylinder", X: s.x, Y: base - 1, Z: s.z, Radius: s.radius*1.15 + math.Abs(s.lean)*s.height, Height: s.height + 2})
+		// Enclose the actual hull/wading band, including lean and buttresses.
+		// A blanket percentage trapped the clipper in its adjacent mooring.
+		g, radius := &geometry{}, 0.0
+		addStack(g, s)
+		for i := 0; i < len(g.positions); i += 3 {
+			if g.positions[i+1] >= -2.5 && g.positions[i+1] <= 3 {
+				radius = math.Max(radius, math.Hypot(g.positions[i]-s.x, g.positions[i+2]-s.z))
+			}
+		}
+		radius = math.Ceil((radius+.05)*1000) / 1000
+		out = append(out, WalkShape{Kind: "cylinder", X: s.x, Y: -6, Z: s.z, Radius: radius, Height: s.height + 6})
 	}
 	for _, b := range boulderSpecs(seed) {
 		out = append(out, WalkShape{Kind: "sphere", X: b.x, Y: terrainHeight(n, b.x, b.z), Z: b.z, Radius: b.radius * 1.05})
