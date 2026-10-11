@@ -29,7 +29,7 @@ GOFILES := $(shell find . -name '*.go' -not -path './dist/*' -not -path './build
 DMJFILES := $(shell find . -name '*.dmj' -not -path './dist/*' -not -path './build/*')
 DMJGOFILES := $(patsubst %.dmj,%_danmuji_test.go,$(DMJFILES))
 
-.PHONY: fmt fmt-check verify-fmt verify-danmuji canopy-index canopy-stats canopy-clean build-bootstrap test test-unit test-cli test-ci-partitions test-race test-race-pr test-fuzz-smoke test-js test-runtime-types test-editor test-wasm test-wasm-islands wasm-size-budget test-e2e test-perf-browser test-ouroboros-smoke test-water-prod test-water-profile-evidence water-profile-evidence test-desktop test-desktop-windows-smoke test-desktop-windows-shipping-smoke test-desktop-windows-update-smoke test-desktop-macos test-docs-deploy test-release-workflow test-release-ancestry test-repo-hygiene test-perf-budget-ci perf-budget perf-budget-ci wire-gate wire-gate-update build-cli build-desktop-windows build-desktop-macos build-runtime ci test-motion-parity test-physics-parity release-gate
+.PHONY: fmt fmt-check verify-fmt verify-danmuji canopy-index canopy-stats canopy-clean build-bootstrap test test-unit test-cli test-ci-partitions test-race test-race-pr test-fuzz-smoke test-js test-js-node test-runtime-types test-editor test-wasm test-wasm-islands wasm-size-budget test-e2e test-perf-browser test-ouroboros-smoke test-water-prod test-water-profile-evidence water-profile-evidence test-desktop test-desktop-windows-smoke test-desktop-windows-shipping-smoke test-desktop-windows-update-smoke test-desktop-macos test-docs-deploy test-release-workflow test-release-ancestry test-repo-hygiene test-perf-budget-ci perf-budget perf-budget-ci wire-gate wire-gate-update build-cli build-desktop-windows build-desktop-macos build-runtime ci test-motion-parity test-physics-parity release-gate
 
 fmt:
 	$(GOFMT) -w $(GOFILES)
@@ -238,8 +238,7 @@ test-runtime-types:
 #      does not contain package". GOWORK=off forces module mode for
 #      this one command. The target then works the same, with or
 #      without a local go.work.
-#   3. The JS runtime unit tests (`node --test`, stdlib-only, with no
-#      npm dependencies to install), across every *.test.js /
+#   3. The JS runtime unit tests (`node --test`), across every *.test.js /
 #      *.test.mjs file under client/js, plus every *.test.js file one
 #      directory below client/runtime (currently
 #      client/runtime/wasm/loader.test.js, the WASM loader's own
@@ -258,7 +257,18 @@ test-js:
 	# bypass Go's package cache so source-only renderer edits are always seen.
 	cd cmd/buildbootstrap && GOWORK=off $(GO) test -count=1 -tags '$(BOOTSTRAP_GRAMMAR_TAGS)' ./...
 	cd cmd/buildbootstrap && GOWORK=off $(GO) run -tags '$(BOOTSTRAP_GRAMMAR_TAGS)' . --check
-	$(NODE) --test ./client/js/*.test.js ./client/js/*.test.mjs ./client/runtime/**/*.test.js ./scripts/*.test.mjs
+	$(MAKE) test-js-node
+
+# test-js-node runs only check 3, the Node suite. The shared harness
+# (client/js/runtime-test-harness.js) loads the pinned TypeScript compiler from
+# client/runtime's npm dependencies, so run `cd client/runtime && npm ci`
+# first (test-js does, through test-runtime-types). NODE_TEST_SHARD=i/n runs
+# share i of n (node --test-shard); CI splits the suite across js-tests
+# (share 2, the lighter one, after the checks above) and js-tests-b (share 1)
+# to stay inside the job time limit. Unset, it runs every file.
+NODE_TEST_SHARD ?=
+test-js-node:
+	$(NODE) --test $(if $(NODE_TEST_SHARD),--test-shard=$(NODE_TEST_SHARD),) ./client/js/*.test.js ./client/js/*.test.mjs ./client/runtime/**/*.test.js ./scripts/*.test.mjs
 
 # test-editor builds, vets and tests the nested editor module.
 #

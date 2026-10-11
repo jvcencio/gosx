@@ -135,6 +135,7 @@ var draftFastNeeds = []string{
 	"release-gate",
 	"go-tests",
 	"js-tests",
+	"js-tests-b",
 }
 
 var baseAggregateNeeds = []string{
@@ -145,6 +146,7 @@ var baseAggregateNeeds = []string{
 	"go-cli-tests-b",
 	"go-cli-tests-c",
 	"js-tests",
+	"js-tests-b",
 	"wire-gates",
 	"wasm-tests",
 	"browser-tests",
@@ -156,6 +158,16 @@ var baseAggregateNeeds = []string{
 // one share of cmd/gosx's tests, so a lane that is missing, renamed, or pointed
 // at another share silently drops tests from CI.
 var cliShardJobs = []string{"go-cli-tests", "go-cli-tests-b", "go-cli-tests-c"}
+
+// jsShardJobs are the Node suite lanes. js-tests runs the lighter share 2
+// after its other checks and js-tests-b the heavier share 1. Each runs
+// exactly one share, so a lane that is missing, renamed, or pointed at another
+// share silently drops JavaScript tests from CI. Both run on draft pull
+// requests too: they are part of the draft fast check.
+var jsShardJobs = []struct{ name, step, run string }{
+	{"js-tests", "JavaScript runtime contract tests", "make test-js NODE_TEST_SHARD=2/2"},
+	{"js-tests-b", "JavaScript runtime contract tests (share 1)", "make test-js-node NODE_TEST_SHARD=1/2"},
+}
 
 // browserShardJobs are the e2e browser lanes in citest shard order. The first
 // is the governed browser-tests job, which also owns the perf and media steps.
@@ -202,6 +214,16 @@ func Validate(source []byte) error {
 			return fmt.Errorf("workflow.jobs: %s job is missing", name)
 		}
 		if err := validateCLIShardJob(job, name, index); err != nil {
+			return err
+		}
+	}
+
+	for _, shard := range jsShardJobs {
+		job, ok := jobs[shard.name]
+		if !ok {
+			return fmt.Errorf("workflow.jobs: %s job is missing", shard.name)
+		}
+		if err := validateJSShardJob(job, shard.name, shard.step, shard.run); err != nil {
 			return err
 		}
 	}
@@ -420,6 +442,41 @@ func validateCLIShardJob(node *yaml.Node, name string, shard int) error {
 		return err
 	}
 	return exactString(fields["run"], label+" shard step.run", fmt.Sprintf("make test-cli CLI_SHARD=%d", shard))
+}
+
+func validateJSShardJob(node *yaml.Node, name, stepName, run string) error {
+	label := name + " job"
+	job, err := mapping(node, label)
+	if err != nil {
+		return err
+	}
+	if _, ok := job["if"]; ok {
+		return fmt.Errorf("%s: unexpected field \"if\": the Node suite runs on draft pull requests too", label)
+	}
+	timeout, ok := job["timeout-minutes"]
+	if !ok {
+		return fmt.Errorf("%s: missing field \"timeout-minutes\"", label)
+	}
+	if err := exactInt(timeout, label+".timeout-minutes", "10"); err != nil {
+		return err
+	}
+	stepsNode, ok := job["steps"]
+	if !ok {
+		return fmt.Errorf("%s: missing field \"steps\"", label)
+	}
+	steps, err := namedSteps(stepsNode, label+".steps")
+	if err != nil {
+		return err
+	}
+	step, err := requiredStep(steps, stepName, label+" shard step")
+	if err != nil {
+		return err
+	}
+	fields, err := exactMapping(step.node, label+" shard step", "name", "run")
+	if err != nil {
+		return err
+	}
+	return exactString(fields["run"], label+" shard step.run", run)
 }
 
 func browserStepContracts() []stepContract {
