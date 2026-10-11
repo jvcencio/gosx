@@ -37,10 +37,10 @@
       "requirement": "JSON glTF resolves indexed data-URI and same-origin external buffers.",
       "targetBackends": ["webgpu", "webgl2"],
       "ciOwners": [
-        {"label": "js-tests", "job": "js-tests", "step": "JavaScript runtime contract tests", "command": "make test-js"}
+        {"label": "js-tests-b", "job": "js-tests-b", "step": "JavaScript runtime contract tests (other suites)", "command": "make test-js-node NODE_TEST_GROUP=other"}
       ],
       "evidence": [
-        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": ".gltf loading fetches mixed data and relative buffer URIs by index", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"}
+        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": ".gltf loading fetches mixed data and relative buffer URIs by index", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests-b"}
       ]
     },
     {
@@ -49,10 +49,10 @@
       "requirement": "GLB BIN buffer zero and an external second buffer coexist.",
       "targetBackends": ["webgpu", "webgl2"],
       "ciOwners": [
-        {"label": "js-tests", "job": "js-tests", "step": "JavaScript runtime contract tests", "command": "make test-js"}
+        {"label": "js-tests-b", "job": "js-tests-b", "step": "JavaScript runtime contract tests (other suites)", "command": "make test-js-node NODE_TEST_GROUP=other"}
       ],
       "evidence": [
-        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "GLB BIN buffer 0 can share a document with external buffer 1", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"}
+        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "GLB BIN buffer 0 can share a document with external buffer 1", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests-b"}
       ]
     },
     {
@@ -61,11 +61,11 @@
       "requirement": "Sparse accessor overlays and embedded bufferView images remain bounded and correct.",
       "targetBackends": ["webgpu", "webgl2"],
       "ciOwners": [
-        {"label": "js-tests", "job": "js-tests", "step": "JavaScript runtime contract tests", "command": "make test-js"}
+        {"label": "js-tests-b", "job": "js-tests-b", "step": "JavaScript runtime contract tests (other suites)", "command": "make test-js-node NODE_TEST_GROUP=other"}
       ],
       "evidence": [
-        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "sparse overlays normalize after merging without mutating base bytes", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"},
-        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "embedded bufferView images resolve the referenced buffer in a multi-buffer source", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"}
+        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "sparse overlays normalize after merging without mutating base bytes", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests-b"},
+        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "embedded bufferView images resolve the referenced buffer in a multi-buffer source", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests-b"}
       ]
     },
     {
@@ -74,10 +74,10 @@
       "requirement": "Meshopt-compressed buffer views fail closed with a named diagnostic.",
       "targetBackends": ["webgpu", "webgl2"],
       "ciOwners": [
-        {"label": "js-tests", "job": "js-tests", "step": "JavaScript runtime contract tests", "command": "make test-js"}
+        {"label": "js-tests-b", "job": "js-tests-b", "step": "JavaScript runtime contract tests (other suites)", "command": "make test-js-node NODE_TEST_GROUP=other"}
       ],
       "evidence": [
-        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "EXT_meshopt_compression raises a named error instead of reading garbage", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"}
+        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "EXT_meshopt_compression raises a named error instead of reading garbage", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests-b"}
       ]
     },
     {
@@ -86,10 +86,10 @@
       "requirement": "Draco-compressed primitives fail closed with a named diagnostic.",
       "targetBackends": ["webgpu", "webgl2"],
       "ciOwners": [
-        {"label": "js-tests", "job": "js-tests", "step": "JavaScript runtime contract tests", "command": "make test-js"}
+        {"label": "js-tests-b", "job": "js-tests-b", "step": "JavaScript runtime contract tests (other suites)", "command": "make test-js-node NODE_TEST_GROUP=other"}
       ],
       "evidence": [
-        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "KHR_draco_mesh_compression raises a named error", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"}
+        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "KHR_draco_mesh_compression raises a named error", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests-b"}
       ]
     },
     {
@@ -98,12 +98,12 @@
       "requirement": "glTF Basis degradation and renderer KTX2 block upload are reported as distinct browser capabilities.",
       "targetBackends": ["webgpu", "webgl2"],
       "ciOwners": [
-        {"label": "js-tests", "job": "js-tests", "step": "JavaScript runtime contract tests", "command": "make test-js"}
+        {"label": "js-tests-b", "job": "js-tests-b", "step": "JavaScript runtime contract tests (other suites)", "command": "make test-js-node NODE_TEST_GROUP=other"}
       ],
       "evidence": [
-        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "KHR_texture_basisu degrades to no texture and warns", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"},
-        {"kind": "node-test", "path": "client/js/19a-scene-ktx2-renderer-upload.test.mjs", "contains": "both renderer chunks open the KTX2 upload gate", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"},
-        {"kind": "node-test", "path": "client/js/19a-scene-ktx2-renderer-upload.test.mjs", "contains": "a successful upload swaps the texture and clears pending", "backends": ["webgpu"], "ciLabel": "js-tests"}
+        {"kind": "node-test", "path": "client/js/19-scene-gltf.test.mjs", "contains": "KHR_texture_basisu degrades to no texture and warns", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests-b"},
+        {"kind": "node-test", "path": "client/js/19a-scene-ktx2-renderer-upload.test.mjs", "contains": "both renderer chunks open the KTX2 upload gate", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests-b"},
+        {"kind": "node-test", "path": "client/js/19a-scene-ktx2-renderer-upload.test.mjs", "contains": "a successful upload swaps the texture and clears pending", "backends": ["webgpu"], "ciLabel": "js-tests-b"}
       ]
     },
     {
@@ -112,11 +112,11 @@
       "requirement": "Imported CUBICSPLINE translation, rotation, scale, and morph weights follow glTF Appendix C.",
       "targetBackends": ["webgpu", "webgl2"],
       "ciOwners": [
-        {"label": "js-tests", "job": "js-tests", "step": "JavaScript runtime contract tests", "command": "make test-js"},
+        {"label": "js-tests-b", "job": "js-tests-b", "step": "JavaScript runtime contract tests (other suites)", "command": "make test-js-node NODE_TEST_GROUP=other"},
         {"label": "scene3d-v1-browser-renderer-proof", "job": "scene3d-v1-browser-renderer-proof", "step": "Run Scene3D CUBICSPLINE browser renderer proof", "command": "node client/js/testdata/scene3d-cubic-spline-browser-matrix.cjs \"$GITHUB_WORKSPACE\" \"$artifact_dir\""}
       ],
       "evidence": [
-        {"kind": "node-test", "path": "client/js/scene3d-cubic-spline.test.mjs", "contains": "CUBICSPLINE translation Hermite-interpolates with interval-scaled tangents", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"},
+        {"kind": "node-test", "path": "client/js/scene3d-cubic-spline.test.mjs", "contains": "CUBICSPLINE translation Hermite-interpolates with interval-scaled tangents", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests-b"},
         {"kind": "browser-test", "path": "client/js/testdata/scene3d-cubic-spline-browser.cjs", "contains": "proof-private-gpu-texture", "backends": ["webgpu", "webgl2"], "ciLabel": "scene3d-v1-browser-renderer-proof"}
       ]
     },
@@ -134,12 +134,13 @@
       "requirement": "Desktop orbit and first-person controls plus authored picking remain executable without authored JavaScript.",
       "targetBackends": ["webgpu", "webgl2"],
       "ciOwners": [
-        {"label": "js-tests", "job": "js-tests", "step": "JavaScript runtime contract tests", "command": "make test-js"}
+        {"label": "js-tests", "job": "js-tests", "step": "JavaScript runtime contract tests", "command": "make test-js NODE_TEST_GROUP=runtime"},
+        {"label": "js-tests-b", "job": "js-tests-b", "step": "JavaScript runtime contract tests (other suites)", "command": "make test-js-node NODE_TEST_GROUP=other"}
       ],
       "evidence": [
         {"kind": "node-test", "path": "client/js/runtime-02-scene-mount-controls.test.js", "contains": "bootstrap drives shared-runtime Scene3D orbit controls without authored JS", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"},
         {"kind": "node-test", "path": "client/js/runtime-02-scene-mount-controls.test.js", "contains": "bootstrap drives shared-runtime Scene3D first-person controls without authored JS", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"},
-        {"kind": "node-test", "path": "client/js/17-scene-input-pick.test.mjs", "contains": "the nearest hit wins between a mesh and a point cloud", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests"}
+        {"kind": "node-test", "path": "client/js/17-scene-input-pick.test.mjs", "contains": "the nearest hit wins between a mesh and a point cloud", "backends": ["webgpu", "webgl2"], "ciLabel": "js-tests-b"}
       ]
     },
     {
