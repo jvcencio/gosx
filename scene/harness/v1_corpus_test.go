@@ -102,6 +102,22 @@ func TestV1CorpusContractRejectsFalseClaims(t *testing.T) {
 			},
 		},
 		{
+			name: "Node evidence claims the job that runs the other group",
+			want: `is in NODE_TEST_GROUP=runtime, not the other group CI owner "js-tests-b" runs`,
+			edit: func(manifest *v1CorpusManifest, _ *string) {
+				entry := findV1Case(manifest, "desktop-controls-picking")
+				entry.Evidence[0].CILabel = "js-tests-b"
+			},
+		},
+		{
+			name: "runtime-group owner claims a file outside the group",
+			want: `is not in NODE_TEST_GROUP=runtime, which CI owner "js-tests" runs`,
+			edit: func(manifest *v1CorpusManifest, _ *string) {
+				entry := findV1Case(manifest, "desktop-controls-picking")
+				entry.Evidence[2].CILabel = "js-tests"
+			},
+		},
+		{
 			name: "non-test evidence path",
 			want: "is not a Node test path",
 			edit: func(manifest *v1CorpusManifest, _ *string) {
@@ -263,6 +279,9 @@ func validateV1Corpus(manifest v1CorpusManifest, repoRoot, docs, workflow string
 				add("%s evidence %s uses undeclared CI label %q", entry.ID, evidence.Path, evidence.CILabel)
 			} else {
 				usedLabels[evidence.CILabel] = true
+				if err := validateNodeTestGroup(evidence, owners[evidence.CILabel]); err != "" {
+					add("%s evidence %s: %s", entry.ID, evidence.Path, err)
+				}
 			}
 			if len(evidence.Backends) == 0 {
 				add("%s evidence %s names no backends", entry.ID, evidence.Path)
@@ -323,6 +342,29 @@ func validateEvidencePath(evidence v1CorpusEvidence) string {
 		}
 	default:
 		return fmt.Sprintf("has unknown test kind %q", evidence.Kind)
+	}
+	return ""
+}
+
+// nodeRuntimeTestPattern is the Makefile's NODE_TEST_GROUP=runtime file set
+// (JS_NODE_RUNTIME_TESTS); NODE_TEST_GROUP=other is every other Node test.
+const nodeRuntimeTestPattern = "client/js/runtime-[0-9]*.test.js"
+
+// validateNodeTestGroup checks that a Node test is in the group its owning job
+// runs, so evidence cannot claim a CI job that never executes the file.
+func validateNodeTestGroup(evidence v1CorpusEvidence, owner v1CIOwner) string {
+	if evidence.Kind != "node-test" {
+		return ""
+	}
+	inRuntime, err := filepath.Match(nodeRuntimeTestPattern, filepath.ToSlash(filepath.Clean(evidence.Path)))
+	if err != nil {
+		return err.Error()
+	}
+	switch {
+	case strings.Contains(owner.Command, "NODE_TEST_GROUP=runtime") && !inRuntime:
+		return fmt.Sprintf("is not in NODE_TEST_GROUP=runtime, which CI owner %q runs", owner.Label)
+	case strings.Contains(owner.Command, "NODE_TEST_GROUP=other") && inRuntime:
+		return fmt.Sprintf("is in NODE_TEST_GROUP=runtime, not the other group CI owner %q runs", owner.Label)
 	}
 	return ""
 }

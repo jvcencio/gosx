@@ -319,19 +319,18 @@ jobs:
           sudo apt-get install --no-install-recommends -y libosmesa6
 
       - name: JavaScript runtime contract tests
-        run: make test-js NODE_TEST_SHARD=2/2
+        run: make test-js NODE_TEST_GROUP=runtime
 
       - name: Performance asset graph tests
         run: make test-perf-graph
 
-  # js-tests-b: share 1 of the Node suite (`make test-js-node
-  # NODE_TEST_SHARD=1/2`), the heavier share by file order; js-tests runs the
-  # lighter share 2 after its bundle and type checks, so the two jobs finish
-  # in similar times. It needs Node, client/runtime's npm dependencies
-  # (the test harness loads the pinned TypeScript compiler; js-tests gets them
-  # from make test-runtime-types), and the CPU rasterizer for the TAA shader
-  # regression, which may land in either share. Like js-tests it also runs on
-  # draft pull requests.
+  # js-tests-b: the Node suite's `other` group (`make test-js-node
+  # NODE_TEST_GROUP=other`, every file except the runtime-NN suites, which
+  # js-tests runs after its bundle and type checks). Groups are fixed by file
+  # name, so a test's job never moves when files are added. It needs Node,
+  # client/runtime's npm dependencies (the test harness loads the pinned
+  # TypeScript compiler) and the CPU rasterizer for the TAA shader regression.
+  # Like js-tests it also runs on draft pull requests.
   js-tests-b:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -353,8 +352,8 @@ jobs:
       - name: Install runtime test dependencies
         run: cd client/runtime && npm ci
 
-      - name: JavaScript runtime contract tests (share 1)
-        run: make test-js-node NODE_TEST_SHARD=1/2
+      - name: JavaScript runtime contract tests (other suites)
+        run: make test-js-node NODE_TEST_GROUP=other
 
   # wasm-tests: Go + TinyGo. Also needs Node, because `go test -exec
   # go_js_wasm_exec` (used by test-wasm / test-wasm-islands) shells out to

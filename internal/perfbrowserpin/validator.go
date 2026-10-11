@@ -159,14 +159,15 @@ var baseAggregateNeeds = []string{
 // at another share silently drops tests from CI.
 var cliShardJobs = []string{"go-cli-tests", "go-cli-tests-b", "go-cli-tests-c"}
 
-// jsShardJobs are the Node suite lanes. js-tests runs the lighter share 2
-// after its other checks and js-tests-b the heavier share 1. Each runs
-// exactly one share, so a lane that is missing, renamed, or pointed at another
-// share silently drops JavaScript tests from CI. Both run on draft pull
-// requests too: they are part of the draft fast check.
+// jsShardJobs are the Node suite lanes. js-tests runs the runtime-NN suites
+// after its other checks and js-tests-b every other file (NODE_TEST_GROUP in
+// the Makefile). Each runs exactly one group, so a lane that is missing,
+// renamed, or pointed at another group silently drops JavaScript tests from
+// CI. Both run on draft pull requests too: they are part of the draft fast
+// check.
 var jsShardJobs = []struct{ name, step, run string }{
-	{"js-tests", "JavaScript runtime contract tests", "make test-js NODE_TEST_SHARD=2/2"},
-	{"js-tests-b", "JavaScript runtime contract tests (share 1)", "make test-js-node NODE_TEST_SHARD=1/2"},
+	{"js-tests", "JavaScript runtime contract tests", "make test-js NODE_TEST_GROUP=runtime"},
+	{"js-tests-b", "JavaScript runtime contract tests (other suites)", "make test-js-node NODE_TEST_GROUP=other"},
 }
 
 // browserShardJobs are the e2e browser lanes in citest shard order. The first

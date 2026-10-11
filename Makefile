@@ -262,13 +262,27 @@ test-js:
 # test-js-node runs only check 3, the Node suite. The shared harness
 # (client/js/runtime-test-harness.js) loads the pinned TypeScript compiler from
 # client/runtime's npm dependencies, so run `cd client/runtime && npm ci`
-# first (test-js does, through test-runtime-types). NODE_TEST_SHARD=i/n runs
-# share i of n (node --test-shard); CI splits the suite across js-tests
-# (share 2, the lighter one, after the checks above) and js-tests-b (share 1)
-# to stay inside the job time limit. Unset, it runs every file.
-NODE_TEST_SHARD ?=
+# first (test-js does, through test-runtime-types).
+#
+# NODE_TEST_GROUP splits the suite by file name, so a test's CI job never
+# moves when files are added: `runtime` is the client/js/runtime-NN-*.test.js
+# suites (js-tests runs it after the checks above) and `other` is every other
+# file (js-tests-b). Unset, it runs the whole suite. The file set matches the
+# original shell globs, where `**` matched one directory level.
+JS_NODE_TESTS := $(wildcard client/js/*.test.js) $(wildcard client/js/*.test.mjs) $(wildcard client/runtime/*/*.test.js) $(wildcard scripts/*.test.mjs)
+JS_NODE_RUNTIME_TESTS := $(wildcard client/js/runtime-[0-9]*.test.js)
+JS_NODE_OTHER_TESTS := $(filter-out $(JS_NODE_RUNTIME_TESTS),$(JS_NODE_TESTS))
+NODE_TEST_GROUP ?=
 test-js-node:
-	$(NODE) --test $(if $(NODE_TEST_SHARD),--test-shard=$(NODE_TEST_SHARD),) ./client/js/*.test.js ./client/js/*.test.mjs ./client/runtime/**/*.test.js ./scripts/*.test.mjs
+ifeq ($(NODE_TEST_GROUP),)
+	$(NODE) --test $(JS_NODE_TESTS)
+else ifeq ($(NODE_TEST_GROUP),runtime)
+	$(NODE) --test $(JS_NODE_RUNTIME_TESTS)
+else ifeq ($(NODE_TEST_GROUP),other)
+	$(NODE) --test $(JS_NODE_OTHER_TESTS)
+else
+	$(error NODE_TEST_GROUP must be empty, runtime or other; got $(NODE_TEST_GROUP))
+endif
 
 # test-editor builds, vets and tests the nested editor module.
 #

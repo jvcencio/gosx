@@ -1158,18 +1158,18 @@ func TestShardLaneMutationsFailClosed(t *testing.T) {
 			want:   "browser-tests-c job is missing",
 		},
 		{
-			name:   "js-tests-b repeats share 2",
-			mutate: replaceJobOnce("js-tests-b", "NODE_TEST_SHARD=1/2", "NODE_TEST_SHARD=2/2"),
+			name:   "js-tests-b repeats the runtime group",
+			mutate: replaceJobOnce("js-tests-b", "NODE_TEST_GROUP=other", "NODE_TEST_GROUP=runtime"),
 			want:   "js-tests-b job shard step.run",
 		},
 		{
 			name:   "js-tests runs the whole Node suite",
-			mutate: replaceJobOnce("js-tests", "make test-js NODE_TEST_SHARD=2/2", "make test-js"),
+			mutate: replaceJobOnce("js-tests", "make test-js NODE_TEST_GROUP=runtime", "make test-js"),
 			want:   "js-tests job shard step.run",
 		},
 		{
 			name:   "js-tests-b shard step ignores failure",
-			mutate: replaceJobOnce("js-tests-b", "make test-js-node NODE_TEST_SHARD=1/2", "make test-js-node NODE_TEST_SHARD=1/2 || true"),
+			mutate: replaceJobOnce("js-tests-b", "make test-js-node NODE_TEST_GROUP=other", "make test-js-node NODE_TEST_GROUP=other || true"),
 			want:   "js-tests-b job shard step.run",
 		},
 		{
