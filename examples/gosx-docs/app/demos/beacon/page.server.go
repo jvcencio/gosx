@@ -16,7 +16,14 @@ func init() {
 			ctx.AddHead(server.LifecycleScript("/blackglass-content.js"))
 			view := blackglassBeachViewFor(ctx.Query("view"))
 			period := blackglassBeachPeriodFor(ctx.Query("period"))
+			instructions := "Click to explore · WASD or arrows to walk · mouse to look · Esc to release"
+			touchInstructions := "Left thumb to move · drag the right side to look"
+			if view.ID == "glass" || view.ID == "cliff" {
+				instructions = "Drag or use arrows to orbit · scroll or +/− to zoom · Home to reset"
+				touchInstructions = "Drag to orbit · pinch to zoom"
+			}
 			return map[string]any{
+				"instructions": instructions, "touchInstructions": touchInstructions,
 				"scene": BlackglassBeachProgram(view.ID, period.ID),
 				"view":  view.ID, "period": period.ID,
 				"shoreHref":  "?view=shore&period=" + period.ID,

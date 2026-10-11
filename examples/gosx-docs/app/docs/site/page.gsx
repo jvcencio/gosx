@@ -31,7 +31,7 @@ func Page() Node {
 					<p>
 						The forms guide posts a named, CSRF-protected server action. The playground compiles and hydrates its focused legacy island subset.
 					</p>
-					<a href="/demos/playground" data-gosx-link="true">Run the compiler playground</a>
+					<a href="/demos/playground" data-gosx-native="true">Run the compiler playground</a>
 				</article>
 				<article>
 					<span>Hub</span>
@@ -39,7 +39,7 @@ func Page() Node {
 					<p>
 						Collab, Chinese Checkers, velocity field, and live physics mount real GoSX hubs. Their state is intentionally process-local, so the deployment remains one replica.
 					</p>
-					<a href="/demos/collab" data-gosx-link="true">Test two-tab convergence</a>
+					<a href="/demos/collab" data-gosx-native="true">Test two-tab convergence</a>
 				</article>
 				<article>
 					<span>Engine</span>

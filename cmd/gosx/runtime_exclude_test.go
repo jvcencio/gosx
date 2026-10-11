@@ -226,8 +226,8 @@ func TestRunBuildRuntimeExcludeDropsAssetsFilesAndManifestKeys(t *testing.T) {
 
 // TestRunBuildDefaultRuntimeConfigMatchesLegacyOutputShape proves GC-3's
 // no-config compatibility contract at the integration level: a project with
-// no gosx.config.json builds every runtime JS payload and its .map sidecar,
-// exactly as `gosx build` did before build.runtime existed.
+// no gosx.config.json builds every runtime JS payload and every available
+// accurate .map sidecar. Scene3D release chunks declare debug-only maps.
 func TestRunBuildDefaultRuntimeConfigMatchesLegacyOutputShape(t *testing.T) {
 	if raceDetectorEnabled {
 		t.Skip("shells out to a go build subprocess; race instrumentation adds no value and blows the -race timeout")
@@ -280,8 +280,16 @@ func TestRunBuildDefaultRuntimeConfigMatchesLegacyOutputShape(t *testing.T) {
 		if !foundJS {
 			t.Fatalf("default build (no gosx.config.json) is missing runtime asset %q, listing: %v", prefix, names)
 		}
-		// hls.min ships with no source file to derive a .map from
-		// upstream (see client/js/vendor), so it never had one to keep.
+		// These release chunks use a second minifier without composable maps.
+		// Debug generator builds provide maps; releases must omit stale ones.
+		switch prefix {
+		case "bootstrap-feature-scene3d.", "bootstrap-feature-scene3d-webgpu.", "bootstrap-feature-scene3d-webgl.":
+			if foundMap {
+				t.Fatalf("release build retained an inaccurate .map sidecar for %q", prefix)
+			}
+			continue
+		}
+		// hls.min has no upstream source map. Every other chunk retains one.
 		if prefix != "hls.min." && !foundMap {
 			t.Fatalf("default build (no gosx.config.json) dropped the .map sidecar for %q, listing: %v", prefix, names)
 		}

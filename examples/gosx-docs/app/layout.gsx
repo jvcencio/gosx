@@ -58,8 +58,8 @@ func Layout() Node {
 					<div class="nav-group">
 						<span class="nav-group__label">See it work</span>
 						<a href="/demos" data-gosx-link="true" class="nav-link">All demos</a>
-						<a href="/demos/playground" data-gosx-link="true" class="nav-link">Compiler playground</a>
-						<a href="/demos/collab" data-gosx-link="true" class="nav-link">Realtime collaboration</a>
+						<a href="/demos/playground" data-gosx-native="true" class="nav-link">Compiler playground</a>
+						<a href="/demos/collab" data-gosx-native="true" class="nav-link">Realtime collaboration</a>
 						<a href="/demos/beacon" data-gosx-link="true" class="nav-link">Scene3D world</a>
 					</div>
 					<div class="nav-group">

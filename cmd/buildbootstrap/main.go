@@ -7,8 +7,9 @@
 // Minification defaults to esbuild's native Go library (esbuild is written in
 // Go; the npm package was only a wrapper around it), which keeps the minified
 // bundles byte-identical to what the retired Node pipeline produced and keeps
-// composed source maps. Production WebGL also uses tdewolff after esbuild;
-// GOSX_BUNDLE_DEBUG=1 retains esbuild's output and accurate map for debugging.
+// composed source maps. The production Scene3D core and renderer chunks also
+// use tdewolff after esbuild. That pass cannot compose maps, so those release
+// chunks omit them; GOSX_BUNDLE_DEBUG=1 emits esbuild's output and matching maps.
 // A pure tdewolff/minify backend is available via
 // -minifier=tdewolff for A/B comparison; as of the migration it produces
 // smaller raw/brotli output on the large bundles but breaches three committed
@@ -1204,7 +1205,7 @@ func minifyESBuild(entry output, built builtBundle) (builtBundle, error) {
 	if entry.name == "bootstrap-feature-scene3d-webgl.js" {
 		code = packBuiltinGLSL(code)
 	} else if entry.name == "bootstrap-feature-scene3d-webgpu.js" {
-		code = packBuiltinPostWGSL(code)
+		code = packBuiltinWGSL(code)
 	}
 	input := code + "\n//# sourceMappingURL=" + dataURL
 	options := esbuild.TransformOptions{
@@ -1290,6 +1291,27 @@ func normalizeGeneratedCode(code, mapName string, debugSourcemaps bool) string {
 	return next
 }
 
+func compactSceneRelease(name string) bool {
+	switch name {
+	case "bootstrap-feature-scene3d.js", "bootstrap-feature-scene3d-webgl.js", "bootstrap-feature-scene3d-webgpu.js":
+		return true
+	}
+	return false
+}
+
+// Never leave an earlier source map beside code produced by a pass that cannot
+// update its mappings. Debug builds still write the composed esbuild map.
+func writeBundleMap(path, sourceMap string) error {
+	if sourceMap == "" {
+		err := os.Remove(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	return os.WriteFile(path, []byte(sourceMap), 0o644)
+}
+
 func buildBundle(dir string, entry output, minifier string, debugSourcemaps bool) (builtBundle, error) {
 	built, err := buildCompactedBundle(dir, entry)
 	if err != nil {
@@ -1301,14 +1323,14 @@ func buildBundle(dir string, entry output, minifier string, debugSourcemaps bool
 		if err != nil {
 			return builtBundle{}, err
 		}
-		if entry.name == "bootstrap-feature-scene3d-webgl.js" && !debugSourcemaps {
-			// The existing tdewolff backend compacts esbuild's normalized
-			// WebGL output further. Debug builds keep esbuild's output and
-			// composed map together; tdewolff cannot compose source maps.
+		if compactSceneRelease(entry.name) && !debugSourcemaps {
+			// Reuse the WebGL release pass for the core and WebGPU chunks.
+			// Keep accurate maps available through GOSX_BUNDLE_DEBUG=1.
 			minified.code, err = minifyTdewolff(minified.code)
 			if err != nil {
-				return builtBundle{}, fmt.Errorf("compact WebGL release: %w", err)
+				return builtBundle{}, fmt.Errorf("compact %s release: %w", entry.name, err)
 			}
+			minified.m = ""
 		}
 		return builtBundle{
 			code: normalizeGeneratedCode(minified.code, entry.name+".map", debugSourcemaps),
@@ -1388,6 +1410,9 @@ func chunksManifestJSON() string {
 	for i, entry := range outputs {
 		b.WriteString("    {\n      \"name\": ")
 		b.WriteString(jsQuote(entry.name))
+		if compactSceneRelease(entry.name) {
+			b.WriteString(",\n      \"sourceMap\": \"debug-only\"")
+		}
 		b.WriteString(",\n      \"sources\": [\n")
 		for j, src := range entry.sources {
 			b.WriteString("        ")
@@ -1452,12 +1477,13 @@ func run() error {
 			}
 			bundlePath := filepath.Join(dir, entry.name)
 			currentCode, _ := os.ReadFile(bundlePath)
-			currentMap, _ := os.ReadFile(bundlePath + ".map")
+			currentMap, mapErr := os.ReadFile(bundlePath + ".map")
+			mapMatches := string(currentMap) == next.m && (next.m != "" || errors.Is(mapErr, os.ErrNotExist))
 			match, err := sidecarsMatch(bundlePath, next.code)
 			if err != nil {
 				return err
 			}
-			if string(currentCode) != next.code || string(currentMap) != next.m || !match {
+			if string(currentCode) != next.code || !mapMatches || !match {
 				recordStale(entry.name)
 			}
 		}
@@ -1494,7 +1520,7 @@ func run() error {
 		if err := os.WriteFile(bundlePath, []byte(built.code), 0o644); err != nil {
 			return err
 		}
-		if err := os.WriteFile(bundlePath+".map", []byte(built.m), 0o644); err != nil {
+		if err := writeBundleMap(bundlePath+".map", built.m); err != nil {
 			return err
 		}
 		if err := writeCompressedSidecars(bundlePath, built.code); err != nil {
