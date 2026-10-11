@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.57.11
+
+- Retain immutable imported skeletal bind geometry across animation frames.
+  Ordinary GPU-skinned meshes update joint matrices without rescanning or
+  reuploading unchanged vertex attributes. Morph and node-rebaked geometry
+  remain mutable; revision changes and owner disposal invalidate retained buffers.
+- Add spatial transmission thickness, geometric specular antialiasing and
+  selective specular bloom to typed Scene3D materials on WebGL2 and WebGPU.
+  Unsupported selective-bloom paths report a diagnostic and skip the effect.
+
 - Match controller key chords exactly by default: Ctrl+Shift+Z no longer fires a
   Ctrl+Z binding. Add a second binding or set `AnyModifiers: true` to retain
   subset matching. Unlisted Shift remains allowed for single symbol keys such

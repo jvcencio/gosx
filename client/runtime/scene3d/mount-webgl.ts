@@ -1300,11 +1300,11 @@
       ? normalizeSceneObject(Object.assign({}, instanced, {vertices: null}), prefix, {vertices: sharedRigidGeometry})
       : normalizeSceneObject(instanced, prefix);
     sceneApplyModelMaterialName(normalized, model);
-    if (!hasSkin && !morphMeta && !nodeAnimSource && normalized && normalized.vertices) {
-      // A rigid imported mesh owns a complete, immutable geometry snapshot.
-      // Mark it explicitly so the renderer can retain its attribute buffers
-      // instead of rebuilding every triangle and hashing all vertices each
-      // frame. Live model transforms advance the revision when rebaked.
+    if (!morphMeta && !nodeAnimSource && normalized && normalized.vertices) {
+      // Imported rigid and skeletal bind streams own immutable snapshots.
+      // Joint playback changes matrices; morph and node streams stay mutable.
+      // Retain attributes rather than rebuilding and hashing every triangle.
+      // Live rigid transforms advance the revision when geometry is rebaked.
       normalized.vertices.immutable = true;
       normalized.vertices.revision = 0;
     }

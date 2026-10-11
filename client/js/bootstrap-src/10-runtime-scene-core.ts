@@ -6456,7 +6456,15 @@
     }
     if (object.skin && vertices.joints && vertices.weights) {
       const bounds = vertices._skinnedLocalBounds || object.bounds || { minX: -1, minY: -1, minZ: -1, maxX: 1, maxY: 2, maxZ: 1 };
-      bundle.meshObjects.push({
+      // Joint uniforms animate a fixed bind snapshot. Retain only explicitly
+      // immutable, revisioned streams; morph and authored mutable geometry
+      // must still be hashed and uploaded after their contents change.
+      const retained = Boolean(bundle.retainedGeometryEnabled && vertices.immutable === true &&
+        geometryRevision !== null && vertices.dynamic !== true &&
+        !object.computedMorph && !object._morphAnim && !object._nodeAnimLive &&
+        !(object.dynamicGeometry || object.geometryDynamic || object.geometryDirty) &&
+        !(vertices.dirty || vertices.needsUpdate));
+      const meshRecord = {
         id: object.id,
         kind: object.kind,
         pickable: typeof object.pickable === "boolean" ? object.pickable : undefined,
@@ -6477,10 +6485,20 @@
         skin: object.skin,
         vertices: vertices,
         directVertices: true,
+        retainedGeometry: retained,
+        resourceOwner: retained ? object : undefined,
+        geometryRevision: retained ? geometryRevision : undefined,
         modelMatrix: sceneObjectModelMatrix(object, timeSeconds),
         vertexOffset: 0,
         vertexCount: Math.max(0, Math.floor(sceneNumber(vertices.count, 0))),
-      });
+      };
+      if (retained) {
+        sceneStampRetainedMeshCSSInput(meshRecord, object);
+        bundle.retainedMeshObjectCount += 1;
+        bundle.retainedMeshVertexCount += meshRecord.vertexCount;
+        bundle.retainedGeometryTelemetry.retained += 1;
+      }
+      bundle.meshObjects.push(meshRecord);
       return;
     }
     if (sceneMeshCanRetainLocalGeometry(bundle, object, material, vertices, emitWireSegments, timeSeconds)) {
