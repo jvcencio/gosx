@@ -49,7 +49,7 @@ func WalkHeightfield(seed int64) WalkGrid {
 // MonolithX, MonolithZ and MonolithYaw place the obsidian monolith.
 const (
 	MonolithX, MonolithY, MonolithZ = -6.2, 0.05, 2.6
-	MonolithYaw                     = -1.16
+	MonolithYaw                     = -.4
 )
 
 // WalkColliders returns the solid shapes a walker must not enter.
