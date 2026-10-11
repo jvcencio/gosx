@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v0.57.12
+
+- Add `Hub.BroadcastBinarySnapshot(epoch, baseline, delta)` for application
+  state that can replace older pending updates. Each client retains at most a
+  pending keyframe baseline and the newest independently decodable delta;
+  baseline ordering, stale epoch handling and fair reliable traffic remain
+  explicit. Existing text, ordinary binary and CRDT queues keep their behavior.
+- Report intentional snapshot replacements through `SnapshotStats` and
+  `TrafficEvent.Snapshot` / `Replaced`, separately from full-queue drops and
+  slow-client eviction. Document immutable payload ownership and socket
+  buffering limits in `docs/hub-snapshots.md`.
+
 ## v0.57.11
 
 - Reset additive blending before WebGL post-processing so retained intermediate
