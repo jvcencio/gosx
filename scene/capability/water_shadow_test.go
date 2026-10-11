@@ -183,8 +183,12 @@ func TestIBLTruthMatchesRuntimeConsumers(t *testing.T) {
 		}
 	}
 
-	// The gate now matches the core minimum.
-	for _, marker := range []string{"maxUnits >= 16", "fragment-texture-units<16"} {
+	// Base IBL fits the core minimum; detail HDR requires one more sampler.
+	for _, marker := range []string{
+		"function scenePBRHDRIBLTextureMinimum(detail) { return detail ? 17 : 16; }",
+		"maxUnits >= scenePBRHDRIBLTextureMinimum(detail)",
+		`"fragment-texture-units<" + scenePBRHDRIBLTextureMinimum(Boolean(uniforms.detail))`,
+	} {
 		if !strings.Contains(webgl, marker) {
 			t.Errorf("expected staged WebGL2 IBL resource gate %q", marker)
 		}

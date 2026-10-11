@@ -40,7 +40,11 @@ func TestWebGLEnvironmentPathConsumesPrefilteredIBL(t *testing.T) {
 			t.Errorf("the WebGL IBL consumer is missing %q in %s", marker, webglRendererPath)
 		}
 	}
-	for _, marker := range []string{"maxUnits >= 16", "fragment-texture-units<16"} {
+	for _, marker := range []string{
+		"function scenePBRHDRIBLTextureMinimum(detail) { return detail ? 17 : 16; }",
+		"maxUnits >= scenePBRHDRIBLTextureMinimum(detail)",
+		`"fragment-texture-units<" + scenePBRHDRIBLTextureMinimum(Boolean(uniforms.detail))`,
+	} {
 		if !strings.Contains(source, marker) {
 			t.Errorf("the WebGL staged capability gate is missing %q", marker)
 		}
