@@ -16,7 +16,7 @@ import (
 var demoSummaries = map[string]string{
 	"showreel":      "Orbit a compact sculpture assembled from typed Go scene data.",
 	"checkers":      "Play a two-seat Chinese Checkers match with Go-checked moves and CPU turns.",
-	"beacon":        "Change the light and tide as you orbit a volcanic shoreline.",
+	"beacon":        "Walk a volcanic shoreline, switch the light, and sail from the jetty.",
 	"water":         "Draw ripples and watch the pool bend light around floating objects.",
 	"playground":    "Edit a GoSX component and compile its browser preview as you type.",
 	"fluid":         "Drag through a server-computed velocity field and trace its flow.",

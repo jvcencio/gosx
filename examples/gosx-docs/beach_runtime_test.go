@@ -9,10 +9,44 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"m31labs.dev/gosx/server"
 )
+
+func TestBlackglassBeachInstructionsFollowView(t *testing.T) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	configureDocsTestSecret(t)
+	app, err := buildDocsApp(server.ResolveAppRoot(thisFile), "8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := app.Build()
+	for _, tc := range []struct {
+		view, resolved, desktop, touch string
+	}{
+		{"shore", "shore", "WASD or arrows to walk", "Left thumb to move"},
+		{"ship", "ship", "WASD or arrows to walk", "Left thumb to move"},
+		{"glass", "glass", "arrows to orbit", "pinch to zoom"},
+		{"cliff", "cliff", "arrows to orbit", "pinch to zoom"},
+		{"unknown", "shore", "WASD or arrows to walk", "Left thumb to move"},
+	} {
+		t.Run(tc.view, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/demos/beacon?view="+tc.view+"&period=blue-hour", nil))
+			if w.Code != http.StatusOK {
+				t.Fatalf("beach returned %d", w.Code)
+			}
+			body := w.Body.String()
+			for _, want := range []string{`data-view="` + tc.resolved + `"`, `data-period="blue-hour"`, tc.desktop, tc.touch} {
+				if !strings.Contains(body, want) {
+					t.Errorf("served beach is missing %q", want)
+				}
+			}
+		})
+	}
+}
 
 // Exercise the served demo without a browser, including its engine manifest
 // and walk data. These caps include the docs layout and the complete scene.

@@ -24,9 +24,8 @@ func Page() Node {
 		</div>
 		<a class="bgb__close" href="/demos" aria-label="Back to the demos">×</a>
 		<div class="bgb__controls">
-			<p class="bgb__instructions">
-				Click to explore · WASD to walk · mouse to look · Esc to release
-			</p>
+			<p class="bgb__instructions bgb__instructions-desktop">{data.instructions}</p>
+			<p class="bgb__instructions bgb__instructions-touch">{data.touchInstructions}</p>
 			<p class="bgb__instructions bgb__discoveries">
 				Follow footprints to the glass. Wreck and hollow to the west; tide pools and lighthouse to the east. E to sail at the jetty.
 			</p>

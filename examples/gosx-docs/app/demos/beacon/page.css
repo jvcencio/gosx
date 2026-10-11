@@ -54,6 +54,10 @@
   :global(.bgb__reveal) { font-size: 11px; max-width: 350px; }
   :global(.bgb__reveal a) { display: block; margin-left: 0; }
 }
-@media (pointer: coarse) { :global(.bgb__instructions) { display: none; } }
+:global(.bgb__instructions-touch) { display: none; }
+@media (pointer: coarse) {
+  :global(.bgb__instructions-desktop), :global(.bgb__discoveries) { display: none; }
+  :global(.bgb__instructions-touch) { display: block; }
+}
 @media (prefers-reduced-motion: reduce) { :global(.bgb__controls), :global(.bgb__reveal) { transition: none; transform: none; } }
 @media (scripting: none) { :global(.bgb__controls) { opacity: 1; visibility: visible; transform: none; } }
