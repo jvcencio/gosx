@@ -4879,7 +4879,7 @@
           gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); // Replace retained pixels after additive geometry.
 
         // Per-effect render truth. Built only under the diagnostics tier.
         // Each apply* helper returns the INPUT texture unchanged when it takes

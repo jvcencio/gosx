@@ -4,6 +4,8 @@
 
 ## v0.57.11
 
+- Reset additive blending before WebGL post-processing so retained intermediate
+  targets replace prior pixels and preserve authored effects across frames.
 - Keep detail derivatives in the shared WebGPU PBR color function. WebGL detail uses the existing reflection fallback on 16-slot contexts and retains HDR IBL when 17 or more slots are available.
 
 - WebGPU requests the 17 sampled-texture slots needed by rich PBR detail layouts on capable adapters, while preserving stricter manifest limits and baseline-adapter defaults.

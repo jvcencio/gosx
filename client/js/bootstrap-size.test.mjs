@@ -764,7 +764,7 @@ const budgets = [
     // Rendering integration measures 1934026 raw, +193 over the rendering
     // branch. Carry that merged chord cost into its exact raw target only;
     // retain the 65536 allowance and unchanged gzip/Brotli targets.
-    file: "bootstrap.js", raw: 1869139, gzip: 524100,
+    file: "bootstrap.js", raw: 1869158, gzip: 524100,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->
