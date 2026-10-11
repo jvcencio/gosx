@@ -7356,7 +7356,7 @@
       var model = typeof ibl.brdfModel === "string" ? ibl.brdfModel.trim() : "";
       if (!hdrIBLAvailable) {
         iblStatus.state = "unsupported";
-        iblStatus.reason = "fragment-texture-units<16";
+        iblStatus.reason = "fragment-texture-units<" + (uniforms.detail ? 17 : 16);
       } else if (!radianceDescriptor || !irradianceDescriptor || !brdfDescriptor) {
         iblStatus.state = "unsupported";
         iblStatus.reason = "descriptor-role-color-view-format";

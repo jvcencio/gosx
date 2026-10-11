@@ -68,6 +68,13 @@ test("WebGL detail is a cached compile variant with nil source unchanged", () =>
   assert.match(bounded, /uniform highp sampler2DArray u_detailAtlas;/);
   assert.match(bounded, /DetailResult detailResult = detailApply/);
   assert.match(c.scenePBRFragmentSourceForContext(glWithUnits(17), shader), /#define GOSX_HDR_IBL 1/);
+  c.sceneAllocateTextureUnits = () => ({ ibl: { brdfLUT: 13 }, shadows: [9, 10] });
+  for (const [units, detail, minimum] of [[15, false, 16], [16, true, 17]]) {
+    const uniforms = { detail: detail ? {} : null };
+    const gl = { ...glWithUnits(units), uniform1i() {}, uniform1f() {} };
+    c.scenePBRUploadEnvironmentMap(gl, uniforms, { ibl: {} }, {}, [], []);
+    assert.equal(uniforms._gosxIBLDiagnostics.reason, `fragment-texture-units<${minimum}`);
+  }
   assert.match(shader, /textureGrad\(u_detailAtlas/);
   assert.ok(shader.indexOf("dFdx(v_worldPosition)") < shader.indexOf("detailApply(v_worldPosition"));
   assert.match(shader, /fade > 0\.0 && u_detail\[4\]\.w > 0\.5/);
