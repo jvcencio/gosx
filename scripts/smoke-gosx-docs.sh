@@ -160,9 +160,10 @@ grep -qi 'Scene3D' "$tmp_dir/search.html"
 grep -q 'name="q"' "$tmp_dir/search.html"
 grep -Fq "<link rel=\"canonical\" href=\"${site_origin}/docs\"" "$tmp_dir/search.html"
 
-# Exercise a real session-backed named action. These routes are deliberately
-# excluded from prerendering: a cached build-time CSRF token would not belong
-# to the requesting browser session and every form submission would fail.
+# Exercise both the fresh browser form and the session-backed named action.
+# Anonymous reads deliberately do not create cookies or CSRF tokens. A fresh
+# same-origin submission creates session state; subsequent submissions must
+# carry its token. These routes must never use a build-time ISR form/token.
 "$curl_cmd" --fail --silent --show-error --max-redirs 0 \
 	--connect-timeout 10 --max-time 30 --cookie-jar "$tmp_dir/forms.cookies" \
 	--dump-header "$tmp_dir/forms.html.headers" \
@@ -172,14 +173,49 @@ if grep -qi '^x-gosx-isr:' "$tmp_dir/forms.html.headers"; then
 	echo "gosx docs smoke: interactive forms route was served from ISR" >&2
 	exit 1
 fi
-csrf_token="$(sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' "$tmp_dir/forms.html" | sed -n '1p')"
-if [ -z "$csrf_token" ]; then
-	echo "gosx docs smoke: interactive forms route did not render a CSRF token" >&2
+if ! grep -q 'name="csrf_token" value="' "$tmp_dir/forms.html"; then
+	echo "gosx docs smoke: interactive forms route did not render its CSRF control" >&2
 	exit 1
 fi
+initial_token="$(sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' "$tmp_dir/forms.html" | sed -n '1p')"
+"$curl_cmd" --silent --show-error --max-redirs 0 \
+	--connect-timeout 10 --max-time 30 \
+	--header "Origin: https://foreign.example" --header "Sec-Fetch-Site: cross-site" \
+	--dump-header "$tmp_dir/forms-cross-origin.headers" \
+	--data-urlencode "email=smoke@example.com" \
+	"${base_url}/docs/forms/__actions/subscribe" -o "$tmp_dir/forms-cross-origin.html"
+assert_status "$tmp_dir/forms-cross-origin.headers" 403 "cross-origin anonymous form"
+"$curl_cmd" --fail --silent --show-error --max-redirs 0 \
+	--connect-timeout 10 --max-time 30 \
+	--cookie "$tmp_dir/forms.cookies" --cookie-jar "$tmp_dir/forms.cookies" \
+	--header "Origin: ${base_url}" --header "Sec-Fetch-Site: same-origin" \
+	--dump-header "$tmp_dir/forms-first-post.headers" \
+	--data-urlencode "csrf_token=${initial_token}" --data-urlencode "email=smoke@example.com" \
+	"${base_url}/docs/forms/__actions/subscribe" -o "$tmp_dir/forms-first-post.html"
+assert_status "$tmp_dir/forms-first-post.headers" 303 "same-origin first form submission"
+"$curl_cmd" --fail --silent --show-error --max-redirs 0 \
+	--connect-timeout 10 --max-time 30 --cookie "$tmp_dir/forms.cookies" \
+	--dump-header "$tmp_dir/forms-session.headers" \
+	"${base_url}/docs/forms" -o "$tmp_dir/forms-session.html"
+assert_status "$tmp_dir/forms-session.headers" 200 "session-backed form"
+grep -qi '^cache-control:.*private.*no-store' "$tmp_dir/forms-session.headers"
+grep -q 'Subscribed!' "$tmp_dir/forms-session.html"
+csrf_token="$(sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' "$tmp_dir/forms-session.html" | sed -n '1p')"
+if [ -z "$csrf_token" ]; then
+	echo "gosx docs smoke: session-backed form did not render a CSRF token" >&2
+	exit 1
+fi
+"$curl_cmd" --silent --show-error --max-redirs 0 \
+	--connect-timeout 10 --max-time 30 --cookie "$tmp_dir/forms.cookies" \
+	--header "Origin: ${base_url}" --header "Sec-Fetch-Site: same-origin" \
+	--dump-header "$tmp_dir/forms-invalid-token.headers" \
+	--data-urlencode "csrf_token=invalid-smoke-token" --data-urlencode "email=smoke@example.com" \
+	"${base_url}/docs/forms/__actions/subscribe" -o "$tmp_dir/forms-invalid-token.html"
+assert_status "$tmp_dir/forms-invalid-token.headers" 403 "session-backed form with invalid token"
 "$curl_cmd" --fail --silent --show-error --location --max-redirs 3 \
 	--connect-timeout 10 --max-time 30 \
 	--cookie "$tmp_dir/forms.cookies" --cookie-jar "$tmp_dir/forms.cookies" \
+	--header "Origin: ${base_url}" --header "Sec-Fetch-Site: same-origin" \
 	--data-urlencode "csrf_token=${csrf_token}" \
 	--data-urlencode "email=smoke@example.com" \
 	"${base_url}/docs/forms/__actions/subscribe" -o "$tmp_dir/forms-result.html"
