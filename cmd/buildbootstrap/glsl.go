@@ -94,6 +94,26 @@ func shaderLocalEdits(code string, pinned map[string]bool) []shaderEdit {
 }
 func shaderLocalEditsLanguage(code string, pinned map[string]bool, wgsl bool) []shaderEdit {
 	tokens := shaderTokens(code)
+	attributes := make([]bool, len(tokens))
+	if wgsl {
+		// Attribute arguments are interface labels or module constants, even
+		// when a function parameter uses the same spelling (position, flat).
+		for i := 0; i+1 < len(tokens); i++ {
+			if tokens[i].text != "@" || !tokens[i+1].identifier {
+				continue
+			}
+			end := i + 1
+			if i+2 < len(tokens) && tokens[i+2].text == "(" {
+				if close := shaderPair(tokens, i+2, "(", ")"); close >= 0 {
+					end = close
+				}
+			}
+			for j := i; j <= end; j++ {
+				attributes[j] = true
+			}
+			i = end
+		}
+	}
 	type function struct{ start, end, name int }
 	var functions []function
 	covered := make([]bool, len(tokens))
@@ -143,6 +163,9 @@ func shaderLocalEditsLanguage(code string, pinned map[string]bool, wgsl bool) []
 		}
 		for i := fn.start; i+1 <= fn.end; i++ {
 			if wgsl {
+				if attributes[i] {
+					continue
+				}
 				// WGSL declares locals with let/var and annotates parameters
 				// (and typed locals) with name: type. Interface members live
 				// outside these functions and remain pinned as globals.
@@ -188,13 +211,13 @@ func shaderLocalEditsLanguage(code string, pinned map[string]bool, wgsl bool) []
 		}
 		for i := fn.start; i <= fn.end; i++ {
 			token := tokens[i]
-			if token.identifier && (!locals[token.text] || i > 0 && tokens[i-1].text == ".") {
+			if token.identifier && (attributes[i] || !locals[token.text] || i > 0 && tokens[i-1].text == ".") {
 				blocked[token.text] = true
 			}
 		}
 		frequency := map[string]int{}
 		for i := fn.start; i <= fn.end; i++ {
-			if i == 0 || tokens[i-1].text != "." {
+			if !attributes[i] && (i == 0 || tokens[i-1].text != ".") {
 				frequency[tokens[i].text]++
 			}
 		}
@@ -221,7 +244,7 @@ func shaderLocalEditsLanguage(code string, pinned map[string]bool, wgsl bool) []
 		for i := fn.start; i <= fn.end; i++ {
 			token := tokens[i]
 			alias, ok := aliases[token.text]
-			if ok && token.identifier && (i == 0 || tokens[i-1].text != ".") && alias != token.text {
+			if ok && token.identifier && !attributes[i] && (i == 0 || tokens[i-1].text != ".") && alias != token.text {
 				edits = append(edits, shaderEdit{token.start, token.end, alias})
 			}
 		}

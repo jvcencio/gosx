@@ -125,3 +125,19 @@ func TestWGSLPackingKeepsInterfacesHooksAndJavaScript(t *testing.T) {
 		t.Fatal("line map changed")
 	}
 }
+
+func TestWGSLPackingPreservesAttributeLabelsThatMatchParameters(t *testing.T) {
+	source := "const WGSL_SHADOW_VERTEX = `@vertex fn vertexMain(@location(0) position: vec3f) -> @builtin(position) vec4f { return vec4f(position, 1.0); }`;\n" +
+		"const WGSL_FRAGMENT = `@fragment fn fragmentMain(@builtin(front_facing) front_facing: bool, @location(0) @interpolate(flat) flat: f32) -> @location(0) vec4f { return select(vec4f(flat), vec4f(1.0), front_facing); }`;\n"
+	packed := packBuiltinWGSL(source)
+	for _, label := range []string{"@builtin(position)", "@builtin(front_facing)", "@interpolate(flat)", "@location(0)"} {
+		if !strings.Contains(packed, label) {
+			t.Errorf("interface attribute %q changed: %s", label, packed)
+		}
+	}
+	for _, parameter := range []string{"position: vec3f", "front_facing: bool", "flat: f32", "vec4f(position", "vec4f(flat"} {
+		if strings.Contains(packed, parameter) {
+			t.Errorf("function binding %q was not packed: %s", parameter, packed)
+		}
+	}
+}
