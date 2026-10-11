@@ -100,8 +100,9 @@ type Hub struct {
 
 	// textDropped and binaryDropped total the messages every client, present
 	// or departed, lost to a full send buffer. They only grow.
-	textDropped   atomic.Uint64
-	binaryDropped atomic.Uint64
+	textDropped      atomic.Uint64
+	binaryDropped    atomic.Uint64
+	snapshotReplaced atomic.Uint64
 
 	// MaxClients limits the number of concurrent connections. 0 = unlimited.
 	MaxClients int
@@ -163,14 +164,17 @@ type ConnectionMetadata map[string]string
 
 // Client represents a connected WebSocket client.
 type Client struct {
-	ID         string
-	Hub        *Hub
-	metadata   ConnectionMetadata
-	conn       *websocket.Conn
-	send       chan []byte
-	binarySend chan []byte
-	syncStates *peerSyncState
-	mu         sync.Mutex
+	ID               string
+	Hub              *Hub
+	metadata         ConnectionMetadata
+	conn             *websocket.Conn
+	send             chan []byte
+	binarySend       chan []byte
+	snapshotWake     chan struct{}
+	snapshot         *binarySnapshot
+	snapshotReplaced atomic.Uint64
+	syncStates       *peerSyncState
+	mu               sync.Mutex
 	// closed is set under mu by removeClient before it closes send/binarySend.
 	// trySend/tryBinarySend check it under the same mu before writing, so a
 	// send can never race with the close of the same channel — see trySend.
@@ -807,14 +811,15 @@ func (h *Hub) ServeHTTPWithMetadata(w http.ResponseWriter, r *http.Request, meta
 		return
 	}
 	client := &Client{
-		ID:         clientID,
-		Hub:        h,
-		metadata:   cloneConnectionMetadata(metadata),
-		conn:       conn,
-		send:       make(chan []byte, 256),
-		binarySend: make(chan []byte, 256),
-		syncStates: newPeerSyncState(),
-		transport:  transport,
+		ID:           clientID,
+		Hub:          h,
+		metadata:     cloneConnectionMetadata(metadata),
+		conn:         conn,
+		send:         make(chan []byte, 256),
+		binarySend:   make(chan []byte, 256),
+		snapshotWake: make(chan struct{}, 1),
+		syncStates:   newPeerSyncState(),
+		transport:    transport,
 	}
 	conn.SetPongHandler(func(payload string) error {
 		client.observePong(payload)
@@ -1050,60 +1055,46 @@ func (c *Client) writePump() {
 		c.conn.Close()
 	}()
 
+	preferSnapshot := false
 	for {
-		select {
-		case msg, ok := <-c.send:
+		frame := c.nextOutbound(ticks, preferSnapshot)
+		if frame.kind != 0 {
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
-				// The send channel was closed.
+			if frame.closed {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 				return
 			}
-
-			err := c.conn.WriteMessage(websocket.TextMessage, msg)
-			if err != nil {
+			if err := c.conn.WriteMessage(frame.kind, frame.payload); err != nil {
 				c.setDisconnectReason("write_error", "")
 				return
 			}
-			c.Hub.observeMessage(c, TrafficEvent{Direction: Outbound, Bytes: len(msg), QueueDepth: -1, Written: true})
-		case msg, ok := <-c.binarySend:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
-				_ = c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			c.Hub.observeMessage(c, TrafficEvent{Direction: Outbound, Binary: frame.kind == websocket.BinaryMessage, Snapshot: frame.snapshot, Bytes: len(frame.payload), QueueDepth: -1, Written: true})
+			preferSnapshot = !frame.snapshot
+			continue
+		}
+		var payload []byte
+		if c.transport != nil {
+			now := c.transport.clock.Now().Monotonic
+			if c.slowClient(now) {
+				c.setDisconnectReason("slow_client", "")
 				return
 			}
-
-			err := c.conn.WriteMessage(websocket.BinaryMessage, msg)
-			if err != nil {
-				c.setDisconnectReason("write_error", "")
-				return
+			if !c.transport.pingDue(now) {
+				continue
 			}
-			c.Hub.observeMessage(c, TrafficEvent{Direction: Outbound, Binary: true, Bytes: len(msg), QueueDepth: -1, Written: true})
-		case <-ticks:
-			var payload []byte
-			if c.transport != nil {
-				now := c.transport.clock.Now().Monotonic
-				if c.slowClient(now) {
-					c.setDisconnectReason("slow_client", "")
-					return
-				}
-				if !c.transport.pingDue(now) {
-					continue
-				}
-				if c.Hub.observers.Load() != nil {
-					ping := c.startPing(now)
-					payload = ping[:]
-				} else {
-					c.abandonPing(false)
-				}
-			}
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			err := c.conn.WriteMessage(websocket.PingMessage, payload)
-			if err != nil {
+			if c.Hub.observers.Load() != nil {
+				ping := c.startPing(now)
+				payload = ping[:]
+			} else {
 				c.abandonPing(false)
-				c.setDisconnectReason("write_error", "")
-				return
 			}
+		}
+		c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+		err := c.conn.WriteMessage(websocket.PingMessage, payload)
+		if err != nil {
+			c.abandonPing(false)
+			c.setDisconnectReason("write_error", "")
+			return
 		}
 	}
 }
@@ -1116,6 +1107,7 @@ func (h *Hub) removeClient(c *Client) {
 	}
 	// Senders use c.mu too, so no send can race these channel closes.
 	c.closed = true
+	c.snapshot = nil
 	disconnect := c.disconnect
 	if disconnect.Reason == "" {
 		disconnect.Reason = "other"
