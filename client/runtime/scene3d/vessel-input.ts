@@ -42,7 +42,7 @@
     function listen(target,name,fn) {target.addEventListener(name,fn,{passive:false});listeners.push([target,name,fn]);}
     function focused() {return document.activeElement===canvas || document.pointerLockElement===canvas;}
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-    listen(helm,'click',()=>{actions.helm();canvas.focus({preventScroll:true});});
+    listen(helm,'click',()=>{actions.helm(!!state.config.quickBoard);canvas.focus({preventScroll:true});});
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     listen(view,'click',()=>{actions.camera();canvas.focus({preventScroll:true});});
     for(const {node,amount} of [{node:raise,amount:1},{node:lower,amount:-1}]) {
@@ -88,12 +88,13 @@
     listen(document,'pointerlockchange',()=>{if(!document.pointerLockElement)clear(input);});
   // @ts-ignore TS7006 -- plain JS method parameters are exercised without transpilation.
     return {input,refresh(near) {
-      const active=state.mode==='sailing';panel.hidden=!active&&!near;
+      const active=state.mode==='sailing';panel.hidden=!active&&!near&&!state.config.quickBoard;
       steerHint.hidden=!active||!touch;
       panel.style.display=panel.hidden?'none':'grid';panel.style.left=active?'auto':'50%';panel.style.right=active?'14px':'auto';
       panel.style.top=active?'auto':'58px';panel.style.bottom=active?'110px':'auto';panel.style.transform=active?'none':'translateX(-50%)';
       panel.style.width=active?(touch?'min(220px, calc(50% - 14px))':'280px'):'auto';
-      helm.textContent=active?'Leave helm · E':'Press E to take the helm';
+      panel.style.gridTemplateColumns=active?'1fr 1fr':'1fr';
+      helm.textContent=active?(touch?'Leave helm':'Leave helm · E'):state.config.quickBoard?'Pilot ship':touch?'Take helm':'Press E to take the helm';
       view.hidden=!active;raise.hidden=!active;lower.hidden=!active;readout.hidden=!active;
       readout.textContent=state.grounded?'Grounded · turn toward deeper water':window.__gosx_scene3d_vessel_physics.speedCurve(state.heading-state.wind)===0?'Into the wind · '+(touch?'steer to tack':'hold A/D to tack'):Math.round(state.trim*100)+'% sail · '+state.speed.toFixed(1)+' m/s'+(touch?'':' · A/D steer · W/S sail');
     },dispose() {clear(input);panel.remove();steerHint.remove();for(const [target,name,fn] of listeners)target.removeEventListener(name,fn);} };

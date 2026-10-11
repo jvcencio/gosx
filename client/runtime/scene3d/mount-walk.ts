@@ -148,7 +148,7 @@ interface SceneWalkState {
     s.camera.rotationY = s.yaw; s.camera.rotationX = s.pitch; s.camera.rotationZ = 0;
   }
   function advance(s: SceneWalkState, dt: number, strafe: number, forward: number, sprint: boolean): boolean {
-    dt = clamp(dt, 0, 0.1);
+    dt = clamp(dt, 0, 0.5);
     const oldY = s.camera.y, oldX = s.x, oldZ = s.z;
     const length = Math.max(1, Math.hypot(strafe, forward)), speed = s.speed * s.zoomScale * (sprint ? s.sprint : 1) * dt / length;
     const sin = Math.sin(s.yaw), cos = Math.cos(s.yaw);
@@ -237,7 +237,7 @@ interface SceneWalkState {
     const listeners: Array<[any, string, EventListener, any]> = [];
     canvas.style.touchAction = "none"; canvas.style.cursor = "crosshair";
     canvas.setAttribute("tabindex", "0");
-    canvas.setAttribute("aria-label", (props.ariaLabel || props.label || "3D scene") + ". Walk with WASD or up/down arrows; left/right arrows turn; PageUp/PageDown look up/down; Shift sprints; Home resets.");
+    canvas.setAttribute("aria-label", (props.ariaLabel || props.label || "3D scene") + ". WASD/up/down walk; left/right turn; PageUp/PageDown look; Shift runs; Home resets.");
     canvas.setAttribute("aria-keyshortcuts", "W A S D ArrowUp ArrowDown ArrowLeft ArrowRight PageUp PageDown Shift Home");
     function listen(target: any, name: string, callback: any): void {
       const options = { passive: !["pointerdown", "pointermove", "pointerup", "pointercancel", "lostpointercapture", "keydown", "keyup"].includes(name) };
@@ -273,7 +273,7 @@ interface SceneWalkState {
     function tick(now: number): void {
       frame = 0;
       if (disposed || controller.suspended) return;
-      const dt = clamp((now - last) / 1000, 0, 0.1); last = now;
+      const dt = clamp((now - last) / 1000, 0, 0.5); last = now;
       let strafe = input.x, forward = -input.y, yaw = 0, pitch = 0, sprint = Math.hypot(input.x, input.y) > 0.9;
       if (focused()) {
         const k = controller.keys;
@@ -317,6 +317,7 @@ interface SceneWalkState {
     listen(document, "keydown", keyDown); listen(document, "keyup", keyUp);
     listen(canvas, "blur", () => { if (!helpers.locked(canvas)) clearInput(); });
     listen(window, "blur", clearInput);
+    listen(document, "visibilitychange", clearInput);
     listen(document, "pointerlockchange", () => { if (!helpers.locked(canvas)) clearInput(); showHint(); });
     listen(document, "click", (event: MouseEvent) => {
       const target = event.target as Element;

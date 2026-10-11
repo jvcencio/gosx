@@ -38,9 +38,9 @@
     return Math.hypot(camera.x-h.x,camera.y-h.y,camera.z-h.z) <= (s.config.boardRadius || 4);
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-  function helm(s, camera) {
+  function helm(s, camera, quick=false) {
     if (s.mode === "sailing") { s.mode = "deck"; s.trim = 0; s.rudder = 0; return "leave"; }
-    if (!canBoard(s,camera)) return "far";
+    if (!canBoard(s,camera) && !(quick && s.config.quickBoard)) return "far";
     s.mode = "sailing"; s.rudder = 0; return "take";
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.

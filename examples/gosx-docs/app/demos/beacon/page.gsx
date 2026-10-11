@@ -28,13 +28,13 @@ func Page() Node {
 			<p class="bgb__instructions bgb__instructions-desktop">{data.instructions}</p>
 			<p class="bgb__instructions bgb__instructions-touch">{data.touchInstructions}</p>
 			<p class="bgb__instructions bgb__discoveries">
-				Follow footprints to the glass. Wreck and hollow to the west; tide pools and lighthouse to the east. E to sail at the jetty.
+				Follow footprints to the glass. Wreck and hollow to the west; tide pools and lighthouse to the east. Pilot ship to explore the sea.
 			</p>
 			<nav class="bgb__group" aria-label="View">
 				<a class="bgb__link bgb__view-shore" href={data.shoreHref}>Shore</a>
 				<a class="bgb__link bgb__view-glass" href={data.glassHref}>Glass</a>
 				<a class="bgb__link bgb__view-cliff" href={data.cliffHref}>Overlook</a>
-				<a class="bgb__link bgb__view-ship" href={data.shipHref}>Ship</a>
+				<a class="bgb__link bgb__view-ship" href={data.shipHref}>Ship view</a>
 				<button class="bgb__link bgb__reset" type="button" data-gosx-scene3d-reset="">Reset view</button>
 			</nav>
 			<nav class="bgb__group" aria-label="Light">

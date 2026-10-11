@@ -15,6 +15,7 @@ type Vessel struct {
 	DeckHeight    float64     `json:"deckHeight,omitempty"`    // default 2.5
 	Helm          Vector3     `json:"helm"`                    // local eye position; default (0.65,4.2,8)
 	BoardRadius   float64     `json:"boardRadius,omitempty"`   // default 4
+	QuickBoard    bool        `json:"quickBoard,omitempty"`    // show a button that takes the helm from anywhere; E still requires proximity
 	WindDirection float64     `json:"windDirection,omitempty"` // fallback Ocean.WindDirection
 	WindStrength  float64     `json:"windStrength,omitempty"`  // default 8 m/s
 	SailTrim      float64     `json:"sailTrim,omitempty"`      // initial trim, default 0.55

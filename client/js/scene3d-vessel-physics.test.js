@@ -7,6 +7,14 @@ const flat=(x,z,t)=>({y:0}),deep=()=>-10,radians=Math.PI/180;
 function ship(config={},collision={}) {return api.create({nodeId:'ship',...config},{windDirection:0},collision);}
 function sail(s,seconds,input={rudder:0,sail:0},floor=deep) {for(let i=0;i<seconds*60;i++)api.advance(s,1/60,i/60,input,flat,floor);}
 const near=(a,b,e=1e-5)=>assert.ok(Math.abs(a-b)<e,`${a} != ${b}`);
+test('boarding from a distance requires opt-in and an explicit button action; E retains proximity',()=>{
+ const far={x:80,y:4,z:80},plain=ship();
+ assert.equal(api.helm(plain,far,true),'far');assert.equal(plain.mode,'moored');
+ const quick=ship({quickBoard:true});
+ assert.equal(api.helm(quick,far),'far');assert.equal(quick.mode,'moored');
+ assert.equal(api.helm(quick,far,true),'take');assert.equal(quick.mode,'sailing');
+ assert.equal(api.helm(quick,far,true),'leave');assert.equal(quick.mode,'deck');
+});
 test('no-go zone stops drive through 40 degrees and reaches peak on a broad reach',()=>{
  for(const deg of [-40,-20,0,20,40])near(api.speedCurve(deg*radians),0);
  assert.ok(api.speedCurve(90*radians)>.8);near(api.speedCurve(135*radians),1);assert.ok(api.speedCurve(Math.PI)<1);

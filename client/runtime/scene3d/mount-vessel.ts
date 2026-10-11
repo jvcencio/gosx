@@ -49,10 +49,10 @@
       else if(base.controller)base.controller.suspended=value;
     }
     function leave() {state.mode='deck';state.trim=0;state.rudder=0;controller.active=false;suspend(false);}
-    function changeHelm() {
-      const result=physics.helm(state,read());if(result==='far')return;
+    function changeHelm(quick=false) {
+      const result=physics.helm(state,read(),quick);if(result==='far')return;
       window.__gosx_scene3d_vessel_input.clear(controls.input);
-      if(result==='take') {suspend(true);controller.active=true;controller.touched=true;state.camera=physics.camera(state,read(),.1);}
+      if(result==='take') {suspend(true);controller.active=true;controller.touched=true;if(quick)state.cameraMode='wheel';state.camera=physics.camera(state,read(),.1);}
       else {leave();if(base.controller&&base.controller.applyCamera)base.controller.applyCamera(Object.assign({},read(),physics.localPoint(state,state.helm.x,state.helm.y,state.helm.z),{rotationY:state.heading,rotationX:0}));}
       helpers.schedule('vessel-helm');
     }

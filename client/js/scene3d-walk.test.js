@@ -74,12 +74,25 @@ test("head bob is distance based, fades out, and is zero for reduced motion or a
 });
 test("movement is horizontal, normalizes diagonals, caps delta, and scales sprint", () => {
   const { api, state } = model({ headBob: 0 });
-  api.advance(state, 1, 1, 1, false); near(Math.hypot(state.x, state.z), 0.16);
+  api.advance(state, 1, 1, 1, false); near(Math.hypot(state.x, state.z), 0.8);
   const sprint = api.createState({ ...camera, rotationX: 1.4 }, { headBob: 0 }, false);
   api.advance(sprint, 0.1, 0, 1, true); near(sprint.z, -0.352);
   const slow = api.createState(camera, { headBob: 0 }, false);
   for (let i = 0; i < 10; i++) api.advance(slow, 0.01, 0, 1, false);
   near(slow.z, -0.16);
+});
+test("slow display frames retain walking pace, bound stalls, and cannot tunnel through thin obstacles", () => {
+  const { api } = model({ headBob: 0 });
+  const smooth = api.createState(camera, { headBob: 0 }, false);
+  const slow = api.createState(camera, { headBob: 0 }, false);
+  for (let i = 0; i < 60; i++) api.advance(smooth, 1 / 60, 0, 1, false);
+  for (let i = 0; i < 2; i++) api.advance(slow, 0.5, 0, 1, false);
+  near(smooth.z, slow.z); near(slow.z, -1.6);
+  const stalled = api.createState(camera, { headBob: 0 }, false);
+  api.advance(stalled, 30, 0, 1, false); near(stalled.z, -0.8);
+  const blocked = api.createState(camera, { headBob: 0, walkSpeed: 8, colliders: [{ kind: "cylinder", x: 0, z: -0.75, radius: 0.12 }] }, false);
+  api.advance(blocked, 0.5, 0, 1, true);
+  assert.ok(blocked.z > -0.28, "catch-up must query collisions throughout the travel");
 });
 
 function controls(config = {}, options = {}) {
@@ -110,6 +123,14 @@ test("keyboard navigation is focus scoped, supports look and Home reset, and sto
   for (let t = 64; t < 1500; t += 16) h.raf.flush(t);
   assert.equal(h.raf.count(), 0); assert.equal(h.canvas.getAttribute("tabindex"), "0"); assert.match(h.canvas.getAttribute("aria-label"), /Home/);
   h.handle.dispose(); assert.equal(h.sceneState._gosxMotionController, null);
+});
+test("hiding a tab clears held movement before a delayed frame resumes", () => {
+  const h = controls({ headBob: 0 });
+  h.canvas.focus(); h.event(h.env.document, "keydown", { code: "KeyW" });
+  Object.defineProperty(h.env.document, "hidden", { value: true, configurable: true });
+  h.event(h.env.document, "visibilitychange"); h.raf.flush(1000);
+  near(h.handle.controller.currentCamera().z, camera.z);
+  assert.equal(h.raf.count(), 0); h.handle.dispose();
 });
 test("pointer lock looks with movementX/Y, clamps pitch, hides the hint and restores it on release", () => {
   const h = controls(); const hint = h.mount.querySelector(".gosx-scene3d-walk-hint");

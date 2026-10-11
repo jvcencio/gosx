@@ -29,6 +29,7 @@ func blackglassBeachWalk() *scene.Walk {
 	return &scene.Walk{
 		Surfaces:  surfaces,
 		EyeHeight: 1.7, HeadBob: scene.Float(0.012), Hint: "none",
+		WalkSpeed: 3.6,
 		MaxSlope:  34,
 		Ground:    &ground,
 		Water:     &scene.WalkWater{Level: 0, MaxDepth: 0.55},
