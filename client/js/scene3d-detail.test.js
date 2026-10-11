@@ -61,6 +61,13 @@ test("WebGL detail is a cached compile variant with nil source unchanged", () =>
   // The browser optics oracle covers behavior; nil detail must keep this base exact.
   assert.equal(crypto.createHash("sha256").update(base).digest("hex"), "84eebd140305d8f6246935ec8d3a8187bacfa8dcae8258f2351f3b7a8c4e5165");
   const shader = c.sceneWebGLDetailFragment(base, true);
+  const glWithUnits = units => ({ MAX_TEXTURE_IMAGE_UNITS: 1, getParameter: () => units });
+  assert.match(c.scenePBRFragmentSourceForContext(glWithUnits(16), base), /#define GOSX_HDR_IBL 1/);
+  const bounded = c.scenePBRFragmentSourceForContext(glWithUnits(16), shader);
+  assert.match(bounded, /#define GOSX_HDR_IBL 0/);
+  assert.match(bounded, /uniform highp sampler2DArray u_detailAtlas;/);
+  assert.match(bounded, /DetailResult detailResult = detailApply/);
+  assert.match(c.scenePBRFragmentSourceForContext(glWithUnits(17), shader), /#define GOSX_HDR_IBL 1/);
   assert.match(shader, /textureGrad\(u_detailAtlas/);
   assert.ok(shader.indexOf("dFdx(v_worldPosition)") < shader.indexOf("detailApply(v_worldPosition"));
   assert.match(shader, /fade > 0\.0 && u_detail\[4\]\.w > 0\.5/);
@@ -84,7 +91,14 @@ test("WebGPU detail preserves the nil shader and uses a separate array binding",
   const shader = c.sceneWebGPUDetailFragment(base, true);
   assert.match(shader, /textureSampleGrad\(detailAtlas/);
   assert.match(shader, /@group\(2\) @binding\(1\) var detailAtlas: texture_2d_array/);
-  assert.ok(shader.indexOf("dpdx(in.worldPos)") < shader.indexOf("detailApply(in.worldPos"));
+  const colorStart = shader.indexOf("fn gosxPBRColor(in: VertexOutput) -> vec4f {");
+  const colorEnd = shader.indexOf("@fragment fn fragmentMain", colorStart);
+  const color = shader.slice(colorStart, colorEnd);
+  assert.ok(colorStart >= 0 && colorEnd > colorStart, "detail uses the shared PBR color function");
+  assert.match(color, /let detailDx = dpdx\(in\.worldPos\);/);
+  assert.match(color, /let detailDy = dpdy\(in\.worldPos\);/);
+  assert.ok(color.indexOf("dpdx(in.worldPos)") < color.indexOf("if (material.hasAlbedoMap"), "derivatives precede nonuniform material branches");
+  assert.ok(color.indexOf("dpdy(in.worldPos)") < color.indexOf("detailApply(in.worldPos"), "derivatives and their use share the color function scope");
   assert.match(shader, /fade > 0\.0 && detail.data\[4\]\.w > 0\.5/);
   assert.equal(c.wgpuPipelineKey(c.sceneDetailVariantKey("pbr", true), "opaque", true, "rgba8unorm", "depth24plus", 1), "pbr-detail|opaque|1|rgba8unorm|depth24plus|1");
   assert.equal(c.sceneDetailVariantKey("pbr", null), "pbr");

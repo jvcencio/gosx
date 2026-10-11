@@ -5810,7 +5810,7 @@
     return key;
   }
 
-  function scenePBRHDRIBLAvailable(gl) {
+  function scenePBRHDRIBLAvailable(gl, detail = false) {
     var maxUnits = 0;
     try {
       maxUnits = gl && typeof gl.getParameter === "function"
@@ -5819,14 +5819,14 @@
     } catch (_error) {
       maxUnits = 0;
     }
-    // 9 material + 2 depth arrays + legacy env + 3 IBL + transmission = 16 samplers.
-    return maxUnits >= 16;
+    // Base HDR uses 16 samplers; the detail atlas adds one.
+    return maxUnits >= (detail ? 17 : 16);
   }
 
   function scenePBRFragmentSourceForContext(gl, source) {
     return String(source || SCENE_PBR_FRAGMENT_SOURCE).replace(
       "#define GOSX_HDR_IBL 1",
-      "#define GOSX_HDR_IBL " + (scenePBRHDRIBLAvailable(gl) ? "1" : "0"),
+      "#define GOSX_HDR_IBL " + (scenePBRHDRIBLAvailable(gl, String(source || "").includes("u_detailAtlas")) ? "1" : "0"),
     );
   }
 
@@ -7319,7 +7319,7 @@
     var env = environment || {};
     var ibl = env.ibl && typeof env.ibl === "object" ? env.ibl : null;
     var envMap = typeof env.envMap === "string" ? env.envMap.trim() : "";
-    var hdrIBLAvailable = scenePBRHDRIBLAvailable(gl);
+    var hdrIBLAvailable = scenePBRHDRIBLAvailable(gl, Boolean(uniforms.detail));
     var maxUnits = scenePBRMaxTextureUnits(gl);
     var layout = scenePBRTextureLayoutForFrame(shadowSlots, shadowLightIndices, env, maxUnits);
     var unit = layout && layout.ibl ? layout.ibl.brdfLUT : null;

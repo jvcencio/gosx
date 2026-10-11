@@ -675,6 +675,9 @@ test("WebGL HDR IBL fits the core sampler minimum", () => {
   assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(15))"), false);
   assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(16))"), true);
   assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(32))"), true);
+  assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(16), true)"), false);
+  assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(17), true)"), true);
+  assert.equal(callIn(context, "scenePBRHDRIBLAvailable(glWithUnits(32), true)"), true);
 });
 
 test("WebGL PBR shader consumes the uploaded factors in direct and IBL paths", () => {

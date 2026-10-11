@@ -4,6 +4,8 @@
 
 ## v0.57.11
 
+- Keep detail derivatives in the shared WebGPU PBR color function. WebGL detail uses the existing reflection fallback on 16-slot contexts and retains HDR IBL when 17 or more slots are available.
+
 - WebGPU requests the 17 sampled-texture slots needed by rich PBR detail layouts on capable adapters, while preserving stricter manifest limits and baseline-adapter defaults.
 - Retain immutable imported skeletal bind geometry across animation frames.
   Ordinary GPU-skinned meshes update joint matrices without rescanning or
