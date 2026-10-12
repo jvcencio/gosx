@@ -67,7 +67,13 @@ func Page() Node {
 				<a class="bgb__link bgb__period-blue-hour" href={data.blueHref}>Blue hour</a>
 				<a class="bgb__link bgb__period-noon" href={data.noonHref}>Midday</a>
 			</nav>
-			<button class="bgb__link bgb__pocket" type="button" data-coast-pocket hidden aria-label="Pull out the Game Boy">Game Boy</button>
+			<button
+				class="bgb__link bgb__pocket"
+				type="button"
+				data-coast-pocket
+				hidden
+				aria-label="Pull out the Game Boy"
+			>Game Boy</button>
 		</div>
 		<p class="bgb__reveal" aria-live="off">
 			Rendered by GoSX: Go + WASM,
