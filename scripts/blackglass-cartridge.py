@@ -49,7 +49,7 @@ def main():
         expected = json.loads(receipt.read_text())
         base = args.verify_base.rstrip("/")
         def fetch(url):
-            request = urllib.request.Request(url, headers={"Cache-Control": "no-cache"})
+            request = urllib.request.Request(url, headers={"Cache-Control": "no-cache", "User-Agent": "GoSX-Docs-Deployment-Verify/1.0"})
             with urllib.request.urlopen(request, timeout=15) as response:
                 return response.read(MAX_BYTES + 1)
         manifest = json.loads(fetch(base + "/api/blackglass-cartridge"))
