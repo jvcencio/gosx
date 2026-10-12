@@ -58,7 +58,18 @@ test('canonical wave table matches the generated runtime module', () => {
 test('bathymetry filters R before signed-sqrt decoding and clamps texel centres', () => {
   const image={width:2,height:2,data:new Uint8Array([0,0,0,255,255,0,0,255,0,0,0,255,255,0,0,255])};
   const mapping={minX:0,minZ:0,maxX:2,maxZ:2,minHeight:-6,maxHeight:6,encoding:'signed-sqrt'};
-  const floor=api.bathymetry(image,mapping);near(floor(1,1),0);near(floor(.75,1),-1.5);near(floor(-4,8),-6);
+  const floor=api.bathymetry(image,mapping);near(floor(1,1),0);near(floor(.75,1),-1.5);near(floor(0,2),-6);
+});
+test('finite bathymetry never extrudes its land edge into the open ocean',()=>{
+ const image={width:1,height:1,data:new Uint8Array([255,0,0,255])};
+ for(const encoding of ['linear','signed-sqrt']) {
+  const floor=api.bathymetry(image,{minX:-80,minZ:-60,maxX:80,maxZ:60,minHeight:-8,maxHeight:8,encoding});
+  near(floor(80,60),8);
+  for(const [x,z] of [[80.01,0],[-80.01,0],[0,60.01],[0,-60.01],[5000,-5000]])near(floor(x,z),-1e4);
+  const q=api.create({waveHeight:1.15},'high',floor);
+  const water=api.sample(q,5000,-5000,8);
+  assert.ok(Number.isFinite(water.y) && Math.abs(water.y)<2,'swell continues outside the chart');
+ }
 });
 test('public zero-valued Ocean props match omitted defaults; normalized values retain zeros', () => {
   const defaults=api.create({},'high'),zero=api.create({waveHeight:0,waveLength:0,choppiness:0,speed:0,surf:0},'high');

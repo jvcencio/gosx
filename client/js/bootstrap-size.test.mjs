@@ -1313,7 +1313,10 @@ const budgets = [
   // caps round up by at most 100 bytes. Sharing sub-feature loaders keeps the
   // base Scene3D chunk below its previous raw, gzip and Brotli sizes, so these
   // bytes are excluded from every existing first-load route budget.
-  { file: "bootstrap-feature-scene3d-walk.js", raw: 11100, gzip: 4600, brotli: 4200 },
+  // Moving decks outside the land bounds measure 13_390 / 5_434 / 4_972.
+  // Raise only the exhausted raw target to its exact minimum. Compressed
+  // targets, allowances, monolith and first-load route limits stay fixed.
+  { file: "bootstrap-feature-scene3d-walk.js", raw: 11342, gzip: 4600, brotli: 4200 },
   { file: "bootstrap-feature-scene3d-compute.js", raw: 61200, gzip: 17900, brotli: 16100 },
   // The decompress chunk: the quantized-array decoder, the progressive and
   // level-of-detail ladders, and the procedural point generators. The mount

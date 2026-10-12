@@ -8,9 +8,9 @@ const SCENE_OCEAN_GLSL_COMMON = [
   "uniform vec4 u_ocean[35];",
   "uniform sampler2D u_bathymetry;",
   "float oceanFloor(vec2 xz) {",
-  "  if (u_ocean[6].z < 0.5) return -1e4;",
-  "  vec2 uv = clamp((xz - u_ocean[5].xy) / (u_ocean[5].zw - u_ocean[5].xy), 0., 1.);",
-  "  float r = textureLod(u_bathymetry, uv, 0.).r;",
+  "vec2 uv=(xz-u_ocean[5].xy)/(u_ocean[5].zw-u_ocean[5].xy);",
+  "if(u_ocean[6].z<.5||any(lessThan(uv*(1.-uv),vec2(0))))return -1e4;", // uv*(1-uv) is nonnegative only inside the chart.
+  "float r=textureLod(u_bathymetry,uv,0.).r;",
   "  if (u_ocean[6].z > 1.5) { float s = 2. * r - 1.; return sign(s) * s * s * u_ocean[6].y; }", // signed-sqrt: fine steps near y = 0
   "  return mix(u_ocean[6].x, u_ocean[6].y, r);",
   "}",

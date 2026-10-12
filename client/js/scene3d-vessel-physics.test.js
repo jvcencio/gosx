@@ -68,6 +68,23 @@ test('bounds and cylinder, sphere, rotated box footprints reject translation and
  assert.equal(api.allowed(s,8,8,0,deep),false);assert.equal(api.allowed(s,0,0,0,deep),true);
  s.mode='sailing';s.vx=30;sail(s,1);assert.ok(s.x<2.5);assert.ok(s.vx<4);
 });
+test('open water crosses walk bounds on every side, preserves real hazards and honors explicit vessel bounds',()=>{
+ const bounds={minX:-115,minZ:-180,maxX:115,maxZ:46};
+ const collision={bounds,colliders:[{kind:'cylinder',x:4,z:0,radius:2,height:8,y:-4}]};
+ const bounded=ship({},collision),open=ship({openWater:true},collision);
+ for(const [x,z] of [[-140,-210],[140,-210],[0,-3000],[3000,1000]]) {
+  assert.equal(api.allowed(bounded,x,z,0,deep),false);
+  assert.equal(api.allowed(open,x,z,0,deep),true);
+ }
+ assert.equal(api.allowed(open,4,0,0,deep),false,'real rock collision is retained');
+ assert.equal(api.allowed(open,0,0,0,()=>-.1),false,'a shallow beach still grounds the hull');
+ const explicit=ship({openWater:true,bounds},collision);
+ assert.equal(api.allowed(explicit,0,-3000,0,deep),false,'explicit vessel bounds take precedence');
+ const voyage=ship({openWater:true,position:{x:20,z:-140},heading:-Math.PI/3},collision);
+ voyage.mode='sailing';voyage.trim=1;sail(voyage,600);
+ assert.ok(voyage.x>2000 && voyage.z<-1000,'ten-minute voyage crosses the former scene edges: '+JSON.stringify({x:voyage.x,z:voyage.z,speed:voyage.speed}));
+ assert.ok(voyage.speed>4 && !voyage.grounded);
+});
 test('helm state machine enforces proximity and leaves on deck; V toggles wheel and stern',()=>{
  const s=ship();assert.equal(api.helm(s,{x:100,y:0,z:0}),'far');assert.equal(s.mode,'moored');
  const h=api.localPoint(s,s.helm.x,s.helm.y,s.helm.z);assert.equal(api.helm(s,h),'take');assert.equal(s.mode,'sailing');

@@ -30,3 +30,10 @@ for(let i=0;i<720;i++) {
 assert.ok(physics.speedCurve(s.heading-s.wind)>0,'recorded input sequence must clear irons at the real mooring');
 assert.ok(s.speed>1,`recorded input sequence: ${s.speed} m/s`);
 console.log(JSON.stringify({sequence:'W 1.5s, D 2.5s, coast 8s',speed:s.speed}));
+// Use the authored coast's heightfield only where it contains actual terrain.
+const seaFloor=(x,z)=>x<ground.minX||x>ground.minX+ground.sizeX||z<ground.minZ||z>ground.minZ+ground.sizeZ?-1e4:floor(x,z);
+const voyage=physics.create(vessel,ocean,walk);voyage.mode='sailing';voyage.trim=1;voyage.heading=-Math.PI/3;
+for(let i=0;i<600*60;i++)physics.advance(voyage,1/60,i/60,{},()=>({y:0}),seaFloor);
+assert.ok(voyage.x>2000&&voyage.z<-1000,'authored ship must sail far beyond the former invisible boundary: '+JSON.stringify({x:voyage.x,z:voyage.z,speed:voyage.speed}));
+assert.ok(voyage.speed>4&&!voyage.grounded);
+console.log(JSON.stringify({voyageMinutes:10,x:voyage.x,z:voyage.z,speed:voyage.speed}));

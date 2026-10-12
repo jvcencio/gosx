@@ -45,7 +45,7 @@ type Ocean struct {
 
 // OceanBathymetry maps a grayscale image's R channel into world-space seabed
 // heights over the XZ rectangle. MinHeight is the world Y for 0 and MaxHeight
-// is the world Y for 1.
+// is the world Y for 1. Outside the rectangle, the ocean is deep water.
 type OceanBathymetry struct {
 	Src       string  `json:"src"`
 	MinX      float64 `json:"minX"`
