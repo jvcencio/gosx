@@ -162,8 +162,11 @@ jobs:
   # Ordinary tests still gate all nine. A second scoped perf/ouroboros race run
   # retains every fixture-sized test plus direct concurrent coverage of its
   # mutex-protected network capture. The broad lane includes the expensive BC7
-  # and vector-search kernels omitted from pull requests and keeps a 40-minute
-  # per-package alarm. Main run 38170524231 spent 28.5 minutes in CLI tests
+  # and vector-search kernels omitted from pull requests and keeps a bounded
+  # 60-minute per-package alarm. perf/wire took 2388.913 seconds in main run
+  # 38175972851, then exhausted the 40-minute package alarm in 38182172138
+  # while starting another short loader-reference test. Main run 38170524231
+  # spent 28.5 minutes in CLI tests
   # before the 50-minute job ceiling cancelled active IR, budget, and wire
   # tests. Pushes get 90 minutes for the full suite and scoped second phase;
   # pull requests keep their 50-minute ceiling.
