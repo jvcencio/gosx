@@ -375,7 +375,7 @@
     const whiteSpace = normalizeSceneLabelWhiteSpace(label.whiteSpace);
     const zIndex = Math.max(1, 1000 + Math.round(sceneNumber(label.priority, 0) * 10) - Math.round(sceneNumber(label.depth, 0) * 10));
 
-    element.setAttribute("data-gosx-scene-label", label.id || "");
+    setAttrValue(element, "data-gosx-scene-label", label.id || "");
     setAttrValue(element, "aria-hidden", "true");
     setAttrValue(element, "class", label.className ? ("gosx-scene-label " + label.className) : "gosx-scene-label");
     setAttrValue(element, "data-gosx-scene-label-collision", normalizeSceneLabelCollision(label.collision));
@@ -386,7 +386,7 @@
     setAttrValue(element, "data-gosx-scene-label-depth", sceneNumber(label.depth, 0));
     setAttrValue(element, "data-gosx-scene-label-truncated", layout && layout.truncated ? "true" : "false");
 
-    applyTextLayoutPresentation(element, {
+    if (element.__gosxLayoutKey !== layoutKey) applyTextLayoutPresentation(element, {
       font: label.font,
       whiteSpace: whiteSpace,
       lineHeight: sceneNumber(label.lineHeight, 18),
