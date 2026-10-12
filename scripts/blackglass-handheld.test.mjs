@@ -2,7 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { webcrypto } from 'node:crypto';
+import { webcrypto, createHash } from 'node:crypto';
+
+test('pocket shell versions its loader and styles so returning players bypass stale cached assets', () => {
+  const root = new URL('../examples/gosx-docs/public/demos/blackglass-handheld/', import.meta.url);
+  const html = readFileSync(new URL('pocket.html', root), 'utf8');
+  for (const name of ['handheld.js', 'handheld.css']) {
+    const digest = createHash('sha256').update(readFileSync(new URL(name, root))).digest('hex').slice(0, 16);
+    assert.ok(html.includes(`"${name}?v=${digest}"`), `${name} must have a current content version: old cached URLs cannot load the deployment cartridge`);
+  }
+});
 
 const source = readFileSync(new URL('../examples/gosx-docs/public/demos/blackglass-handheld/handheld.js', import.meta.url), 'utf8').replace(/^import[^\n]+\n/, '');
 async function handheld() {
