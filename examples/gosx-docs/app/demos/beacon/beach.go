@@ -20,8 +20,8 @@ const blackglassBeachModelRoot = "/models/blackglass/"
 
 // Raster assets are cached longer than models. Fingerprint changed content
 // so returning visitors get the new preview and matching ocean depth field.
-const blackglassBeachPosterSrc = "/demos/posters/beacon.webp?v=e16c512d1cbf"
-const blackglassBeachHeightSrc = blackglassBeachModelRoot + "beach-v2-height.png?v=3da58ae7a1fb"
+const blackglassBeachPosterSrc = "/demos/posters/beacon.webp?v=03f3c71ad727"
+const blackglassBeachHeightSrc = blackglassBeachModelRoot + "beach-v2-height.png?v=df420d015fd8"
 
 type blackglassBeachPeriod struct {
 	ID, Name string
@@ -145,9 +145,9 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 			FogColor: horizon, FogDensity: 0.0008,
 			Haze: &scene.Haze{Density: 0.0011, HeightFalloff: 0.07, SunScatter: 0.32},
 			Ocean: &scene.Ocean{
-				WindDirection: -28, WaveHeight: 1.7, WaveLength: 22, Choppiness: 0.58, Speed: 0.85,
+				WindDirection: -28, WaveHeight: 1.15, WaveLength: 30, Choppiness: 0.42, Speed: 0.85,
 				DeepColor: "#03121b", ShallowColor: "#123b43", ScatterColor: "#16695e", FoamColor: "#dde9e5",
-				Clarity: 3.2, Roughness: 0.12, Foam: 0.42, Surf: 0.6, Extent: 4000,
+				Clarity: 2.8, Roughness: 0.095, Foam: 0.55, Surf: 0.65, Extent: 4000,
 				Reflections: &scene.OceanReflections{Mode: "ssr+planar", Resolution: 0.5, Strength: 1},
 				Bathymetry: &scene.OceanBathymetry{
 					Src:  blackglassBeachHeightSrc,
