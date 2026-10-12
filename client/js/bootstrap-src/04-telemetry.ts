@@ -173,25 +173,7 @@
       }
     }
 
-    function settleFetch(response, eventCount) {
-      try {
-        const status = Number(response && response.status);
-        if (response && (response.ok === true || (response.ok !== false && status >= 200 && status < 300))) {
-          addPair(T_SERVER_ACCEPTED, eventCount);
-          return;
-        }
-        recordFailure(
-          T_FETCH_FAILURES,
-          Number.isFinite(status) && status > 0 ? "fetch-status-" + status : "fetch-response-unaccepted",
-          eventCount,
-          true,
-        );
-      } catch (_err) {
-        recordFailure(T_FETCH_FAILURES, "fetch-response-error", eventCount, true);
-      }
-    }
-
-    function dispatchFetch(body, eventCount) {
+    async function dispatchFetch(body, eventCount) {
       let request;
       let usesCoreRequest = false;
       try {
@@ -226,21 +208,31 @@
         return;
       }
 
+      telemetryState[T_PENDING] += 1;
+      let received = false;
       try {
-        if (!result || typeof result.then !== "function") {
-          settleFetch(result, eventCount);
+        const response = await result;
+        received = true;
+        // A resolved fetch exposes headers before its response lifecycle has
+        // completed. Consume even a bodyless 204 through the native API; do
+        // not accept delivery or retire pending state while a read can fail.
+        // Status-only custom transports can already return a completed result.
+        if (response && typeof response.text === "function") await response.text();
+        const status = Number(response && response.status);
+        if (response && (response.ok === true || (response.ok !== false && status >= 200 && status < 300))) {
+          addPair(T_SERVER_ACCEPTED, eventCount);
           return;
         }
-        telemetryState[T_PENDING] += 1;
-        Promise.resolve(result).then(function (response) {
-          telemetryState[T_PENDING] -= 1;
-          settleFetch(response, eventCount);
-        }, function () {
-          telemetryState[T_PENDING] -= 1;
-          recordFailure(T_FETCH_FAILURES, "fetch-rejected", eventCount, true);
-        });
+        recordFailure(
+          T_FETCH_FAILURES,
+          Number.isFinite(status) && status > 0 ? "fetch-status-" + status : "fetch-response-unaccepted",
+          eventCount,
+          true,
+        );
       } catch (_err) {
-        recordFailure(T_FETCH_FAILURES, "fetch-promise-error", eventCount, true);
+        recordFailure(T_FETCH_FAILURES, received ? "fetch-response-error" : "fetch-rejected", eventCount, true);
+      } finally {
+        telemetryState[T_PENDING] -= 1;
       }
     }
 

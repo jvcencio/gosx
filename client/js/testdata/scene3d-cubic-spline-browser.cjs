@@ -297,7 +297,7 @@ function requestAllowed(method, pathname, search) {
 const unexpectedRequests = [];
 const notFound = [];
 const networkFailures = [];
-const intentionalNoContent = [];
+const clientEventCompletions = [];
 const clientEventResponses = [];
 const networkRequests = new Map();
 const server = http.createServer((req, res) => {
@@ -390,6 +390,7 @@ let webGPUIntentionalTeardownStderrByte = null;
 let chromeDiagnostics = null;
 let msgId = 0;
 let activeSessionId = null;
+let activeCaseName = null;
 const pending = new Map();
 const listeners = [];
 
@@ -492,7 +493,7 @@ function dispatch(raw) {
     }
     if (m.method === 'Network.requestWillBeSent' && m.params && m.params.request) {
       networkRequests.set(m.params.requestId, {
-        method: m.params.request.method, url: m.params.request.url,
+        method: m.params.request.method, url: m.params.request.url, caseName: activeCaseName,
       });
       inspectNetworkRequest(m.params.request.url, m.params.request.method);
     }
@@ -507,35 +508,29 @@ function dispatch(raw) {
     }
     if (m.method === 'Network.loadingFailed' && m.params) {
       const request = networkRequests.get(m.params.requestId);
-      // Chromium reports a successfully received 204 Fetch as a canceled
-      // loadingFailed(net::ERR_ABORTED), even though responseReceived carried
-      // 204 and fetch resolved ok. Recognize only that exact, allowlisted
-      // no-content terminal signal; every other loadingFailed remains fatal.
-      let intentional204 = false;
-      if (request && request.method === 'POST' && request.responseStatus === 204 &&
-          m.params.errorText === 'net::ERR_ABORTED' && m.params.canceled === true) {
-        try {
-          const parsed = new URL(request.url);
-          intentional204 = parsed.origin === BASE && parsed.pathname === '/_gosx/client-events' &&
-            parsed.search === '';
-        } catch (e) {}
-      }
-      if (intentional204) {
-        intentionalNoContent.push({
-          method: request.method, path: '/_gosx/client-events', status: 204,
-          cdpTerminal: 'loadingFailed:net::ERR_ABORTED',
-        });
-      } else {
-        networkFail('loadingFailed ' + (m.params.requestId || '?') + ' ' +
-          (request ? request.method + ' ' + request.url : '(request unknown)') + ': ' +
-          (m.params.errorText || 'unknown error') +
-          (request && Number.isFinite(request.responseStatus) ?
-            ' after HTTP ' + request.responseStatus : '') +
-          (m.params.canceled ? ' (canceled)' : ''));
+      // Every failed request is fatal, including a 204 whose body lifecycle
+      // was never completed by its consumer. Headers are not a terminal event.
+      networkFail('loadingFailed ' + (m.params.requestId || '?') + ' ' +
+        (request ? request.method + ' ' + request.url : '(request unknown)') + ': ' +
+        (m.params.errorText || 'unknown error') +
+        (request && Number.isFinite(request.responseStatus) ?
+          ' after HTTP ' + request.responseStatus : '') +
+        (m.params.canceled ? ' (canceled)' : ''));
+      networkRequests.delete(m.params.requestId);
+    }
+    if (m.method === 'Network.loadingFinished' && m.params) {
+      const request = networkRequests.get(m.params.requestId);
+      if (request && request.method === 'POST' && request.responseStatus === 204) {
+        const parsed = new URL(request.url);
+        if (parsed.origin === BASE && parsed.pathname === '/_gosx/client-events' && parsed.search === '') {
+          clientEventCompletions.push({
+            caseName: request.caseName, method: request.method, path: parsed.pathname,
+            status: request.responseStatus, cdpTerminal: 'loadingFinished',
+          });
+        }
       }
       networkRequests.delete(m.params.requestId);
     }
-    if (m.method === 'Network.loadingFinished' && m.params) networkRequests.delete(m.params.requestId);
     if (m.method === 'Log.entryAdded' && m.params && m.params.entry) {
       const entry = m.params.entry;
       if (entry.level === 'error') errors.push('browser log error: ' + entry.text);
@@ -2401,7 +2396,7 @@ function scanChromeDiagnostics() {
 
 function writeReport(extra) {
   const report = Object.assign({
-    errors, warnings, notFound, unexpectedRequests, networkFailures, intentionalNoContent,
+    errors, warnings, notFound, unexpectedRequests, networkFailures, clientEventCompletions,
     clientEventResponses,
     sourceCommit: SOURCE_COMMIT,
     selectedBrowser: SELECTED_BROWSER,
@@ -2622,6 +2617,7 @@ const watchdog = setTimeout(() => {
       await send('Network.enable');
       await send('Log.enable');
       await send('Page.addScriptToEvaluateOnNewDocument', { source: PRELOAD() });
+      activeCaseName = c.name;
       activeSessionId = sessionId;
       CASE_EVIDENCE.push(await runAffineCase(send, c, sessionId));
     } finally {
@@ -2632,6 +2628,7 @@ const watchdog = setTimeout(() => {
         beforeTargetCloseByte: chromeStderrBytes,
       });
       activeSessionId = null;
+      activeCaseName = null;
       networkRequests.clear();
       try { await cdpSend('Target.closeTarget', { targetId }, null, STEP_MS); } catch (_err) {}
     }
@@ -2648,6 +2645,7 @@ const watchdog = setTimeout(() => {
       await send('Network.enable');
       await send('Log.enable');
       await send('Page.addScriptToEvaluateOnNewDocument', { source: PRELOAD() });
+      activeCaseName = c.name;
       activeSessionId = sessionId;
       CASE_EVIDENCE.push(await runCase(send, c, sessionId));
     } finally {
@@ -2661,6 +2659,7 @@ const watchdog = setTimeout(() => {
       // In particular, Chromium 154 destroys SwiftShader devices here and
       // reports that expected lifecycle event as a console warning.
       activeSessionId = null;
+      activeCaseName = null;
       networkRequests.clear();
       try { await cdpSend('Target.closeTarget', { targetId }, null, STEP_MS); } catch (_err) {}
     }
@@ -2679,6 +2678,7 @@ const watchdog = setTimeout(() => {
       // Texture causality has its own white-image control at the GLB source.
       await send('Runtime.addBinding', { name: '__textureBlobRegistered' });
       await send('Page.addScriptToEvaluateOnNewDocument', { source: PRELOAD('') + TEXTURE_PRELOAD });
+      activeCaseName = c.name;
       activeSessionId = sessionId;
       CASE_EVIDENCE.push(await runTexturedCase(send, c, sessionId));
     } finally {
@@ -2686,13 +2686,18 @@ const watchdog = setTimeout(() => {
       CASE_STDERR_RANGES.push({ name: c.name, startByte: caseStderrStart,
         beforeTargetCloseByte: chromeStderrBytes });
       activeSessionId = null;
+      activeCaseName = null;
       networkRequests.clear();
       try { await cdpSend('Target.closeTarget', { targetId }, null, STEP_MS); } catch (_err) {}
     }
   }
   if (clientEventResponses.length !== CASES.length + AFFINE_CASES.length + TEXTURED_CASES.length) {
-    fail('expected one intentional client-events 204 per renderer case, got ' +
+    fail('expected one client-events 204 response per renderer case, got ' +
       clientEventResponses.length);
+  }
+  if (clientEventCompletions.length !== CASES.length + AFFINE_CASES.length + TEXTURED_CASES.length) {
+    fail('expected one completed client-events 204 per renderer case, got ' +
+      clientEventCompletions.length);
   }
 })().catch((e) => {
   fail(String(e && e.stack || e));
