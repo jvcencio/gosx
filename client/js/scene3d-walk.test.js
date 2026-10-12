@@ -20,10 +20,21 @@ function model(config = {}, reduced = false, pose = camera) {
 }
 function near(actual, expected, tolerance = 1e-5) { assert.ok(Math.abs(actual - expected) < tolerance, `${actual} != ${expected}`); }
 
+test("moving decks remain walkable beyond land bounds without permitting a step into deep water", () => {
+  const bounds = { minX: -10, minZ: -10, maxX: 10, maxZ: 10 };
+  const deck = { x: 2000, y: 2.5, z: -3000, sizeX: 4, sizeZ: 16 };
+  const { api, state } = model({ bounds, surfaces: [deck], ground: ground([30], 1, 1), water: { level: 0, maxDepth: 0.55 } }, false, { ...camera, x: deck.x, y: 4.2, z: deck.z });
+  api.move(state, 1, 2); near(state.x, 2001); near(state.z, -2998);
+  api.move(state, 10, 0); assert.ok(state.x <= 2002);
+  assert.equal(api.candidateAllowed(state, 2004, -3000), false);
+  assert.equal(api.candidateAllowed(state, 2000, -3020), false);
+  api.advance(state, 0.1, 0, 0, false); near(state.camera.y, 4.2);
+});
 test("walk ground bilinear sampling clamps edges and supports constant fields", () => {
   const { api } = model(), field = api.decodeGround(ground([0, 2, 4, 6]));
   near(api.sampleGround(field, 0.5, 0.5), 3); near(api.sampleGround(field, 0.25, 0.75), 3.5);
   near(api.sampleGround(field, -5, 3), 4); near(api.sampleGround(api.decodeGround(ground([3], 1, 1)), 5, 5), 3);
+  near(api.sampleGround(field, -5, 3, -1e4), -1e4); near(api.sampleGround(field, 0.5, 0.5, -1e4), 3);
   assert.throws(() => api.decodeGround({ ...ground([0]), cols: 2, rows: 2 }), /sample count/);
 });
 test("walk slides along a cylinder and cannot tunnel on a long sprint step", () => {

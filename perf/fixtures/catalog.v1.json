@@ -169,7 +169,6 @@
     {"id":"app/scaffold/public/styles.css","owner":"app","kind":"css","phase":"dormant","condition":"always","dependencies":[]},
     {"id":"app/docs/public/blackglass-discoveries.css","owner":"app","kind":"css","phase":"dormant","condition":"always","dependencies":[]},
     {"id":"app/docs/public/blackglass-discoveries.js","owner":"app","kind":"js","phase":"dormant","condition":"always","dependencies":[]},
-    {"id":"app/docs/public/demos/blackglass-handheld/coast-walk.gb","owner":"app","kind":"other","phase":"dormant","condition":"always","dependencies":[]},
     {"id":"app/docs/public/demos/blackglass-handheld/handheld.css","owner":"app","kind":"css","phase":"dormant","condition":"always","dependencies":[]},
     {"id":"app/docs/public/demos/blackglass-handheld/handheld.js","owner":"app","kind":"js","phase":"dormant","condition":"always","dependencies":[]},
     {"id":"app/docs/public/demos/blackglass-handheld/pocket.html","owner":"app","kind":"html","phase":"dormant","condition":"always","dependencies":[]},

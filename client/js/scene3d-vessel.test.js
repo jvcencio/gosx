@@ -8,6 +8,11 @@ async function mountScene(vessel=true,maxFPS=60,realShip=false,coarse=false,spec
  const props={controls:'first-person',walk:{headBob:0},camera,maxFPS,scene:{camera,objects:[{id:'ship/hull',kind:'box',geometry:'box',size:3}]}};
  if(vessel) {props.vessel={nodeId:'ship',heading:Math.PI/2,windStrength:8,helm:{x:0,y:4.2,z:6.5},wake:false};props.camera={...camera,x:6.5,z:0};props.scene.camera=props.camera;props.scene.environment={ocean:{waveHeight:.9,waveLength:17,choppiness:.7}};}
  if(vessel&&options.quickBoard)props.vessel.quickBoard=true;
+ if(vessel&&options.openWater) {
+  props.vessel.openWater=true;props.vessel.position={x:2000,z:-3000};
+  props.walk.bounds={minX:-10,minZ:-10,maxX:10,maxZ:10};
+  props.walk.ground={minX:0,minZ:0,sizeX:1,sizeZ:1,cols:1,rows:1,minHeight:30,maxHeight:30,heights:'AAA='};
+ }
  if(options.far)props.scene.camera=props.camera={...props.camera,x:80,z:80};
  const routes=Object.fromEntries(Object.entries(sources).map(([name,text])=>['/'+name+'.js',{text}]));
  if(realShip) {
@@ -47,6 +52,21 @@ test('Pilot ship is visible from shore, boards in one click, and returns to the 
  h.handle.resetCamera();h.raf.flush(350);const reset=h.handle.getCamera();
  assert.ok(Math.abs(reset.x-80)<.01&&Math.abs(reset.z-80)<.01);
  h.handle.dispose();assert.equal(h.mount.querySelector('.gosx-scene3d-vessel-controls'),null);
+});
+test('mounted open-water vessel uses deep water beyond the finite terrain and leaves on its offshore deck',async()=>{
+ const h=await mountScene(true,60,false,false,false,false,{quickBoard:true,far:true,openWater:true});
+ const api=h.env.context.__gosx_scene3d_vessel_physics,advance=api.advance;let state,floor;
+ api.advance=(...args)=>{state=args[0];floor=args[5];return advance(...args);};
+ const pilot=h.mount.querySelector('.gosx-scene3d-vessel-controls').querySelector('button');h.event(pilot,'click');h.raf.flush(250);
+ assert.equal(state.mode,'sailing');
+ assert.equal(state.grounded,false);assert.equal(floor(2000,-3000),-1e4);assert.equal(floor(.5,.5),30);
+ h.event(pilot,'click');h.raf.flush(300);const aboard=h.handle.getCamera();
+ assert.equal(state.mode,'deck');
+ h.canvas.focus();h.event(h.env.document,'keydown',{code:'KeyW'});h.raf.flush(350);h.raf.flush(400);
+ const walked=h.handle.getCamera();assert.ok(walked.x>1900&&walked.z<-2900,'deck walking must not clamp the camera back to land bounds: '+JSON.stringify({aboard,walked}));
+ assert.ok(walked.y<6,'the edge of the land heightfield must not lift the deck walker');
+ assert.ok(Math.hypot(walked.x-aboard.x,walked.z-aboard.z)<2);h.handle.resetCamera();h.raf.flush(450);
+ assert.equal(h.mount.getAttribute('data-gosx-scene3d-vessel'),'moored');h.handle.dispose();
 });
 test('a scene without a vessel fetches neither vessel nor ocean query even when URLs are advertised',async()=>{
  const h=await mountScene(false);assert.equal(h.env.context.__gosx_scene3d_vessel_api,undefined);assert.equal(h.env.context.__gosx_scene3d_ocean_query,undefined);

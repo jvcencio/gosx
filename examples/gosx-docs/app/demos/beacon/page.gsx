@@ -42,7 +42,6 @@ func Page() Node {
 				<p>Pale shells gather along the inner lip of the basalt. The quiet water catches a different sky at every hour.</p>
 			</details>
 			<p data-coast-handheld-note hidden>A violet handheld was left on the dry rock. Your pocket has room for one more discovery.</p>
-			<button type="button" data-coast-pocket hidden>Play the handheld</button>
 			<p class="bgb__journal-status" role="status" data-coast-status>Explore at your own pace.</p>
 		</details>
 		<dialog class="bgb__handheld-dialog" aria-label="Pocket handheld">
@@ -68,6 +67,13 @@ func Page() Node {
 				<a class="bgb__link bgb__period-blue-hour" href={data.blueHref}>Blue hour</a>
 				<a class="bgb__link bgb__period-noon" href={data.noonHref}>Midday</a>
 			</nav>
+			<button
+				class="bgb__link bgb__pocket"
+				type="button"
+				data-coast-pocket
+				hidden
+				aria-label="Pull out the Game Boy"
+			>Game Boy</button>
 		</div>
 		<p class="bgb__reveal" aria-live="off">
 			Rendered by GoSX: Go + WASM,

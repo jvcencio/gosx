@@ -147,6 +147,9 @@ func buildDocsApp(root, port string) (*server.App, error) {
 		})
 	})
 	app.SetPublicDir(filepath.Join(root, "public"))
+	if err := mountBlackglassCartridge(app, root); err != nil {
+		return nil, err
+	}
 	app.API("GET /api/docs-hubs/open-tabs", func(ctx *server.Context) (any, error) {
 		return map[string]any{
 			"html": fmt.Sprintf("<h2>Open guide tabs: %d</h2>", docshubs.ExampleHub.Presence().Count()),

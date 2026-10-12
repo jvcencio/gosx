@@ -26,9 +26,9 @@
     const physics=window.__gosx_scene3d_vessel_physics,query=window.__gosx_scene3d_ocean_query;
     const ocean=sceneState.environment.ocean||{},walk=props.walk||{},state=physics.create(props.vessel,ocean,walk);
     const motion=typeof window.matchMedia==='function'?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
-    const walkAPI=window.__gosx_scene3d_walk_api,ground=walk.ground&&walkAPI?walkAPI.decodeGround(walk.ground):null;
+    const walkAPI=window.__gosx_scene3d_walk_api,ground=walkAPI?walkAPI.decodeGround(walk.ground):null,outsideHeight=props.vessel.openWater?-1e4:undefined;
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-    const floor=(x,z)=>ground?walkAPI.sampleGround(ground,x,z):-1e4;
+    const floor=(x,z)=>ground?walkAPI.sampleGround(ground,x,z,outsideHeight):-1e4;
     let waveFloor=()=>-1e4,disposed=false,first=true,lastBob=0;
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     const high=query.create(ocean,'high',(x,z)=>waveFloor(x,z),true),low=query.create(ocean,'low',(x,z)=>waveFloor(x,z),true);
