@@ -6130,11 +6130,8 @@
         // excluded from the custom-stream record.
         var isReserved = SCENE_WEBGL_RESERVED_ATTRIBUTES.indexOf(attrName) >= 0;
         if (typeof attrName !== "string") {
-          if (!isReserved) {
-            sceneSelenaDiscardProgram(gl, result);
-            return null;
-          }
-          continue;
+          sceneSelenaDiscardProgram(gl, result);
+          return null;
         }
         var glName = attrName;
         if (skinned && attrName === "position") glName = "a_position";
@@ -9916,6 +9913,9 @@
         // before.
         var selenaProgram = ensureSelenaProgram(mat, isSkinned);
         if (selenaProgram) {
+          // A late variant publishes its layout only after parallel linking
+          // and attribute initialization complete.
+          if (!selenaProgram.layout) continue;
           if (currentProgram !== selenaProgram.program) {
             gl.useProgram(selenaProgram.program);
             currentProgram = selenaProgram.program;
