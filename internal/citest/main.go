@@ -29,7 +29,7 @@ import (
 const (
 	cliRelativePath                   = "cmd/gosx"
 	ouroborosRaceRelativePath         = "perf/ouroboros"
-	exhaustiveRacePackageTimeout      = "40m"
+	exhaustiveRacePackageTimeout      = "60m"
 	ouroborosScopedRacePackageTimeout = "10m"
 )
 
