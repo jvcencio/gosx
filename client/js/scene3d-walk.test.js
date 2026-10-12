@@ -34,6 +34,7 @@ test("walk ground bilinear sampling clamps edges and supports constant fields", 
   const { api } = model(), field = api.decodeGround(ground([0, 2, 4, 6]));
   near(api.sampleGround(field, 0.5, 0.5), 3); near(api.sampleGround(field, 0.25, 0.75), 3.5);
   near(api.sampleGround(field, -5, 3), 4); near(api.sampleGround(api.decodeGround(ground([3], 1, 1)), 5, 5), 3);
+  near(api.sampleGround(field, -5, 3, -1e4), -1e4); near(api.sampleGround(field, 0.5, 0.5, -1e4), 3);
   assert.throws(() => api.decodeGround({ ...ground([0]), cols: 2, rows: 2 }), /sample count/);
 });
 test("walk slides along a cylinder and cannot tunnel on a long sprint step", () => {
