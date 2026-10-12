@@ -829,11 +829,13 @@ func sceneRecordJSONEqual[T any](a, b T) bool {
 // sceneRecordPointerJSONEqual answers the same question as sceneRecordJSONEqual
 // without copying either value.
 //
-// It tries provenJSONEqual first, and marshals only when that fast path cannot
-// prove equality. The fast path is one-way on purpose: true means the two values
+// It rejects unequal plain object transforms, then tries provenJSONEqual and
+// marshals only when neither fast path settles the comparison.
+//
+// provenJSONEqual is one-way on purpose: true means the two values
 // must encode to identical JSON, and false means "not proven", never "different".
 // So the answer is always the answer the marshal comparison gives, and the
-// marshal comparison is still the only code that decides a record changed.
+// marshal comparison still decides differences the fast paths cannot settle.
 //
 // Why this shape: DiffCommands used to marshal both records for every record in
 // the scene, so an edit that moved 10 percent of a scene paid the full encode
