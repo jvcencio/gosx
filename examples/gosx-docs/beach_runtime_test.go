@@ -30,6 +30,7 @@ func TestBlackglassBeachInstructionsFollowView(t *testing.T) {
 		{"ship", "ship", "WASD or arrows to walk", "Left thumb to move"},
 		{"glass", "glass", "arrows to orbit", "pinch to zoom"},
 		{"cliff", "cliff", "arrows to orbit", "pinch to zoom"},
+		{"pools", "pools", "arrows to orbit", "pinch to zoom"},
 		{"unknown", "shore", "WASD or arrows to walk", "Left thumb to move"},
 	} {
 		t.Run(tc.view, func(t *testing.T) {
@@ -45,6 +46,40 @@ func TestBlackglassBeachInstructionsFollowView(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBlackglassPoolJournalAndLazyCartridgeServe(t *testing.T) {
+	_, file, _, _ := runtime.Caller(0)
+	configureDocsTestSecret(t)
+	app, err := buildDocsApp(server.ResolveAppRoot(file), "8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := app.Build()
+	page := httptest.NewRecorder()
+	handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/demos/beacon?view=pools&period=blue-hour", nil))
+	if page.Code != http.StatusOK {
+		t.Fatalf("pool view returned %d", page.Code)
+	}
+	for _, want := range []string{`data-view="pools"`, `Field journal`, `Ochre stars`, `Anemone garden`, `limpet ledge`, `shore-handheld.glb`, `data-coast-pickup=`, `?view=pools&amp;period=blue-hour`} {
+		if !strings.Contains(page.Body.String(), want) {
+			t.Fatalf("pool view missing %q", want)
+		}
+	}
+	if strings.Contains(page.Body.String(), "boytacean_bg.wasm") || strings.Contains(page.Body.String(), "coast-walk.gb") {
+		t.Fatal("cartridge assets must not be requested by the initial scene")
+	}
+	for path, contentType := range map[string]string{
+		"/demos/blackglass-handheld/pocket.html":                               "text/html",
+		"/demos/blackglass-handheld/handheld.js":                               "javascript",
+		"/demos/blackglass-handheld/vendor/boytacean-0.13.2/boytacean_bg.wasm": "application/wasm",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK || !strings.Contains(response.Header().Get("Content-Type"), contentType) || response.Body.Len() == 0 {
+			t.Fatalf("pocket asset %s: %d %s", path, response.Code, response.Header().Get("Content-Type"))
+		}
 	}
 }
 
