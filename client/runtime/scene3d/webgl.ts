@@ -7586,6 +7586,21 @@
     }
   }
 
+  function scenePBRVertexSlice(source: any, offset: number, count: number, stride: number, scratch: Float32Array) {
+    const length = count * stride;
+    const start = offset * stride;
+    // Float32 draw streams can reach WebGL directly. Views retain their
+    // exact bits, including UVs and normals, without a per-vertex copy.
+    if (source instanceof Float32Array && Number.isInteger(start) && Number.isInteger(length) &&
+        start >= 0 && length >= 0 && start + length <= source.length) {
+      return source.subarray(start, start + length);
+    }
+    for (let i = 0; i < length; i++) {
+      scratch[i] = source && source[start + i] !== undefined ? +source[start + i] : 0;
+    }
+    return scratch.subarray(0, length);
+  }
+
   function createScenePBRRenderer(gl, canvas) {
     let selectiveBloom = false;
 
@@ -8530,13 +8545,7 @@
 
     // Convert a slice of a Float64Array source to Float32Array, reusing scratch.
     function sliceToFloat32(source, offset, count, stride, scratchName) {
-      const length = count * stride;
-      const start = offset * stride;
-      const buf = ensureScratch(scratchName, length);
-      for (var i = 0; i < length; i++) {
-        buf[i] = source && source[start + i] !== undefined ? +source[start + i] : 0;
-      }
-      return buf.subarray(0, length);
+      return scenePBRVertexSlice(source, offset, count, stride, ensureScratch(scratchName, count * stride));
     }
 
     function uploadCustomUniforms(gl, uniforms, values) {
