@@ -1002,6 +1002,134 @@ test("bootstrap telemetry records rejected fetch requests and pending request de
   assert.ok(snapshot.lastFailureAt > 0);
 });
 
+// Exercise native Response bodies as well as injected request compatibility.
+async function telemetryResponseFixture(transport, response) {
+  const env = createContext({});
+  env.context.__gosx_telemetry_config = { flushInterval: 30000 };
+  installManualTimers(env.context);
+  const requests = [];
+  if (transport === "fetch") {
+    const original = env.context.fetch;
+    env.context.fetch = (url, init) => {
+      if (new URL(url, env.context.location.href).pathname !== "/_gosx/client-events") return original(url, init);
+      requests.push({ url, init });
+      return Promise.resolve(response);
+    };
+  } else {
+    env.context.__gosx = { request(url, init) {
+      requests.push({ url, init });
+      return transport === "custom-sync" ? response : Promise.resolve(response);
+    } };
+  }
+  runScript(bootstrapSource, env.context, "bootstrap.js");
+  await flushAsyncWork();
+  env.context.__gosx_emit("info", "response-completion", "event", {});
+  env.context.__gosx_telemetry_flush();
+  return { env, requests, snapshot: () => env.context.__gosx.telemetry.snapshot() };
+}
+
+for (const transport of ["fetch", "custom-promise", "custom-sync"]) {
+  test(`bootstrap telemetry keeps a 204 response pending until text completion (${transport})`, async () => {
+    const response = new Response(null, { status: 204 });
+    const originalText = response.text.bind(response);
+    let complete;
+    const completion = new Promise(resolve => { complete = resolve; });
+    let reads = 0;
+    response.text = () => { reads++; return completion.then(originalText); };
+    const x = await telemetryResponseFixture(transport, response);
+    await flushAsyncWork();
+    assert.equal(reads, 1, "even a bodyless 204 must invoke the native completion API");
+    assert.equal(x.snapshot().pendingRequests, 1);
+    assert.equal(x.snapshot().serverAcceptedEvents, 0, "headers alone do not settle telemetry delivery");
+    assert.equal(x.requests.length, 1);
+    assert.equal(x.requests[0].init.keepalive, true);
+    assert.equal(x.requests[0].init.credentials, "omit");
+    complete();
+    await flushAsyncWork();
+    assert.equal(x.snapshot().pendingRequests, 0);
+    assert.equal(x.snapshot().serverAcceptedEvents, 1);
+    assert.equal(x.snapshot().failedEvents, 0);
+    assert.equal(reads, 1);
+  });
+}
+
+test("bootstrap telemetry consumes a native streamed response before accepting it", async () => {
+  let controller;
+  const response = new Response(new ReadableStream({ start(value) { controller = value; } }));
+  const x = await telemetryResponseFixture("fetch", response);
+  await flushAsyncWork();
+  assert.equal(response.bodyUsed, true);
+  assert.equal(x.snapshot().pendingRequests, 1);
+  assert.equal(x.snapshot().serverAcceptedEvents, 0);
+  controller.enqueue(new TextEncoder().encode("accepted"));
+  controller.close();
+  await flushAsyncWork();
+  assert.equal(x.snapshot().pendingRequests, 0);
+  assert.equal(x.snapshot().serverAcceptedBatches, 1);
+});
+
+test("bootstrap telemetry records a native body rejection once without accepting or retrying", async () => {
+  let controller;
+  const response = new Response(new ReadableStream({ start(value) { controller = value; } }));
+  const x = await telemetryResponseFixture("fetch", response);
+  await flushAsyncWork();
+  assert.equal(x.snapshot().pendingRequests, 1);
+  controller.error(new Error("response truncated"));
+  await flushAsyncWork();
+  const snapshot = x.snapshot();
+  assert.equal(snapshot.pendingRequests, 0);
+  assert.equal(snapshot.serverAcceptedEvents, 0);
+  assert.equal(snapshot.fetchFailures, 1);
+  assert.equal(snapshot.failedEvents, 1);
+  assert.equal(snapshot.failedBatches, 1);
+  assert.equal(snapshot.lastFailureReason, "fetch-response-error");
+  assert.equal(snapshot.queueDepth, 0);
+  assert.equal(x.requests.length, 1, "body failures must not change retry/queue policy");
+});
+
+test("bootstrap telemetry retires pending when a custom response then getter throws", async () => {
+  const response = { get then() { throw new Error("invalid transport result"); } };
+  const x = await telemetryResponseFixture("custom-sync", response);
+  await flushAsyncWork();
+  assert.equal(x.snapshot().pendingRequests, 0);
+  assert.equal(x.snapshot().serverAcceptedEvents, 0);
+  assert.equal(x.snapshot().fetchFailures, 1);
+  assert.equal(x.snapshot().failedEvents, 1);
+  assert.equal(x.snapshot().lastFailureReason, "fetch-rejected");
+});
+
+test("bootstrap telemetry records a synchronous custom body-read exception", async () => {
+  const response = new Response(null, { status: 204 });
+  response.text = () => { throw new Error("response unavailable"); };
+  const x = await telemetryResponseFixture("custom-sync", response);
+  await flushAsyncWork();
+  assert.equal(x.snapshot().pendingRequests, 0);
+  assert.equal(x.snapshot().serverAcceptedEvents, 0);
+  assert.equal(x.snapshot().fetchFailures, 1);
+  assert.equal(x.snapshot().lastFailureReason, "fetch-response-error");
+});
+
+test("bootstrap telemetry preserves rejected HTTP status after completing its response", async () => {
+  const response = new Response("back off", { status: 429 });
+  const x = await telemetryResponseFixture("custom-promise", response);
+  await flushAsyncWork();
+  assert.equal(response.bodyUsed, true);
+  assert.equal(x.snapshot().pendingRequests, 0);
+  assert.equal(x.snapshot().serverAcceptedEvents, 0);
+  assert.equal(x.snapshot().fetchFailures, 1);
+  assert.equal(x.snapshot().lastFailureReason, "fetch-status-429");
+});
+
+for (const transport of ["custom-promise", "custom-sync"]) {
+  test(`bootstrap telemetry preserves completed status-only custom responses (${transport})`, async () => {
+    const x = await telemetryResponseFixture(transport, { ok: true, status: 204 });
+    await flushAsyncWork();
+    assert.equal(x.snapshot().pendingRequests, 0);
+    assert.equal(x.snapshot().serverAcceptedEvents, 1);
+    assert.equal(x.snapshot().failedEvents, 0);
+  });
+}
+
 test("bootstrap telemetry drops unserializable batches without throwing or recursively emitting", async () => {
   const env = createContext({
     fetchRoutes: {
