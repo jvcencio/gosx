@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.57.13
+
+- Keep browser telemetry fetches pending until the native response body has
+  completed, including bodyless 204 responses. Failed body reads follow the
+  existing failure accounting instead of being counted as accepted delivery.
+- Fracture the Blackglass demo coastline and refine its shore materials and
+  authored coastal assets.
+
 ## v0.57.12
 
 - Add `Hub.BroadcastBinarySnapshot(epoch, baseline, delta)` for application
