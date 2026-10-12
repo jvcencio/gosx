@@ -23,8 +23,8 @@ func TestBeachBakedAssetsKeepSurfacesAndWinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first) != 4 {
-		t.Fatal("four static assets required")
+	if len(first) != 6 {
+		t.Fatal("six static assets required, including pool life and the handheld")
 	}
 	total := 0
 	for name, data := range first {
@@ -118,6 +118,12 @@ func TestBeachBakedMomentsKeepMaterialsAndWalkData(t *testing.T) {
 	for _, node := range blackglassBeachBakedMoments(beachgen.PeriodGolden) {
 		model, ok := node.(scene.Model)
 		if !ok {
+			continue
+		}
+		if model.ID == "tide-pool-life" || model.ID == "shore-handheld" {
+			if model.Src != blackglassBeachModelRoot+model.ID+".glb" || !model.ReceiveShadow || model.Static == nil || !*model.Static {
+				t.Fatal("discovery asset lost its retained source or grounding")
+			}
 			continue
 		}
 		if model.Src != blackglassBeachModelRoot+model.ID+".glb" || model.Material != nil || model.ReceiveShadow != receivesShadow[model.ID] || model.Static == nil || !*model.Static {

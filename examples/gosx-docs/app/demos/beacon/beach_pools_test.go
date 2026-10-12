@@ -18,12 +18,12 @@ func TestBeachPoolsConstructionAndTerrain(t *testing.T) {
 	}
 	for i, site := range blackglassBeachPoolSites() {
 		m := meshes[fmt.Sprintf("tide-pool-%d", i)]
-		g := m.Geometry.(scene.CylinderGeometry)
+		g := m.Geometry.(scene.BufferGeometry)
 		mat := m.Material.(scene.StandardMaterial)
-		if m.Position.X != site[0] || m.Position.Z != site[1] || g.RadiusTop != site[2] || g.Segments != 12 {
+		if m.Position.X != site[0] || m.Position.Z != site[1] || len(g.Positions)/3 != 13 || len(g.Indices)/3 != 12 {
 			t.Fatal("pool lost its site or cheap disc geometry")
 		}
-		level := m.Position.Y + g.Height/2
+		level := m.Position.Y
 		for s := 0; s < 12; s++ {
 			a := 2 * math.Pi * float64(s) / 12
 			h := beachgen.TerrainHeight(site[0]+site[2]*math.Cos(a), site[1]+site[2]*math.Sin(a), beachgen.Seed)

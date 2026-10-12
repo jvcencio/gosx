@@ -48,6 +48,8 @@ type blackglassBeachView struct {
 
 func blackglassBeachViewFor(raw string) blackglassBeachView {
 	switch raw {
+	case "pools":
+		return blackglassBeachView{"pools", "The tide pools", scene.Vec3(10.8, 3.6, 10.6), scene.Vec3(11.1, .5, 5.3)}
 	case "glass":
 		return blackglassBeachView{"glass", "The glass", scene.Vec3(-10.8, beachgen.TerrainHeight(-10.8, 8.8, beachgen.Seed)+1.7, 8.8), scene.Vec3(-6.2, 1.7, 2.6)}
 	case "ship":
@@ -126,10 +128,10 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 	sky.Clouds = &scene.SkyClouds{Coverage: 0.50, Altitude: 1100, Scale: 4800, Opacity: 0.72, Direction: 20}
 	sun := sky.SunDirection
 	horizon := blackglassBeachHorizon(sky, period.Exposure)
-	return scene.Props{
+	program := scene.Props{
 		Width: 1280, Height: 720,
 		Label:       "Blackglass Beach — " + view.Name + " at " + period.Name,
-		AriaLabel:   "A black sand beach at " + period.Name + ": footprints lead to an obsidian monolith, tide pools glint on the eastern shore, wreck ribs rise in the western dunes, a hollow catches the low sun, and a lighthouse sweeps the eastern headland. A three-masted clipper waits at the jetty.",
+		AriaLabel:   "A black-sand coast at " + period.Name + ": basalt cliffs, sea stacks, footprints to black glass, tide pools with marine life, a wreck and a lighthouse. A violet handheld rests beside the pools; a clipper waits at the jetty.",
 		ControlZoom: scene.Bool(true), ControlTarget: view.Target, ControlMinDistance: 2, ControlMaxDistance: 240,
 		Background: horizon, Controls: blackglassBeachControls(view.ID), Walk: blackglassBeachWalk(), Vessel: blackglassBeachVessel(), PointerLock: scene.Bool(true),
 		AutoRotate: scene.Bool(false), Responsive: scene.Bool(true), FillHeight: scene.Bool(true),
@@ -183,11 +185,34 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 					Thickness: .45, AttenuationDistance: .3, AttenuationColor: &[3]float64{.12, .24, .21}}},
 		}, blackglassBeachBakedMoments(period.ID)...)...),
 	}
+	// Scenery is not a pick target: keep pointer queries bounded to the three
+	// pools and the collectible, rather than ray-testing the entire coastline.
+	for i, node := range program.Graph.Nodes {
+		switch n := node.(type) {
+		case scene.Model:
+			if !n.Interactive {
+				n.Pickable = scene.Bool(false)
+				program.Graph.Nodes[i] = n
+			}
+		case scene.Mesh:
+			if !n.Interactive {
+				n.Pickable = scene.Bool(false)
+				program.Graph.Nodes[i] = n
+			}
+		case scene.InstancedMesh:
+			n.Pickable = scene.Bool(false)
+			program.Graph.Nodes[i] = n
+		}
+	}
+	if view.ID == "pools" {
+		program.Camera.PortraitFOV = 95
+	}
+	return program
 }
 
 // Scenic presets dolly around their subject; shore and ship remain walkable.
 func blackglassBeachControls(viewID string) string {
-	if viewID == "glass" || viewID == "cliff" {
+	if viewID == "glass" || viewID == "cliff" || viewID == "pools" {
 		return scene.ControlOrbit
 	}
 	return scene.ControlFirstPerson

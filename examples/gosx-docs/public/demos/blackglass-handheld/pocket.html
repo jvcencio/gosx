@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Blackglass pocket handheld</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 24'%3E%3Crect width='20' height='24' rx='4' fill='%2376618c'/%3E%3Cpath fill='%239da97b' d='M3 3h14v11H3z'/%3E%3C/svg%3E"><link rel="stylesheet" href="handheld.css"></head>
+<body><main class="pocket">
+  <p class="eyebrow">FOUND ON BLACKGLASS COAST</p>
+  <div class="device" aria-label="Playable Game Boy Color">
+    <div class="bezel"><span class="power" aria-hidden="true"></span><canvas width="160" height="144" tabindex="0" aria-label="Cartridge screen. Arrow keys move; Z or J is A; X or K is B; Enter starts; Shift selects."></canvas><p class="brand">GAME BOY <span>COLOR</span></p></div>
+    <div class="pad">
+      <div class="dpad" aria-label="Directional pad"><button type="button" data-key="Up" aria-label="Up">▲</button><button type="button" data-key="Left" aria-label="Left">◀</button><button type="button" data-key="Right" aria-label="Right">▶</button><button type="button" data-key="Down" aria-label="Down">▼</button></div>
+      <div class="ab"><button type="button" data-key="B">B</button><button type="button" data-key="A">A</button></div>
+    </div>
+    <div class="start"><button type="button" data-key="Select">SELECT</button><button type="button" data-key="Start">START</button><span class="speaker" aria-hidden="true">╱╱╱╱╱</span></div>
+  </div>
+  <p class="status" role="status" data-status>Switching on…</p>
+  <div class="tools"><label class="cartridge">Load cartridge <input type="file" accept=".gb,.gbc" data-rom></label><button type="button" data-sound aria-pressed="false">Sound off</button><button type="button" data-save>Export save</button><label class="import">Import save<input type="file" accept=".sav" data-import-save></label></div>
+  <p class="hint">Play the included coast cartridge, or load your Pokémon Yellow .gb file. Cartridge files stay on this device. Arrows · Z/X · Enter · Shift</p>
+  <a class="credits" href="vendor/boytacean-0.13.2/LICENSE" target="_blank" rel="noopener">Emulator credits: Boytacean 0.13.2 · Apache-2.0</a>
+</main><script type="module" src="handheld.js"></script></body></html>
