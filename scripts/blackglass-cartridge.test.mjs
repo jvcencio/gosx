@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 
 const helper = new URL('./blackglass-cartridge.py', import.meta.url).pathname;
 test('deployment cartridge is external, pinned, validated and recorded without a source path', () => {
@@ -22,4 +24,29 @@ test('deployment cartridge is external, pinned, validated and recorded without a
     rom[0x14d]^=1;writeFileSync(source,rom);const invalid=stage(createHash('sha256').update(rom).digest('hex'));assert.notEqual(invalid.status,0);assert.match(invalid.stderr,/checksum/);
     const inRepo=spawnSync('python3',[helper,'--root',root,'--source',helper,'--sha256',hash],{encoding:'utf8'});assert.notEqual(inRepo.status,0);assert.match(inRepo.stderr,/outside the repository/);
   } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+test('served cartridge verification identifies its client through a gateway and retains byte validation', async () => {
+  const dir=mkdtempSync(join(tmpdir(),'gosx-cartridge-gateway-'));
+  const rom=Buffer.alloc(32768),hash=createHash('sha256').update(rom).digest('hex'),root=join(dir,'dist');
+  let corrupt=false;
+  const server=createServer((req,res)=>{
+    if(!req.headers['user-agent'] || req.headers['user-agent'].startsWith('Python-urllib/')){res.writeHead(403);res.end('Unidentified client');return;}
+    if(req.url==='/api/blackglass-cartridge'){
+      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({available:true,bytes:rom.length,sha256:hash,url:'/api/blackglass-cartridge/rom?sha256='+hash}));
+    }else if(req.url==='/api/blackglass-cartridge/rom?sha256='+hash){
+      const bytes=Buffer.from(rom);if(corrupt)bytes[0]^=1;res.end(bytes);
+    }else{res.writeHead(404);res.end();}
+  });
+  try{
+    mkdirSync(join(root,'runtime-assets'),{recursive:true});
+    writeFileSync(join(root,'runtime-assets/blackglass-cartridge.json'),JSON.stringify({sha256:hash,bytes:rom.length}));
+    server.listen(0,'127.0.0.1');await once(server,'listening');
+    const verify=()=>new Promise((resolve,reject)=>{
+      const child=spawn('python3',[helper,'--root',root,'--verify-base','http://127.0.0.1:'+server.address().port]);let stderr='';
+      child.stdout.resume();child.stderr.on('data',data=>stderr+=data);child.on('error',reject);child.on('close',status=>resolve({status,stderr}));
+    });
+    const valid=await verify();assert.equal(valid.status,0,valid.stderr);
+    corrupt=true;const invalid=await verify();assert.notEqual(invalid.status,0);assert.match(invalid.stderr,/served cartridge bytes differ/);
+  }finally{await new Promise(resolve=>server.close(resolve));rmSync(dir,{recursive:true,force:true});}
 });
