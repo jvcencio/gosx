@@ -30,6 +30,16 @@ func BlackglassBeachStaticAssets() (map[string][]byte, error) {
 		}
 		files[name] = data
 	}
+	for name, groups := range map[string][][]scene.Mesh{
+		"tide-pool-life.glb": blackglassBeachPoolLife(),
+		"shore-handheld.glb": blackglassBeachHandheld(),
+	} {
+		data, err := beachgen.StaticColorGLB(groups...)
+		if err != nil {
+			return nil, err
+		}
+		files[name] = data
+	}
 	return files, nil
 }
 
@@ -69,7 +79,7 @@ func blackglassBeachBakedMoments(period string) []scene.Node {
 		}
 		nodes = append(nodes, node)
 	}
-	return nodes
+	return append(nodes, blackglassBeachDiscoveryModels()...)
 }
 
 // Only the upper discs of the wet prints are visible. Bake those surfaces

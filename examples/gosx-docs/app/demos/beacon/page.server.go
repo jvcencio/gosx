@@ -14,11 +14,13 @@ func init() {
 			// docs navigation runtime; the scene bootstrap still owns its controls.
 			ctx.SetNavigationHead(nil)
 			ctx.AddHead(server.LifecycleScript("/blackglass-content.js"))
+			ctx.AddHead(server.LifecycleScript("/blackglass-discoveries.js"))
+			ctx.AddHead(server.Stylesheet("/blackglass-discoveries.css"))
 			view := blackglassBeachViewFor(ctx.Query("view"))
 			period := blackglassBeachPeriodFor(ctx.Query("period"))
 			instructions := "Click or drag to look · WASD or arrows to walk · Shift to run · Esc to release"
 			touchInstructions := "Left thumb to move · drag the right side to look"
-			if view.ID == "glass" || view.ID == "cliff" {
+			if view.ID == "glass" || view.ID == "cliff" || view.ID == "pools" {
 				instructions = "Drag or use arrows to orbit · scroll or +/− to zoom · Home to reset"
 				touchInstructions = "Drag to orbit · pinch to zoom"
 			}
@@ -26,13 +28,15 @@ func init() {
 				"instructions": instructions, "touchInstructions": touchInstructions,
 				"scene": BlackglassBeachProgram(view.ID, period.ID), "posterSrc": blackglassBeachPosterSrc,
 				"view": view.ID, "period": period.ID,
-				"shoreHref":  "?view=shore&period=" + period.ID,
-				"glassHref":  "?view=glass&period=" + period.ID,
-				"cliffHref":  "?view=cliff&period=" + period.ID,
-				"shipHref":   "?view=ship&period=" + period.ID,
-				"goldenHref": "?view=" + view.ID + "&period=golden-hour",
-				"blueHref":   "?view=" + view.ID + "&period=blue-hour",
-				"noonHref":   "?view=" + view.ID + "&period=noon",
+				"pickupCommands": blackglassHandheldPickupCommands(),
+				"shoreHref":      "?view=shore&period=" + period.ID,
+				"glassHref":      "?view=glass&period=" + period.ID,
+				"cliffHref":      "?view=cliff&period=" + period.ID,
+				"poolsHref":      "?view=pools&period=" + period.ID,
+				"shipHref":       "?view=ship&period=" + period.ID,
+				"goldenHref":     "?view=" + view.ID + "&period=golden-hour",
+				"blueHref":       "?view=" + view.ID + "&period=blue-hour",
+				"noonHref":       "?view=" + view.ID + "&period=noon",
 			}, nil
 		},
 	})
