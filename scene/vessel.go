@@ -20,7 +20,8 @@ type Vessel struct {
 	WindStrength  float64     `json:"windStrength,omitempty"`  // default 8 m/s
 	SailTrim      float64     `json:"sailTrim,omitempty"`      // initial trim, default 0.55
 	MaxSpeed      float64     `json:"maxSpeed,omitempty"`      // default 10
-	Bounds        *WalkBounds `json:"bounds,omitempty"`        // otherwise uses Walk.Bounds
+	Bounds        *WalkBounds `json:"bounds,omitempty"`        // otherwise uses Walk.Bounds unless OpenWater
+	OpenWater     bool        `json:"openWater,omitempty"`     // sail beyond Walk.Bounds; terrain and collider checks still apply
 	LODs          []VesselLOD `json:"lods,omitempty"`
 	WakeTexture   string      `json:"wakeTexture,omitempty"` // optional alpha foam image
 	Wake          *bool       `json:"wake,omitempty"`        // default true

@@ -11,6 +11,10 @@
 .bgb__journal .bgb__journal-status { font-size:11px; color:#a9b7ad; margin-top:10px; }
 .bgb__journal button { margin:0 16px 10px; min-height:40px; border:1px solid #ebc99880; border-radius:999px; background:#ebc998; color:#15201c; padding:8px 14px; cursor:pointer; font-family:inherit; font-size:12px; font-weight:600; }
 .bgb__journal :is(summary,a,button):focus-visible { outline:2px solid #f2c38c; outline-offset:-3px; }
+.bgb__pocket[hidden] { display:none; }
+.bgb__pocket { min-height:44px; border:0; cursor:pointer; font-family:inherit; }
+.bgb__pocket:not([hidden]) { color:#192421; background:#ebc998; }
+.bgb__pocket:not([hidden]):hover { color:#192421; background:#f4d5a8; }
 .bgb[data-view="pools"] .bgb__view-pools { background:#fff4e6eb; color:#16130f; }
 .bgb__handheld-dialog { padding:0; border:0; background:#151819; color:#fff; width:min(560px,calc(100vw - 24px)); height:min(820px,calc(100dvh - 24px)); border-radius:24px; overflow:hidden; box-shadow:0 24px 90px #000a; }
 .bgb__handheld-dialog::backdrop { background:#040b11b8; backdrop-filter:blur(7px); }

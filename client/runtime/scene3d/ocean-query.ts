@@ -62,13 +62,14 @@
     }
     return Object.assign(evaluate(query, qx, qz, seconds), { parameterX: qx, parameterZ: qz });
   }
-  // Match textureSampleLevel/textureLod clamp-to-edge bilinear filtering in R,
-  // then decode. Interpolating decoded signed-sqrt heights would be different.
+  // Match GPU filtering in R inside the finite chart, with deep water outside.
+  // Interpolating decoded signed-sqrt heights would be different.
   // @ts-ignore TS7006 -- plain JS query is also evaluated by Node without transpilation.
   function bathymetry(image, mapping) {
     const { width, height, data } = image, b = mapping;
   // @ts-ignore TS7006 -- plain JS query is also evaluated by Node without transpilation.
     return (x, z) => {
+      if(x<b.minX || x>b.maxX || z<b.minZ || z>b.maxZ)return -1e4;
       const px = Math.max(0, Math.min(width - 1, (x - b.minX) / (b.maxX - b.minX) * width - 0.5));
       const pz = Math.max(0, Math.min(height - 1, (z - b.minZ) / (b.maxZ - b.minZ) * height - 0.5));
       const ix = Math.floor(px), iz = Math.floor(pz), jx = Math.min(ix + 1, width - 1), jz = Math.min(iz + 1, height - 1);

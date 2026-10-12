@@ -26,6 +26,7 @@ interface SceneWalkState {
 }
 
 (function() {
+  const surfaceHeight = window.__gosx_scene3d_walk_surfaces.height;
   const mounts = new Map<HTMLElement, () => void>();
   function number(value: any, fallback: number): number {
     const n = Number(value);
@@ -61,7 +62,11 @@ interface SceneWalkState {
     return ground.minHeight + (a * (1 - tz) + b * tz) / 65535 * (ground.maxHeight - ground.minHeight);
   }
   function groundHeight(s: SceneWalkState, x: number, z: number): number {
-    return window.__gosx_scene3d_walk_surfaces.height(s.config.surfaces, x, z, sampleGround(s.ground, x, z));
+    const g = s.ground;
+    if (g && (x < g.minX || x > g.minX + g.sizeX || z < g.minZ || z > g.minZ + g.sizeZ) && onSurface(s, x, z)) {
+      return surfaceHeight(s.config.surfaces, x, z, -Infinity);
+    }
+    return surfaceHeight(s.config.surfaces, x, z, sampleGround(s.ground, x, z));
   }
   function createState(camera: Record<string, any>, config: Record<string, any>, reduced: boolean): SceneWalkState {
     return {
@@ -98,7 +103,7 @@ interface SceneWalkState {
   }
   function candidateAllowed(s: SceneWalkState, x: number, z: number): boolean {
     const bounds = s.config.bounds;
-    if (bounds && (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ)) return false;
+    if (bounds && (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ) && !onSurface(s, x, z)) return false;
     const height = groundHeight(s, x, z), water = s.config.water;
     if (water && height < number(water.level, 0) - positive(water.maxDepth, 0.55)) return false;
     const rise = height - groundHeight(s, s.x, s.z), distance = Math.hypot(x - s.x, z - s.z);
@@ -120,13 +125,17 @@ interface SceneWalkState {
   }
   function slideStep(s: SceneWalkState, dx: number, dz: number): void {
     const bounds = s.config.bounds;
-    if (bounds) {
+    if (bounds && !onSurface(s, s.x, s.z)) {
       dx = clamp(s.x + dx, bounds.minX, bounds.maxX) - s.x;
       dz = clamp(s.z + dz, bounds.minZ, bounds.maxZ) - s.z;
     }
     if (candidateAllowed(s, s.x + dx, s.z + dz)) { s.x += dx; s.z += dz; return; }
     if (dx && candidateAllowed(s, s.x + dx, s.z)) s.x += dx;
     if (dz && candidateAllowed(s, s.x, s.z + dz)) s.z += dz;
+  }
+  // Moving decks can leave the land bounds; only their actual footprint is walkable.
+  function onSurface(s: SceneWalkState, x: number, z: number): boolean {
+    return Number.isFinite(surfaceHeight(s.config.surfaces, x, z, -Infinity));
   }
   function move(s: SceneWalkState, dx: number, dz: number): number {
     if (!dx && !dz) return 0;

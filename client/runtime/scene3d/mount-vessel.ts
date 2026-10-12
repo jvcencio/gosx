@@ -28,7 +28,13 @@
     const motion=typeof window.matchMedia==='function'?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
     const walkAPI=window.__gosx_scene3d_walk_api,ground=walk.ground&&walkAPI?walkAPI.decodeGround(walk.ground):null;
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-    const floor=(x,z)=>ground?walkAPI.sampleGround(ground,x,z):-1e4;
+    const floor=(x,z)=>{
+      if(!ground)return -1e4;
+      // The authored coast ends at the heightfield, rather than extruding its
+      // last row into an invisible bank across the rest of the ocean.
+      if(props.vessel.openWater && (x<ground.minX || x>ground.minX+ground.sizeX || z<ground.minZ || z>ground.minZ+ground.sizeZ))return -1e4;
+      return walkAPI.sampleGround(ground,x,z);
+    };
     let waveFloor=()=>-1e4,disposed=false,first=true,lastBob=0;
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     const high=query.create(ocean,'high',(x,z)=>waveFloor(x,z),true),low=query.create(ocean,'low',(x,z)=>waveFloor(x,z),true);

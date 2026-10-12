@@ -2,22 +2,31 @@ import init, { GameBoy, GameBoyMode, PadKey } from "./vendor/boytacean-0.13.2/bo
 
 const canvas = document.querySelector("canvas"), ctx = canvas.getContext("2d", { alpha:false });
 const status = document.querySelector("[data-status]"), sound = document.querySelector("[data-sound]");
-const image = ctx.createImageData(160,144), pressed = new Set();
+const speedControl = document.querySelector("[data-speed]"), audioSources = new Set();
+const image = ctx.createImageData(160,144), pressed = new Set(), pendingReleases = new Set();
 const keyboard = { ArrowUp:"Up",ArrowDown:"Down",ArrowLeft:"Left",ArrowRight:"Right",KeyZ:"A",KeyJ:"A",KeyX:"B",KeyK:"B",Enter:"Start",ShiftLeft:"Select",ShiftRight:"Select" };
-let gb = null, cartridge = null, romHash = "", frame = 0, last = 0, elapsed = 0, running = true, saveAt = 0;
+let gb = null, cartridge = null, romHash = "", frame = 0, last = 0, elapsed = 0, running = false, saveAt = 0;
 let allowedToRun = true, romBytes = null, romName = "";
 let audio = null, audioAt = 0, muted = true, activeLoad = 0;
-const maxROM = 8*1024*1024;
+let speed = 3;
+const maxROM = 8*1024*1024, frameMS = 1000/59.7275;
+canvas.dataset.emulationSpeed = String(speed);
+canvas.dataset.playing = "false";
 function note(text) { status.textContent = text; }
+function stopAudio() {
+  for (const source of audioSources) { try { source.stop(); } catch (_) {} }
+  audioSources.clear();audioAt=0;
+}
 function release() {
   for (const key of pressed) if (gb) gb.key_lift(PadKey[key]);
   pressed.clear();
+  pendingReleases.clear();
   for (const button of document.querySelectorAll("[data-key]")) button.dataset.pressed = "false";
 }
 function key(name, down) {
   if (!gb || !running || !(name in PadKey)) return;
-  if (down) { pressed.add(name); gb.key_press(PadKey[name]); }
-  else { pressed.delete(name); gb.key_lift(PadKey[name]); }
+  if (down) { pendingReleases.delete(name); pressed.add(name); gb.key_press(PadKey[name]); }
+  else if (pressed.has(name)) pendingReleases.add(name);
   for (const button of document.querySelectorAll('[data-key="'+name+'"]')) button.dataset.pressed = String(down);
 }
 function save() {
@@ -48,35 +57,44 @@ function samples() {
   const buffer = audio.createBuffer(channels,count,rate);
   for (let ch=0;ch<channels;ch++) { const dest=buffer.getChannelData(ch);for(let i=0;i<count;i++)dest[i]=data[i*channels+ch]/32768; }
   if (audioAt<audio.currentTime || audioAt>audio.currentTime+.18) audioAt=audio.currentTime+.025;
-  const source=audio.createBufferSource();source.buffer=buffer;source.connect(audio.destination);source.start(audioAt);audioAt+=buffer.duration;
+  const source=audio.createBufferSource();source.buffer=buffer;source.playbackRate.value=speed;
+  source.connect(audio.destination);audioSources.add(source);source.onended=()=>audioSources.delete(source);
+  source.start(audioAt);audioAt+=buffer.duration/speed;
 }
 function tick(now) {
   frame = 0;
   if (!running || document.hidden || !gb) { last=0;return; }
   try {
-    elapsed += last ? Math.min(now-last,50) : 17; last=now;
+    elapsed += (last ? Math.min(now-last,50) : frameMS)*speed; last=now;
     let steps=0;
-    while (elapsed>=1000/59.7275 && steps<3) { gb.next_frame();elapsed-=1000/59.7275;steps++; }
+    while (elapsed>=frameMS && steps<3*speed) {
+      gb.next_frame();elapsed-=frameMS;steps++;
+      // A tap between RAF callbacks must reach at least one emulated frame.
+      for(const name of pendingReleases){gb.key_lift(PadKey[name]);pressed.delete(name);}
+      pendingReleases.clear();
+    }
     if (steps) { pixels();samples(); }
     if (now-saveAt>5000) { save();saveAt=now; }
     frame=requestAnimationFrame(tick);
-  } catch (error) { running=false;release();note("Cartridge stopped: "+error.message); }
+  } catch (error) { play(false);note("Cartridge stopped: "+error.message); }
 }
 function play(value) {
-  running=value&&allowedToRun;release();last=0;elapsed=0;
+  running=!!(value&&allowedToRun&&gb);release();last=0;elapsed=0;stopAudio();
   if(frame)cancelAnimationFrame(frame);frame=0;
   if(running && gb && !document.hidden)frame=requestAnimationFrame(tick);
   if(!running){save();if(audio)audio.suspend().catch(()=>{});}else if(audio&&!muted)audio.resume().catch(()=>{});
   canvas.dataset.playing=String(running);
 }
-async function load(bytes, name, importedRAM = null) {
+async function load(bytes, name, importedRAM = null, expectedHash = "") {
   const generation=++activeLoad;
   let headerChecksum=0;for(let i=0x134;i<0x14d;i++)headerChecksum=(headerChecksum-(bytes[i]||0)-1)&255;
   if (bytes.length<32768 || bytes.length>maxROM || bytes.length%16384 || headerChecksum!==bytes[0x14d] || !GameBoy.verify_rom(bytes)) throw new Error("Choose a valid .gb or .gbc cartridge, up to 8 MB.");
   const digest=await crypto.subtle.digest("SHA-256",bytes);
   if(generation!==activeLoad)return;
+  const hash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");
+  if(expectedHash && hash!==expectedHash)throw new Error("Deployment cartridge changed. Reload the handheld.");
   play(false);if(cartridge)cartridge.free();if(gb)gb.free();
-  romHash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");
+  romHash=hash;
   romBytes=bytes;romName=name;
   const mode=(bytes[0x143]&0x80)?GameBoyMode.Cgb:GameBoyMode.Dmg;
   gb=new GameBoy(mode);gb.load_unsafe(true);cartridge=gb.load_rom_wa(bytes);
@@ -88,10 +106,19 @@ async function load(bytes, name, importedRAM = null) {
   } catch (_) {}
   if(importedRAM)gb.set_ram_data(importedRAM);
   document.body.dataset.cartridge=name;
+  document.querySelector("[data-screen-prompt]").hidden=true;
+  for(const control of document.querySelectorAll("[data-key], [data-save], [data-import-save], [data-sound]"))control.disabled=false;
   note(name+" · battery saves stay on this device");
+  document.querySelector("[data-hint]").textContent="Play at 3× or switch to 1×. Saves stay on this device. Arrows · Z/X · Enter · Shift";
+  pixels();
   play(allowedToRun);if(allowedToRun)canvas.focus({preventScroll:true});
 }
 await init();
+note("Load your Pokémon Yellow .gb cartridge to switch on.");
+speedControl.addEventListener("change",()=>{
+  speed=speedControl.value==="1"?1:3;speedControl.value=String(speed);
+  canvas.dataset.emulationSpeed=String(speed);last=0;elapsed=0;stopAudio();
+});
 document.querySelector("[data-rom]").addEventListener("change",async event=>{
   const file=event.target.files[0];if(!file)return;
   try { if(file.size>maxROM)throw new Error("This handheld accepts cartridges up to 8 MB.");await load(new Uint8Array(await file.arrayBuffer()),file.name); }
@@ -109,7 +136,7 @@ document.querySelector("[data-save]").addEventListener("click",()=>{
   const link=document.createElement("a");link.href=url;link.download=(document.body.dataset.cartridge||"blackglass").replace(/\.(gb|gbc)$/i,"")+".sav";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 sound.addEventListener("click",async()=>{
-  try{if(!audio)audio=new AudioContext();muted=!muted;if(!muted)await audio.resume();else await audio.suspend();audioAt=0;sound.textContent=muted?"Sound off":"Sound on";sound.setAttribute("aria-pressed",String(!muted));}
+  try{if(!audio)audio=new AudioContext();muted=!muted;stopAudio();if(!muted&&running)await audio.resume();else await audio.suspend();sound.textContent=muted?"Sound off":"Sound on";sound.setAttribute("aria-pressed",String(!muted));}
   catch(_){note("Sound is unavailable. The cartridge can still play.");}
 });
 for(const button of document.querySelectorAll("[data-key]")){
@@ -120,13 +147,28 @@ for(const button of document.querySelectorAll("[data-key]")){
 }
 window.addEventListener("keydown",event=>{
   if(event.key==="Escape"){event.preventDefault();parent.postMessage({type:"blackglass-handheld-close"},location.origin);return;}
-  if(event.target.tagName==="BUTTON"||event.target.tagName==="INPUT")return;
+  if(event.target.tagName==="BUTTON"||event.target.tagName==="INPUT"||event.target.tagName==="SELECT")return;
   const name=keyboard[event.code];if(name){event.preventDefault();key(name,true);}
 });
 window.addEventListener("keyup",event=>{const name=keyboard[event.code];if(name){event.preventDefault();key(name,false);}});
 window.addEventListener("blur",release);
 window.addEventListener("message",event=>{if(event.origin===location.origin&&event.source===parent&&event.data?.type==="blackglass-handheld"){allowedToRun=event.data.action==="resume";play(allowedToRun);}});
-document.addEventListener("visibilitychange",()=>{if(document.hidden){release();save();if(frame)cancelAnimationFrame(frame);frame=0;last=0;}else if(running&&gb){last=0;frame=requestAnimationFrame(tick);}});
+document.addEventListener("visibilitychange",()=>{if(document.hidden){release();save();stopAudio();if(audio)audio.suspend().catch(()=>{});if(frame)cancelAnimationFrame(frame);frame=0;last=0;elapsed=0;}else if(running&&gb){last=0;if(audio&&!muted)audio.resume().catch(()=>{});frame=requestAnimationFrame(tick);}});
 window.addEventListener("pagehide",event=>{allowedToRun=false;play(false);if(!event.persisted){if(cartridge)cartridge.free();if(gb)gb.free();gb=null;}});
-try{const response=await fetch("coast-walk.gb");if(!response.ok)throw new Error("Choose a cartridge to switch on.");await load(new Uint8Array(await response.arrayBuffer()),"Coast Walk");}
-catch(error){note(error.message);}
+// A deployment may supply a cartridge without adding its bytes to Git. The
+// manifest is fetched only inside the opened pocket, and never displaces a
+// cartridge the player selected while the download was in flight.
+const defaultGeneration=activeLoad;
+try{
+  const signal=AbortSignal.timeout(10000);
+  const response=await fetch("/api/blackglass-cartridge",{cache:"no-store",signal});
+  if(response.ok){
+    const config=await response.json();
+    if(config.available && activeLoad===defaultGeneration && /^\/api\/blackglass-cartridge\/rom\?sha256=[a-f0-9]{64}$/.test(config.url) && /^[a-f0-9]{64}$/.test(config.sha256) && config.bytes<=maxROM){
+      const cartridgeResponse=await fetch(config.url,{signal});
+      if(!cartridgeResponse.ok)throw new Error("The deployment cartridge is unavailable. Load a local cartridge.");
+      const bytes=new Uint8Array(await cartridgeResponse.arrayBuffer());
+      if(activeLoad===defaultGeneration)await load(bytes,config.name,null,config.sha256);
+    }
+  }
+}catch(error){if(activeLoad===defaultGeneration)note("Load a local cartridge. "+error.message);}

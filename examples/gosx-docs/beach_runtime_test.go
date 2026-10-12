@@ -80,6 +80,14 @@ func TestBlackglassPoolJournalAndLazyCartridgeServe(t *testing.T) {
 		if response.Code != http.StatusOK || !strings.Contains(response.Header().Get("Content-Type"), contentType) || response.Body.Len() == 0 {
 			t.Fatalf("pocket asset %s: %d %s", path, response.Code, response.Header().Get("Content-Type"))
 		}
+		if strings.Contains(response.Body.String(), "coast-walk.gb") || strings.Contains(response.Body.String(), "included coast cartridge") {
+			t.Fatalf("pocket asset %s must not preload or advertise the removed game", path)
+		}
+	}
+	removed := httptest.NewRecorder()
+	handler.ServeHTTP(removed, httptest.NewRequest(http.MethodGet, "/demos/blackglass-handheld/coast-walk.gb", nil))
+	if removed.Code != http.StatusNotFound {
+		t.Fatalf("removed cartridge still served: HTTP %d", removed.Code)
 	}
 }
 

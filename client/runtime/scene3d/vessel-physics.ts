@@ -100,7 +100,7 @@
   function allowed(s, x, z, heading, floor) {
     const co=Math.cos(heading),si=Math.sin(heading), radius=s.beam*.38;
     for (const along of [-s.length*.36,0,s.length*.36]) {
-      const px=x+si*along,pz=z+co*along,b=s.config.bounds || s.collision.bounds;
+      const px=x+si*along,pz=z+co*along,b=s.config.bounds || (s.config.openWater ? null : s.collision.bounds);
       if (b && (px-radius<b.minX || px+radius>b.maxX || pz-radius<b.minZ || pz+radius>b.maxZ)) return false;
       if (floor(px,pz) > (s.ocean.level||0)-s.draft+.15) {
         // A grounded hull can turn or retreat across equal/deeper seabed.
