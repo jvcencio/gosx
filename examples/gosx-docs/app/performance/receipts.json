@@ -1,42 +1,42 @@
 {
   "schemaVersion": 1,
-  "measuredAt": "2026-10-11T17:31:12-07:00",
-  "commit": "7357132ab491d2522c28bc6c69a0974abdaa91e7",
-  "tree": "cb7f06b74d445de9912a0f9999c78da2260a990a",
+  "measuredAt": "2026-10-11T22:12:23-07:00",
+  "commit": "c53c76cc477143a0a6ac3621c17fcd08bcc1604f",
+  "tree": "7b2a2cb6d1f433617a3ae576a6fb222540f52c37",
   "featuredPath": "/demos/water",
   "machine": {
     "name": "WSL2 VM · 20 vCPU",
     "os": "Linux 6.18.33.2-microsoft-standard-WSL2",
     "cpu": "Intel(R) Core(TM) Ultra 9 285",
     "memoryGiB": 13.65,
-    "loadAverage": "start: 11.21 8.89 8.36; end: 5.88 6.28 7.36; ordinary host, no peer-build hold; sampled NVIDIA GPU utilization 0.0–14.0%, encoder 0.0–3.0%"
+    "loadAverage": "start: 12.25 8.72 6.60; end: 6.77 6.05 6.09"
   },
   "lighthouse": {
     "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36 · Lighthouse 13.5.0",
-    "method": "Lighthouse mobile emulation against the local production-shaped build; fresh owned headless Windows Chrome process and profile for each cold run; median of three runs under ordinary host load.",
-    "loadAverageStart": "11.21 8.89 8.36",
-    "loadAverageEnd": "4.21 7.22 7.85",
+    "method": "Lighthouse mobile emulation against the local production-shaped build; shared Chrome process with cache and origin storage cleared before each run; median of three cold runs.",
+    "loadAverageStart": "12.25 8.72 6.60",
+    "loadAverageEnd": "6.71 7.20 6.48",
     "runCount": 3,
     "pages": [
       {
         "path": "/",
         "runs": [
           {
-            "performance": 59,
+            "performance": 70,
             "accessibility": 100,
             "bestPractices": 96,
             "seo": 100,
             "cls": 0
           },
           {
-            "performance": 61,
+            "performance": 65,
             "accessibility": 100,
             "bestPractices": 96,
             "seo": 100,
             "cls": 0
           },
           {
-            "performance": 60,
+            "performance": 64,
             "accessibility": 100,
             "bestPractices": 96,
             "seo": 100,
@@ -44,7 +44,7 @@
           }
         ],
         "median": {
-          "performance": 60,
+          "performance": 65,
           "accessibility": 100,
           "bestPractices": 96,
           "seo": 100,
@@ -57,39 +57,6 @@
           {
             "performance": 99,
             "accessibility": 100,
-            "bestPractices": 100,
-            "seo": 100,
-            "cls": 0
-          },
-          {
-            "performance": 100,
-            "accessibility": 100,
-            "bestPractices": 100,
-            "seo": 100,
-            "cls": 0
-          },
-          {
-            "performance": 100,
-            "accessibility": 100,
-            "bestPractices": 100,
-            "seo": 100,
-            "cls": 0
-          }
-        ],
-        "median": {
-          "performance": 100,
-          "accessibility": 100,
-          "bestPractices": 100,
-          "seo": 100,
-          "cls": 0
-        }
-      },
-      {
-        "path": "/docs/getting-started/",
-        "runs": [
-          {
-            "performance": 98,
-            "accessibility": 100,
             "bestPractices": 96,
             "seo": 100,
             "cls": 0
@@ -102,7 +69,7 @@
             "cls": 0
           },
           {
-            "performance": 99,
+            "performance": 100,
             "accessibility": 100,
             "bestPractices": 96,
             "seo": 100,
@@ -111,6 +78,39 @@
         ],
         "median": {
           "performance": 99,
+          "accessibility": 100,
+          "bestPractices": 96,
+          "seo": 100,
+          "cls": 0
+        }
+      },
+      {
+        "path": "/docs/getting-started/",
+        "runs": [
+          {
+            "performance": 99,
+            "accessibility": 100,
+            "bestPractices": 96,
+            "seo": 100,
+            "cls": 0
+          },
+          {
+            "performance": 97,
+            "accessibility": 100,
+            "bestPractices": 96,
+            "seo": 100,
+            "cls": 0
+          },
+          {
+            "performance": 97,
+            "accessibility": 100,
+            "bestPractices": 96,
+            "seo": 100,
+            "cls": 0
+          }
+        ],
+        "median": {
+          "performance": 97,
           "accessibility": 100,
           "bestPractices": 96,
           "seo": 100,
@@ -154,31 +154,31 @@
         "path": "/demos/water",
         "runs": [
           {
-            "performance": 55,
+            "performance": 49,
             "accessibility": 100,
-            "bestPractices": 100,
+            "bestPractices": 96,
             "seo": 100,
             "cls": 0
           },
           {
             "performance": 48,
             "accessibility": 100,
-            "bestPractices": 100,
+            "bestPractices": 96,
             "seo": 100,
             "cls": 0
           },
           {
-            "performance": 55,
+            "performance": 52,
             "accessibility": 100,
-            "bestPractices": 100,
+            "bestPractices": 96,
             "seo": 100,
             "cls": 0
           }
         ],
         "median": {
-          "performance": 55,
+          "performance": 49,
           "accessibility": 100,
-          "bestPractices": 100,
+          "bestPractices": 96,
           "seo": 100,
           "cls": 0
         }
@@ -254,7 +254,7 @@
   "gpu": {
     "label": "RTX 5070 Ti desktop, not a mid-range laptop",
     "browser": "Chrome/154.0.8037.98 · NVIDIA GeForce RTX 5070 Ti, driver 32.0.16.1714, headless",
-    "method": "Controlled headless Windows Chrome with ANGLE D3D11 at 1440x900 on the native NVIDIA adapter under ordinary host load; separate WebGPU and forced WebGL2 runs; each scene received 240 alternating 2 px wheel-zoom inputs while 240 animation frames were sampled.",
+    "method": "Windows Chrome with ANGLE D3D11 at 1440x900; separate WebGPU and forced WebGL2 runs; each scene received 240 alternating 2 px wheel-zoom inputs while 240 animation frames were sampled.",
     "scenes": [
       {
         "path": "/demos/beacon",
@@ -262,17 +262,17 @@
         "backends": [
           {
             "backend": "WebGL2",
-            "firstDrawMs": 526,
-            "cadenceP50Ms": 10,
-            "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 5.7
+            "firstDrawMs": 475,
+            "cadenceP50Ms": 11,
+            "cadenceP95Ms": 11.1,
+            "rafCpuP95Ms": 6.6
           },
           {
             "backend": "WebGPU",
-            "firstDrawMs": 1499,
-            "cadenceP50Ms": 10,
-            "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 3.7
+            "firstDrawMs": 1340,
+            "cadenceP50Ms": 11,
+            "cadenceP95Ms": 11.1,
+            "rafCpuP95Ms": 3.6
           }
         ]
       },
@@ -282,16 +282,16 @@
         "backends": [
           {
             "backend": "WebGL2",
-            "firstDrawMs": 526,
-            "cadenceP50Ms": 20,
-            "cadenceP95Ms": 20.1,
-            "rafCpuP95Ms": 1.1
+            "firstDrawMs": 491,
+            "cadenceP50Ms": 22,
+            "cadenceP95Ms": 22.1,
+            "rafCpuP95Ms": 1.2
           },
           {
             "backend": "WebGPU",
-            "firstDrawMs": 840,
-            "cadenceP50Ms": 20,
-            "cadenceP95Ms": 20.1,
+            "firstDrawMs": 838,
+            "cadenceP50Ms": 21.8,
+            "cadenceP95Ms": 22.1,
             "rafCpuP95Ms": 1.3
           }
         ]
@@ -302,17 +302,17 @@
         "backends": [
           {
             "backend": "WebGL2",
-            "firstDrawMs": 518,
+            "firstDrawMs": 455,
             "cadenceP50Ms": 10,
             "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 1
+            "rafCpuP95Ms": 0.8
           },
           {
             "backend": "WebGPU",
-            "firstDrawMs": 638,
+            "firstDrawMs": 590,
             "cadenceP50Ms": 10,
             "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 1.8
+            "rafCpuP95Ms": 1.6
           }
         ]
       },
@@ -322,17 +322,17 @@
         "backends": [
           {
             "backend": "WebGL2",
-            "firstDrawMs": 514,
-            "cadenceP50Ms": 10,
-            "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 1
+            "firstDrawMs": 466,
+            "cadenceP50Ms": 11,
+            "cadenceP95Ms": 11.1,
+            "rafCpuP95Ms": 0.7
           },
           {
             "backend": "WebGPU",
-            "firstDrawMs": 801,
-            "cadenceP50Ms": 10,
-            "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 1.2
+            "firstDrawMs": 748,
+            "cadenceP50Ms": 11,
+            "cadenceP95Ms": 11.1,
+            "rafCpuP95Ms": 0.9
           }
         ]
       },
@@ -342,17 +342,17 @@
         "backends": [
           {
             "backend": "WebGL2",
-            "firstDrawMs": 579,
+            "firstDrawMs": 523,
             "cadenceP50Ms": 10,
             "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 1.7
+            "rafCpuP95Ms": 1.4
           },
           {
             "backend": "WebGPU",
-            "firstDrawMs": 924,
+            "firstDrawMs": 920,
             "cadenceP50Ms": 10,
             "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 2
+            "rafCpuP95Ms": 2.1
           }
         ]
       },
@@ -362,17 +362,17 @@
         "backends": [
           {
             "backend": "WebGL2",
-            "firstDrawMs": 519,
+            "firstDrawMs": 473,
             "cadenceP50Ms": 10,
             "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 0.9
+            "rafCpuP95Ms": 0.8
           },
           {
             "backend": "WebGPU",
-            "firstDrawMs": 730,
+            "firstDrawMs": 708,
             "cadenceP50Ms": 10,
             "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 1.1
+            "rafCpuP95Ms": 0.9
           }
         ]
       },
@@ -382,16 +382,16 @@
         "backends": [
           {
             "backend": "WebGL2",
-            "firstDrawMs": 910,
-            "cadenceP50Ms": 20,
-            "cadenceP95Ms": 20.1,
+            "firstDrawMs": 931,
+            "cadenceP50Ms": 21.9,
+            "cadenceP95Ms": 22.1,
             "rafCpuP95Ms": 0.8
           },
           {
             "backend": "WebGPU",
-            "firstDrawMs": 756,
-            "cadenceP50Ms": 20,
-            "cadenceP95Ms": 20.1,
+            "firstDrawMs": 693,
+            "cadenceP50Ms": 21.9,
+            "cadenceP95Ms": 22.1,
             "rafCpuP95Ms": 1.1
           }
         ]
@@ -402,17 +402,17 @@
         "backends": [
           {
             "backend": "WebGL2",
-            "firstDrawMs": 950,
-            "cadenceP50Ms": 10,
-            "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 1.1
+            "firstDrawMs": 813,
+            "cadenceP50Ms": 10.9,
+            "cadenceP95Ms": 11.1,
+            "rafCpuP95Ms": 0.8
           },
           {
             "backend": "WebGPU",
-            "firstDrawMs": 962,
-            "cadenceP50Ms": 10,
-            "cadenceP95Ms": 10.1,
-            "rafCpuP95Ms": 2.3
+            "firstDrawMs": 877,
+            "cadenceP50Ms": 11,
+            "cadenceP95Ms": 11.1,
+            "rafCpuP95Ms": 2
           }
         ]
       }
@@ -588,66 +588,66 @@
       "brotliBytes": 1777
     },
     {
-      "name": "bootstrap-lite.14371daa22302854.js",
+      "name": "bootstrap-lite.79dd6cf66eed3a41.js",
       "kind": "client-js",
-      "path": "assets/runtime/bootstrap-lite.14371daa22302854.js",
-      "rawBytes": 150691,
-      "brotliBytes": 37743
+      "path": "assets/runtime/bootstrap-lite.79dd6cf66eed3a41.js",
+      "rawBytes": 150601,
+      "brotliBytes": 37666
     },
     {
-      "name": "bootstrap-runtime.1621288dfd545dc5.js",
+      "name": "bootstrap-runtime.0efdb8ed44348c65.js",
       "kind": "client-js",
-      "path": "assets/runtime/bootstrap-runtime.1621288dfd545dc5.js",
-      "rawBytes": 193625,
-      "brotliBytes": 48297
+      "path": "assets/runtime/bootstrap-runtime.0efdb8ed44348c65.js",
+      "rawBytes": 193533,
+      "brotliBytes": 48241
     },
     {
-      "name": "bootstrap.9af7325d2472a16b.js",
+      "name": "bootstrap.523dbf44e2922516.js",
       "kind": "client-js",
-      "path": "assets/runtime/bootstrap.9af7325d2472a16b.js",
-      "rawBytes": 1934674,
-      "brotliBytes": 437955
+      "path": "assets/runtime/bootstrap.523dbf44e2922516.js",
+      "rawBytes": 1934583,
+      "brotliBytes": 437949
     },
     {
-      "name": "gosx-runtime-collab.58b2903cddf2caa1.wasm",
+      "name": "gosx-runtime-collab.1062b5c4eb14b41c.wasm",
       "kind": "wasm",
-      "path": "assets/runtime/gosx-runtime-collab.58b2903cddf2caa1.wasm",
-      "rawBytes": 964128,
-      "brotliBytes": 315905
+      "path": "assets/runtime/gosx-runtime-collab.1062b5c4eb14b41c.wasm",
+      "rawBytes": 917582,
+      "brotliBytes": 302770
     },
     {
-      "name": "gosx-runtime-core.93e232f9d8008462.wasm",
+      "name": "gosx-runtime-core.5e9edd3ee3ee521c.wasm",
       "kind": "wasm",
-      "path": "assets/runtime/gosx-runtime-core.93e232f9d8008462.wasm",
-      "rawBytes": 672797,
-      "brotliBytes": 221240
+      "path": "assets/runtime/gosx-runtime-core.5e9edd3ee3ee521c.wasm",
+      "rawBytes": 635373,
+      "brotliBytes": 213565
     },
     {
-      "name": "gosx-runtime-engine.fec5aad4f4c047ad.wasm",
+      "name": "gosx-runtime-engine.f9a58704803bdb84.wasm",
       "kind": "wasm",
-      "path": "assets/runtime/gosx-runtime-engine.fec5aad4f4c047ad.wasm",
-      "rawBytes": 1776432,
-      "brotliBytes": 543922
+      "path": "assets/runtime/gosx-runtime-engine.f9a58704803bdb84.wasm",
+      "rawBytes": 1684492,
+      "brotliBytes": 528223
     },
     {
-      "name": "gosx-runtime-islands.536a7b3d9dd69bb6.wasm",
+      "name": "gosx-runtime-islands.32e538bfc905072e.wasm",
       "kind": "wasm",
-      "path": "assets/runtime/gosx-runtime-islands.536a7b3d9dd69bb6.wasm",
-      "rawBytes": 672801,
-      "brotliBytes": 220915
+      "path": "assets/runtime/gosx-runtime-islands.32e538bfc905072e.wasm",
+      "rawBytes": 635377,
+      "brotliBytes": 213388
     },
     {
-      "name": "gosx-runtime.f8b4855d87723a80.wasm",
+      "name": "gosx-runtime.0ce8064bbf65ced3.wasm",
       "kind": "wasm",
-      "path": "assets/runtime/gosx-runtime.f8b4855d87723a80.wasm",
-      "rawBytes": 2258673,
-      "brotliBytes": 662380
+      "path": "assets/runtime/gosx-runtime.0ce8064bbf65ced3.wasm",
+      "rawBytes": 2158509,
+      "brotliBytes": 645658
     }
   ],
   "quickstart": {
     "command": "go install m31labs.dev/gosx/cmd/gosx@latest",
     "method": "Cold run used fresh isolated GOMODCACHE and GOCACHE directories. Warm run reused both caches. Times include compilation and module download.",
-    "coldSeconds": 36.47,
-    "warmSeconds": 0.89
+    "coldSeconds": 31.12,
+    "warmSeconds": 0.52
   }
 }
