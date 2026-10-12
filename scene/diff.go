@@ -829,11 +829,13 @@ func sceneRecordJSONEqual[T any](a, b T) bool {
 // sceneRecordPointerJSONEqual answers the same question as sceneRecordJSONEqual
 // without copying either value.
 //
-// It tries provenJSONEqual first, and marshals only when that fast path cannot
-// prove equality. The fast path is one-way on purpose: true means the two values
+// It rejects unequal plain object transforms, then tries provenJSONEqual and
+// marshals only when neither fast path settles the comparison.
+//
+// provenJSONEqual is one-way on purpose: true means the two values
 // must encode to identical JSON, and false means "not proven", never "different".
 // So the answer is always the answer the marshal comparison gives, and the
-// marshal comparison is still the only code that decides a record changed.
+// marshal comparison still decides differences the fast paths cannot settle.
 //
 // Why this shape: DiffCommands used to marshal both records for every record in
 // the scene, so an edit that moved 10 percent of a scene paid the full encode
@@ -841,6 +843,17 @@ func sceneRecordJSONEqual[T any](a, b T) bool {
 // write path it feeds. A real edit leaves most records untouched, and an
 // untouched record is exactly the case provenJSONEqual settles without encoding.
 func sceneRecordPointerJSONEqual[T any](a, b *T) bool {
+	if object, ok := any(a).(*ObjectIR); ok {
+		other := any(b).(*ObjectIR)
+		// These plain float64 fields encode directly with omitempty. Unequal
+		// finite values have distinct JSON; non-finite values cannot encode.
+		// Signed zeros compare equal here and retain the existing fallback.
+		if object.X != other.X || object.Y != other.Y || object.Z != other.Z ||
+			object.RotationX != other.RotationX || object.RotationY != other.RotationY || object.RotationZ != other.RotationZ ||
+			object.ScaleX != other.ScaleX || object.ScaleY != other.ScaleY || object.ScaleZ != other.ScaleZ {
+			return false
+		}
+	}
 	if provenJSONEqual(reflect.ValueOf(a).Elem(), reflect.ValueOf(b).Elem()) {
 		return true
 	}
