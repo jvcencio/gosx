@@ -841,6 +841,17 @@ func sceneRecordJSONEqual[T any](a, b T) bool {
 // write path it feeds. A real edit leaves most records untouched, and an
 // untouched record is exactly the case provenJSONEqual settles without encoding.
 func sceneRecordPointerJSONEqual[T any](a, b *T) bool {
+	if object, ok := any(a).(*ObjectIR); ok {
+		other := any(b).(*ObjectIR)
+		// These plain float64 fields encode directly with omitempty. Unequal
+		// finite values have distinct JSON; non-finite values cannot encode.
+		// Signed zeros compare equal here and retain the existing fallback.
+		if object.X != other.X || object.Y != other.Y || object.Z != other.Z ||
+			object.RotationX != other.RotationX || object.RotationY != other.RotationY || object.RotationZ != other.RotationZ ||
+			object.ScaleX != other.ScaleX || object.ScaleY != other.ScaleY || object.ScaleZ != other.ScaleZ {
+			return false
+		}
+	}
 	if provenJSONEqual(reflect.ValueOf(a).Elem(), reflect.ValueOf(b).Elem()) {
 		return true
 	}
