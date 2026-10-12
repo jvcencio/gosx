@@ -26,8 +26,8 @@ interface SceneWalkState {
 }
 
 (function() {
-  const surfaceHeight = window.__gosx_scene3d_walk_surfaces.height;
   const mounts = new Map<HTMLElement, () => void>();
+  const surfaceHeight = window.__gosx_scene3d_walk_surfaces.height;
   function number(value: any, fallback: number): number {
     const n = Number(value);
     return value == null || !Number.isFinite(n) ? fallback : n;
@@ -50,8 +50,9 @@ interface SceneWalkState {
     for (let i = 0; i < count; i++) samples[i] = bytes.charCodeAt(i * 2) | bytes.charCodeAt(i * 2 + 1) << 8;
     return Object.assign({}, ground, { samples });
   }
-  function sampleGround(ground: SceneWalkField | null, x: number, z: number): number {
+  function sampleGround(ground: SceneWalkField | null, x: number, z: number, outsideHeight?: number): number {
     if (!ground) return 0;
+    if (outsideHeight !== undefined && (x < ground.minX || x > ground.minX + ground.sizeX || z < ground.minZ || z > ground.minZ + ground.sizeZ)) return outsideHeight;
     const col = clamp((x - ground.minX) / ground.sizeX, 0, 1) * (ground.cols - 1);
     const row = clamp((z - ground.minZ) / ground.sizeZ, 0, 1) * (ground.rows - 1);
     const x0 = Math.floor(col), z0 = Math.floor(row);
@@ -62,11 +63,8 @@ interface SceneWalkState {
     return ground.minHeight + (a * (1 - tz) + b * tz) / 65535 * (ground.maxHeight - ground.minHeight);
   }
   function groundHeight(s: SceneWalkState, x: number, z: number): number {
-    const g = s.ground;
-    if (g && (x < g.minX || x > g.minX + g.sizeX || z < g.minZ || z > g.minZ + g.sizeZ) && onSurface(s, x, z)) {
-      return surfaceHeight(s.config.surfaces, x, z, -Infinity);
-    }
-    return surfaceHeight(s.config.surfaces, x, z, sampleGround(s.ground, x, z));
+    const deck = surfaceHeight(s.config.surfaces, x, z, -Infinity);
+    return Math.max(deck, sampleGround(s.ground, x, z, Number.isFinite(deck) ? -Infinity : undefined));
   }
   function createState(camera: Record<string, any>, config: Record<string, any>, reduced: boolean): SceneWalkState {
     return {
@@ -103,7 +101,7 @@ interface SceneWalkState {
   }
   function candidateAllowed(s: SceneWalkState, x: number, z: number): boolean {
     const bounds = s.config.bounds;
-    if (bounds && (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ) && !onSurface(s, x, z)) return false;
+    if (bounds && (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ) && !Number.isFinite(surfaceHeight(s.config.surfaces, x, z, -Infinity))) return false;
     const height = groundHeight(s, x, z), water = s.config.water;
     if (water && height < number(water.level, 0) - positive(water.maxDepth, 0.55)) return false;
     const rise = height - groundHeight(s, s.x, s.z), distance = Math.hypot(x - s.x, z - s.z);
@@ -125,17 +123,13 @@ interface SceneWalkState {
   }
   function slideStep(s: SceneWalkState, dx: number, dz: number): void {
     const bounds = s.config.bounds;
-    if (bounds && !onSurface(s, s.x, s.z)) {
+    if (bounds && !Number.isFinite(surfaceHeight(s.config.surfaces, s.x, s.z, -Infinity))) {
       dx = clamp(s.x + dx, bounds.minX, bounds.maxX) - s.x;
       dz = clamp(s.z + dz, bounds.minZ, bounds.maxZ) - s.z;
     }
     if (candidateAllowed(s, s.x + dx, s.z + dz)) { s.x += dx; s.z += dz; return; }
     if (dx && candidateAllowed(s, s.x + dx, s.z)) s.x += dx;
     if (dz && candidateAllowed(s, s.x, s.z + dz)) s.z += dz;
-  }
-  // Moving decks can leave the land bounds; only their actual footprint is walkable.
-  function onSurface(s: SceneWalkState, x: number, z: number): boolean {
-    return Number.isFinite(surfaceHeight(s.config.surfaces, x, z, -Infinity));
   }
   function move(s: SceneWalkState, dx: number, dz: number): number {
     if (!dx && !dz) return 0;

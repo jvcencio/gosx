@@ -62,8 +62,7 @@
     }
     return Object.assign(evaluate(query, qx, qz, seconds), { parameterX: qx, parameterZ: qz });
   }
-  // Match GPU filtering in R inside the finite chart, with deep water outside.
-  // Interpolating decoded signed-sqrt heights would be different.
+  // Filter R before signed-sqrt decoding like the GPU; use deep water outside the chart.
   // @ts-ignore TS7006 -- plain JS query is also evaluated by Node without transpilation.
   function bathymetry(image, mapping) {
     const { width, height, data } = image, b = mapping;
