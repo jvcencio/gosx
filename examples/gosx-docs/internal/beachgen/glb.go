@@ -14,6 +14,11 @@ type embeddedImage struct {
 	mime string // "image/png" when empty
 }
 
+type geometrySection struct {
+	start, count int
+	material     map[string]any
+}
+
 type binaryBuilder struct {
 	data  []byte
 	views []map[string]any
@@ -34,7 +39,7 @@ func (b *binaryBuilder) addView(data []byte, target int) int {
 
 // writeGLB packs a quantized mesh and optional embedded PNGs into a minimal
 // glTF 2.0 binary container. Its output is stable for identical inputs.
-func writeGLB(mesh *geometry, material map[string]any, images []embeddedImage) ([]byte, error) {
+func writeGLB(mesh *geometry, material map[string]any, images []embeddedImage, sections ...geometrySection) ([]byte, error) {
 	if mesh == nil || len(mesh.positions)%3 != 0 || len(mesh.normals) != len(mesh.positions) || len(mesh.uvs)*3 != len(mesh.positions)*2 {
 		return nil, fmt.Errorf("invalid mesh attribute lengths")
 	}
@@ -72,13 +77,37 @@ func writeGLB(mesh *geometry, material map[string]any, images []embeddedImage) (
 		{"bufferView": indexView, "componentType": 5123, "count": len(mesh.indices), "type": "SCALAR"},
 	}
 	primitive := map[string]any{"attributes": map[string]int{"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}, "indices": 3, "material": 0, "mode": 4}
+	primitives, materials := []any{primitive}, []any{material}
+	if len(sections) > 0 {
+		primitives = nil
+		covered := 0
+		for i, section := range sections {
+			if section.start != covered || section.count <= 0 || section.count%3 != 0 || section.start+section.count > len(mesh.indices) {
+				return nil, fmt.Errorf("invalid mesh section %d", i)
+			}
+			indexAccessor, materialIndex := 3, 0
+			if i == 0 {
+				accessors[3]["count"] = section.count
+			} else {
+				indexAccessor = len(accessors)
+				accessors = append(accessors, map[string]any{"bufferView": indexView, "byteOffset": section.start * 2, "componentType": 5123, "count": section.count, "type": "SCALAR"})
+				materialIndex = len(materials)
+				materials = append(materials, section.material)
+			}
+			primitives = append(primitives, map[string]any{"attributes": primitive["attributes"], "indices": indexAccessor, "material": materialIndex, "mode": 4})
+			covered += section.count
+		}
+		if covered != len(mesh.indices) {
+			return nil, fmt.Errorf("mesh sections omit %d indices", len(mesh.indices)-covered)
+		}
+	}
 	root := map[string]any{
 		"asset":              map[string]any{"version": "2.0", "generator": "beachgen"},
 		"scene":              0,
 		"scenes":             []any{map[string]any{"nodes": []int{0}}},
 		"nodes":              []any{map[string]any{"mesh": 0, "scale": []float64{positionScale, positionScale, positionScale}, "translation": positionTranslation}},
-		"meshes":             []any{map[string]any{"primitives": []any{primitive}}},
-		"materials":          []any{material},
+		"meshes":             []any{map[string]any{"primitives": primitives}},
+		"materials":          materials,
 		"accessors":          accessors,
 		"bufferViews":        bin.views,
 		"buffers":            []any{map[string]any{"byteLength": len(bin.data)}},

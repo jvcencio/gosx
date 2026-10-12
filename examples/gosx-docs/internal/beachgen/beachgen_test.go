@@ -44,6 +44,7 @@ func TestGenerateAssets(t *testing.T) {
 		}
 	}
 	beach := mustParse(t, first["beach-v2.glb"])
+	checkTerrainSections(t, beach)
 	stacks := mustParse(t, first["stacks-v2.glb"])
 	monolith := mustParse(t, first["monolith-v2.glb"])
 	if count := positionCount(t, beach); count != 129*129 {
@@ -271,14 +272,59 @@ func mustParse(t *testing.T, data []byte) *gltfedit.Document {
 
 func positionCount(t *testing.T, doc *gltfedit.Document) int {
 	t.Helper()
-	if len(doc.Meshes) != 1 || len(doc.Meshes[0].Primitives) != 1 {
-		t.Fatalf("expected one mesh with one primitive")
+	if len(doc.Meshes) != 1 || len(doc.Meshes[0].Primitives) == 0 {
+		t.Fatalf("expected one nonempty mesh")
 	}
 	accessor := doc.Meshes[0].Primitives[0].Attributes["POSITION"]
+	for _, primitive := range doc.Meshes[0].Primitives[1:] {
+		if primitive.Attributes["POSITION"] != accessor {
+			t.Fatal("material sections must share the vertex buffer")
+		}
+	}
 	if accessor < 0 || accessor >= len(doc.Accessors) {
 		t.Fatalf("invalid POSITION accessor %d", accessor)
 	}
 	return doc.Accessors[accessor].Count
+}
+
+func checkTerrainSections(t *testing.T, doc *gltfedit.Document) {
+	t.Helper()
+	primitives := doc.Meshes[0].Primitives
+	if len(primitives) != 2 {
+		t.Fatalf("terrain needs sand and basalt sections, got %d", len(primitives))
+	}
+	for _, attribute := range []string{"POSITION", "NORMAL", "TEXCOORD_0"} {
+		if primitives[0].Attributes[attribute] != primitives[1].Attributes[attribute] {
+			t.Fatalf("material split duplicated %s", attribute)
+		}
+	}
+	g, err := terrainGeometry(newNoise(Seed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	triangles := make(map[[3]uint32]bool, len(g.indices)/3)
+	for i := 0; i < len(g.indices); i += 3 {
+		triangles[[3]uint32{uint32(g.indices[i]), uint32(g.indices[i+1]), uint32(g.indices[i+2])}] = true
+	}
+	for material, primitive := range primitives {
+		if primitive.Material == nil || *primitive.Material != material || primitive.Indices == nil {
+			t.Fatalf("terrain section %d has no matching material or indices", material)
+		}
+		indices, err := doc.ReadIndices(*primitive.Indices)
+		if err != nil || len(indices) == 0 || len(indices)%3 != 0 {
+			t.Fatalf("terrain section %d has invalid triangles: %v", material, err)
+		}
+		for i := 0; i < len(indices); i += 3 {
+			key := [3]uint32{indices[i], indices[i+1], indices[i+2]}
+			if !triangles[key] {
+				t.Fatalf("material split duplicated or changed a triangle: %v", key)
+			}
+			delete(triangles, key)
+		}
+	}
+	if len(triangles) != 0 {
+		t.Fatalf("material split lost %d terrain triangles", len(triangles))
+	}
 }
 
 func checkBounds(t *testing.T, data []byte, doc *gltfedit.Document, low, high [3]float64) ([3]float64, [3]float64) {
@@ -356,6 +402,7 @@ func checkGLBEncoding(t *testing.T, data []byte, doc *gltfedit.Document, texture
 		} `json:"bufferViews"`
 		Materials []struct {
 			NormalTexture struct {
+				Index      *int    `json:"index"`
 				Scale      float64 `json:"scale"`
 				Extensions map[string]struct {
 					Scale []float64 `json:"scale"`
@@ -383,8 +430,11 @@ func checkGLBEncoding(t *testing.T, data []byte, doc *gltfedit.Document, texture
 			t.Errorf("terrain GLB has %d embedded images or lacks KHR_texture_transform", len(root.Images))
 		}
 		for _, embedded := range root.Images {
-			if len(root.Materials) != 1 {
-				t.Fatalf("terrain has %d materials, want 1", len(root.Materials))
+			if len(root.Materials) != 2 {
+				t.Fatalf("terrain has %d materials, want sand and basalt", len(root.Materials))
+			}
+			if root.Materials[1].NormalTexture.Index != nil {
+				t.Fatal("basalt must not inherit the sand ripple normal")
 			}
 			transform := root.Materials[0].NormalTexture.Extensions["KHR_texture_transform"].Scale
 			if root.Materials[0].NormalTexture.Scale != .24 || len(transform) != 2 || transform[0] != 60 || transform[1] != 45 {
@@ -425,7 +475,7 @@ func checkRockMaterial(t *testing.T, data []byte) {
 	}
 	material := root.Materials[0]
 	transform := material.Normal.Extensions["KHR_texture_transform"].Scale
-	if !contains(root.ExtensionsUsed, "KHR_texture_transform") || material.PBR.Metallic != 0 || material.PBR.Roughness != 1 || material.Normal.Scale != .9 || len(transform) != 2 || transform[0] != 3 || transform[1] != 9 {
+	if !contains(root.ExtensionsUsed, "KHR_texture_transform") || material.PBR.Metallic != 0 || material.PBR.Roughness != 1 || material.Normal.Scale != .4 || len(transform) != 2 || transform[0] != 3 || transform[1] != 9 {
 		t.Errorf("unexpected rock material: %+v with normal transform %v", material, transform)
 	}
 }
