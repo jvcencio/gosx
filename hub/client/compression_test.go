@@ -42,9 +42,14 @@ func TestClientCompressionRoundTripsThroughNativeTransport(t *testing.T) {
 	c.On("snapshot", func(data json.RawMessage) {
 		received <- data
 	})
+	welcome := make(chan json.RawMessage, 1)
+	c.On("__welcome", func(data json.RawMessage) { welcome <- data })
 	c.Connect()
 
 	waitFor(t, 2*time.Second, func() bool { return c.State() == StateConnected })
+	// The WebSocket handshake can finish before the server registers this
+	// client. Its welcome proves registration before the one-shot broadcast.
+	waitForCompressionWelcome(t, c, welcome)
 	h.Broadcast("snapshot", entities)
 
 	select {
