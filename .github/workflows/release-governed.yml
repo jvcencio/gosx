@@ -125,6 +125,10 @@ jobs:
     needs: [prepare, validate]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -166,14 +170,15 @@ jobs:
           printf 'GOSX_TINYGO_GOROOT=%s\n' "${compat_root}" >>"${GITHUB_ENV}"
           tinygo version
 
-      # cmd/gosx runs real TinyGo production builds and needs the explicit
-      # 25-minute Go timeout carried by test-cli; a plain `go test ./...`
-      # silently restores Go's 10-minute package timeout.
-      - name: CLI production-build tests
+      # Run the same exhaustive CLI partitions as CI. Each shard retains
+      # real TinyGo production builds and the 25-minute package timeout;
+      # publish requires every shard, even if another shard fails.
+      - name: CLI partition verification and production-build tests
         working-directory: source
         run: |
           set -euo pipefail
-          make test-cli
+          make test-ci-partitions
+          make test-cli CLI_SHARD=${{ matrix.shard }}
           CGO_ENABLED=0 go build ./cmd/gosx
 
   # build-runtime-release builds this release's prebuilt runtime WASM
@@ -574,7 +579,7 @@ jobs:
           GONOSUMDB: m31labs.dev
         run: |
           set -euo pipefail
-          for attempt in 1 2 3 4 5; do
+          for _attempt in 1 2 3 4 5; do
             if go install "m31labs.dev/gosx/cmd/gosx@${RELEASE_TAG}"; then
               gosx version
               exit 0
