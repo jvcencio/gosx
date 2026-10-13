@@ -10,14 +10,14 @@
     "joinedHelperCallSitesMigrated": 4,
     "totalSourceCoupledSitesMigrated": 103,
     "goSourceInspectionReadersMigrated": 7,
-    "intentionalDirectRendererReferenceEntries": 101,
+    "intentionalDirectRendererReferenceEntries": 102,
     "intentionalBypassExceptions": 42
   },
   "governanceBudgetRevision": {
     "originalAuthoredLineTarget": 600,
     "revisedGovernanceLineBudget": 3618,
-    "actualGovernanceLinesAtReview": 3440,
-    "reason": "Renderer governance checks source roles, paths, bundles, direct references, and function limits. GPU crowd motion adds tests and a benchmark. The Blackglass water composite adds one registered test reference. The line limit equals the measured registry. The shadow array tests now use the source-set reader, which removes one direct source reference. Frame completion timing adds five renderer ABI entries. HDR post processing adds a presentation pass and one format selection; limits increase only by the measured source growth. Opt-in sky adds shader and resource factories; limits use measured source growth. Scene node focus proxies add 7 lines to mount.ts (creating the proxy state, disposing it, and four per-frame sync calls); the proxy code lives in mount-scene-focus.ts and the limit increases only by that measured growth. The open-ocean passes add two governed renderer sources (224 WebGL2 and 211 WebGPU lines); set limits grow by exactly those lines and each file is capped at its measured size. The WebGL createScenePBRRenderer/render and WebGPU createSceneWebGPURenderer/render functions each grow by the one ocean draw call and its early-exit and dispose terms; their exceptions record the measured values. Opt-in mip bloom registers a governed pass module with limits equal to its measured source growth. WebGPU mip bloom adds the same governed filter chain and measured resource cleanup growth. The opt-in mip-chain bloom adds one dispatch per backend; exceptions record the measured values. RenderBeforeModels moves the initial render ahead of model hydration in mount.ts; its limit rises from 3866 to the measured 3884 lines. The ocean passes and the mip-chain bloom both hook into the renderers; this branch carries both, so the combined hooks raise the measured limits. Carrying both the ocean passes and the mip-chain bloom raises the WebGL and WebGPU source sets and renderer-set bytes by the sum of their measured growth. Walking registers a separate governed module; the mount line caps increase only for its lazy load and reset hooks. Shared URL loading reduces mount-webgl.ts; its cap is tightened to the measured source. The walk module adds a zero-specificity default stylesheet for its hint and joystick and caps walk renders at the scene's MaxFPS. The walk module defers rendering to an animating scene loop, caps walk renders at MaxFPS, and ships restylable defaults. Integration of the walk controller with the ocean, sky and bloom branches. The walk hook adds its lines to mount.ts on top of RenderBeforeModels. Detail layers add governed atlas/program helpers and opt-in draw hooks. Function exceptions and physical line limits track measured integration growth; default limits stay fixed. WebGPU detail adds a governed atlas module and cached pipeline/binding hooks. Limits reflect measured source and function growth. Integration of detail layers with the ocean, sky, bloom and walk branches. Ocean reflection hooks and new governed passes use measured physical lines and function metrics. Existing function exception locations move with the hooks; new orchestration growth is limited to reflection setup, pass splitting and disposal. Three nullable WebGPU target declarations and the optional pass callback retain plain-JS syntax; the typed bridge governs the new module interface without increasing the implicit-any ratchet. Living sky and atmosphere use governed pass modules with exact measured line caps; orchestration exceptions grow only for uniforms, quality shedding, and disposal. Shader variants depend on authored feature presence. Depth haze, reduced sun shafts, AgX and grain extend the same modules. Post-dispatch and cleanup exceptions record their measured growth; the WebGL planar draw scopes mirrored frame state and culling with guaranteed restoration. Integration of the atmosphere features with detail layers and the walk controller. The atmosphere tier is capped by the device capability tier. CPU ocean querying registers a lazy governed module and shares the generated wave packer with the GPU; its new files have measured line caps. Opt-in sailing and wake register bounded standalone authorities. Mount growth is the lazy URL gate and one per-render advance call; walking grows only by separate surfaces and suspension/carry/reset seams. New exceptions record measured cumulative IIFE and input-installation metrics, with reasons. Query defaults add five physical lines. Grounded retreat and friction add nine physics lines; phone guidance adds four input lines. Wake winding adds four lines. Caps and cumulative function exceptions equal the measured authored sources. Integration of the vessel controller with atmosphere, detail and walk. Clipper repairs add one physics line and two cloth lines; file caps match measured sources. The baked-buffer guard and wheel near plane add one conditional each; only their measured complexity exceptions rise. The translucent pass explicitly binds the PBR program after the ocean draw so wake uniforms never target the ocean program; line limits grow by that one measured binding. Volume transmission preserves the existing detail, reflection and atmosphere authorities. File and function limits record their measured combined source; default limits remain fixed. Wind-loaded sails, heel, bow spray and deck bobbing keep the vessel authority lazy; its file and function limits record measured growth. WebGL depth AO adds a governed depth-post source. It reconstructs view-space normals and samples twelve depth taps; depth-reading passes use a separate framebuffer, including atmosphere. User-controlled sailing stays responsive under reduced motion while decorative animation stays frozen; mount limits record the measured input-loop change. Opt-in zoom registers a bounded control module. Walk line growth covers navigation scaling and exact listener teardown; vessel metrics cover pinch cancellation, follow distance and reduced-motion chase. Existing limits increase only to the measured values. Zoom stays in its opt-in lazy chunk; ordinary scenes do not download the authority. Mount growth is the four-line prop gate. WebGPU detail resource lifecycle adds stable texture/control keys, frame reuse, retirement and repeatable disposal. The regression workload drops from 12 live detail buffers to one across 12 color changes; detail file and source-set caps grow only by the 56 measured helper lines. Renderer orchestration complexity decreases; existing function exceptions and default limits stay fixed. The normal-map UV scale adds one uniform upload with two defaults to createScenePBRRenderer and one selection to createSceneWebGPURenderer; their exceptions record the measured values. glTF sampler wrap modes now reach both backends. WebGPU binds and caches one sampler per texture slot and invalidates bind groups when those samplers change; the renderer limits rise only by measured changes. Function anchors shift with the added wrap descriptors and sampler helper. KTX2 uploads restore material wrap modes after decoder defaults; renderer source line caps record the exact authored growth. Merge reconciliation preserves both renderer source sets; file caps cover only the measured combined source growth. Renderer governance checks source roles, paths, bundles, direct references, and function limits. GPU crowd motion adds tests and a benchmark. The Blackglass water composite adds one registered test reference. The line limit equals the measured registry. The shadow array tests now use the source-set reader, which removes one direct source reference. Frame completion timing adds five renderer ABI entries. HDR post processing adds a presentation pass and one format selection; limits increase only by the measured source growth. Opt-in sky adds shader and resource factories; limits use measured source growth. Scene node focus proxies add 7 lines to mount.ts (creating the proxy state, disposing it, and four per-frame sync calls); the proxy code lives in mount-scene-focus.ts and the limit increases only by that measured growth. Walking registers a separate governed module; the mount line caps increase only for its lazy load and reset hooks. Shared URL loading reduces mount-webgl.ts; its cap is tightened to the measured source. The walk module adds a zero-specificity default stylesheet for its hint and joystick and caps walk renders at the scene's MaxFPS. The walk module defers rendering to an animating scene loop, caps walk renders at MaxFPS, and ships restylable defaults. Startup shader readiness integrates the current physical-sky and walking sources; renderer function locations and limits use the merged source measurements. The normal-map UV scale adds one uniform upload with two defaults to createScenePBRRenderer and one selection to createSceneWebGPURenderer; their exceptions record the measured values. glTF sampler wrap modes now reach both backends. WebGPU binds and caches one sampler per texture slot and invalidates bind groups when those samplers change; the renderer limits rise only by measured changes. Function anchors shift with the added wrap descriptors and sampler helper. KTX2 uploads restore material wrap modes after decoder defaults; renderer source line caps record the exact authored growth. Base shader failure adds an optional renderer ABI method and six mount lines for fallback and context isolation; function anchors follow CSS preparation before readiness. WebGPU pipeline validation adds scoped creation and a shared failure guard; source line caps and function anchors follow the measured changes. Core failure uses the existing optional getFailureReason ABI method. Shared Selena IBL texture binding and renderer context use a governed helper; the WebGPU source-set cap grows by 59 measured lines: 43 binding/context lines and 16 explicit type/narrowing lines. The shared uniform helper grows by exactly its three context lines. Existing monolith and function complexity caps remain unchanged. Selective specular bloom registers opt-in attachment owners with caps measured from their source; it reuses the existing filter chain. Reviewed optics/MRT bundle deltas: shared scene +463B Brotli, WebGL +643B, WebGPU +1032B (plus glTF material transport); four aggregate Brotli targets are the minimum measured values under the unchanged 5% allowance. Raw/gzip targets and every other byte cap stay fixed. Both generated backend bundles pass the real Chrome thickness/AA/specular/opaque-occlusion oracle. Ordinary skeletal bind retention adds 133 Brotli bytes to the shared scene chunk; only four exceeded aggregate Brotli targets move to their exact minimum under the unchanged allowance. Source-line caps and all other byte targets remain fixed. The optional vessel navigation module adds one source registration line; governance caps reflect that one authored line."
+    "actualGovernanceLinesAtReview": 3445,
+    "reason": "Renderer governance checks source roles, paths, bundles, direct references, and function limits. GPU crowd motion adds tests and a benchmark. The Blackglass water composite adds one registered test reference. The line limit equals the measured registry. The shadow array tests now use the source-set reader, which removes one direct source reference. Frame completion timing adds five renderer ABI entries. HDR post processing adds a presentation pass and one format selection; limits increase only by the measured source growth. Opt-in sky adds shader and resource factories; limits use measured source growth. Scene node focus proxies add 7 lines to mount.ts (creating the proxy state, disposing it, and four per-frame sync calls); the proxy code lives in mount-scene-focus.ts and the limit increases only by that measured growth. The open-ocean passes add two governed renderer sources (224 WebGL2 and 211 WebGPU lines); set limits grow by exactly those lines and each file is capped at its measured size. The WebGL createScenePBRRenderer/render and WebGPU createSceneWebGPURenderer/render functions each grow by the one ocean draw call and its early-exit and dispose terms; their exceptions record the measured values. Opt-in mip bloom registers a governed pass module with limits equal to its measured source growth. WebGPU mip bloom adds the same governed filter chain and measured resource cleanup growth. The opt-in mip-chain bloom adds one dispatch per backend; exceptions record the measured values. RenderBeforeModels moves the initial render ahead of model hydration in mount.ts; its limit rises from 3866 to the measured 3884 lines. The ocean passes and the mip-chain bloom both hook into the renderers; this branch carries both, so the combined hooks raise the measured limits. Carrying both the ocean passes and the mip-chain bloom raises the WebGL and WebGPU source sets and renderer-set bytes by the sum of their measured growth. Walking registers a separate governed module; the mount line caps increase only for its lazy load and reset hooks. Shared URL loading reduces mount-webgl.ts; its cap is tightened to the measured source. The walk module adds a zero-specificity default stylesheet for its hint and joystick and caps walk renders at the scene's MaxFPS. The walk module defers rendering to an animating scene loop, caps walk renders at MaxFPS, and ships restylable defaults. Integration of the walk controller with the ocean, sky and bloom branches. The walk hook adds its lines to mount.ts on top of RenderBeforeModels. Detail layers add governed atlas/program helpers and opt-in draw hooks. Function exceptions and physical line limits track measured integration growth; default limits stay fixed. WebGPU detail adds a governed atlas module and cached pipeline/binding hooks. Limits reflect measured source and function growth. Integration of detail layers with the ocean, sky, bloom and walk branches. Ocean reflection hooks and new governed passes use measured physical lines and function metrics. Existing function exception locations move with the hooks; new orchestration growth is limited to reflection setup, pass splitting and disposal. Three nullable WebGPU target declarations and the optional pass callback retain plain-JS syntax; the typed bridge governs the new module interface without increasing the implicit-any ratchet. Living sky and atmosphere use governed pass modules with exact measured line caps; orchestration exceptions grow only for uniforms, quality shedding, and disposal. Shader variants depend on authored feature presence. Depth haze, reduced sun shafts, AgX and grain extend the same modules. Post-dispatch and cleanup exceptions record their measured growth; the WebGL planar draw scopes mirrored frame state and culling with guaranteed restoration. Integration of the atmosphere features with detail layers and the walk controller. The atmosphere tier is capped by the device capability tier. CPU ocean querying registers a lazy governed module and shares the generated wave packer with the GPU; its new files have measured line caps. Opt-in sailing and wake register bounded standalone authorities. Mount growth is the lazy URL gate and one per-render advance call; walking grows only by separate surfaces and suspension/carry/reset seams. New exceptions record measured cumulative IIFE and input-installation metrics, with reasons. Query defaults add five physical lines. Grounded retreat and friction add nine physics lines; phone guidance adds four input lines. Wake winding adds four lines. Caps and cumulative function exceptions equal the measured authored sources. Integration of the vessel controller with atmosphere, detail and walk. Clipper repairs add one physics line and two cloth lines; file caps match measured sources. The baked-buffer guard and wheel near plane add one conditional each; only their measured complexity exceptions rise. The translucent pass explicitly binds the PBR program after the ocean draw so wake uniforms never target the ocean program; line limits grow by that one measured binding. Volume transmission preserves the existing detail, reflection and atmosphere authorities. File and function limits record their measured combined source; default limits remain fixed. Wind-loaded sails, heel, bow spray and deck bobbing keep the vessel authority lazy; its file and function limits record measured growth. WebGL depth AO adds a governed depth-post source. It reconstructs view-space normals and samples twelve depth taps; depth-reading passes use a separate framebuffer, including atmosphere. User-controlled sailing stays responsive under reduced motion while decorative animation stays frozen; mount limits record the measured input-loop change. Opt-in zoom registers a bounded control module. Walk line growth covers navigation scaling and exact listener teardown; vessel metrics cover pinch cancellation, follow distance and reduced-motion chase. Existing limits increase only to the measured values. Zoom stays in its opt-in lazy chunk; ordinary scenes do not download the authority. Mount growth is the four-line prop gate. WebGPU detail resource lifecycle adds stable texture/control keys, frame reuse, retirement and repeatable disposal. The regression workload drops from 12 live detail buffers to one across 12 color changes; detail file and source-set caps grow only by the 56 measured helper lines. Renderer orchestration complexity decreases; existing function exceptions and default limits stay fixed. The normal-map UV scale adds one uniform upload with two defaults to createScenePBRRenderer and one selection to createSceneWebGPURenderer; their exceptions record the measured values. glTF sampler wrap modes now reach both backends. WebGPU binds and caches one sampler per texture slot and invalidates bind groups when those samplers change; the renderer limits rise only by measured changes. Function anchors shift with the added wrap descriptors and sampler helper. KTX2 uploads restore material wrap modes after decoder defaults; renderer source line caps record the exact authored growth. Merge reconciliation preserves both renderer source sets; file caps cover only the measured combined source growth. Renderer governance checks source roles, paths, bundles, direct references, and function limits. GPU crowd motion adds tests and a benchmark. The Blackglass water composite adds one registered test reference. The line limit equals the measured registry. The shadow array tests now use the source-set reader, which removes one direct source reference. Frame completion timing adds five renderer ABI entries. HDR post processing adds a presentation pass and one format selection; limits increase only by the measured source growth. Opt-in sky adds shader and resource factories; limits use measured source growth. Scene node focus proxies add 7 lines to mount.ts (creating the proxy state, disposing it, and four per-frame sync calls); the proxy code lives in mount-scene-focus.ts and the limit increases only by that measured growth. Walking registers a separate governed module; the mount line caps increase only for its lazy load and reset hooks. Shared URL loading reduces mount-webgl.ts; its cap is tightened to the measured source. The walk module adds a zero-specificity default stylesheet for its hint and joystick and caps walk renders at the scene's MaxFPS. The walk module defers rendering to an animating scene loop, caps walk renders at MaxFPS, and ships restylable defaults. Startup shader readiness integrates the current physical-sky and walking sources; renderer function locations and limits use the merged source measurements. The normal-map UV scale adds one uniform upload with two defaults to createScenePBRRenderer and one selection to createSceneWebGPURenderer; their exceptions record the measured values. glTF sampler wrap modes now reach both backends. WebGPU binds and caches one sampler per texture slot and invalidates bind groups when those samplers change; the renderer limits rise only by measured changes. Function anchors shift with the added wrap descriptors and sampler helper. KTX2 uploads restore material wrap modes after decoder defaults; renderer source line caps record the exact authored growth. Base shader failure adds an optional renderer ABI method and six mount lines for fallback and context isolation; function anchors follow CSS preparation before readiness. WebGPU pipeline validation adds scoped creation and a shared failure guard; source line caps and function anchors follow the measured changes. Core failure uses the existing optional getFailureReason ABI method. Shared Selena IBL texture binding and renderer context use a governed helper; the WebGPU source-set cap grows by 59 measured lines: 43 binding/context lines and 16 explicit type/narrowing lines. The shared uniform helper grows by exactly its three context lines. Existing monolith and function complexity caps remain unchanged. Selective specular bloom registers opt-in attachment owners with caps measured from their source; it reuses the existing filter chain. Reviewed optics/MRT bundle deltas: shared scene +463B Brotli, WebGL +643B, WebGPU +1032B (plus glTF material transport); four aggregate Brotli targets are the minimum measured values under the unchanged 5% allowance. Raw/gzip targets and every other byte cap stay fixed. Both generated backend bundles pass the real Chrome thickness/AA/specular/opaque-occlusion oracle. Ordinary skeletal bind retention adds 133 Brotli bytes to the shared scene chunk; only four exceeded aggregate Brotli targets move to their exact minimum under the unchanged allowance. Source-line caps and all other byte targets remain fixed. The optional vessel navigation module adds one source registration line; governance caps reflect that one authored line. Reviewed submitted-frame receipts add explicit complete/pending renderer outcomes and an opt-in color-membership collector. Only measured increases for WebGL drawFrame, createScenePBRRenderer, renderFrame and drawPBRObjectList and WebGPU createSceneWebGPURenderer, render and drawPBRObjects are admitted; the two draw-list parameter increases carry the collector only for the final color pass. Existing exception locations move with these hooks, with every unrelated cap preserved. Default function limits, unrelated source and byte caps, and the crowd bounds work guard remain unchanged. Reviewed complete-submission and owning-mount hooks add 5 physical WebGL lines, 10 WebGPU lines and 41 mount lines above their existing caps; complete water/world outcome forwarding and exact packed-pose batch expansion add 43 mount-webgl lines. Only these file and matching backend set caps move to measured minima. The opt-in frame submission test registers one direct WebGPU source reference. Only the exhausted WebGL renderer aggregate Brotli target rises from 237769 to 237848 for its measured 249741 bytes under the unchanged 5% policy; every other aggregate metric is preserved."
   },
   "rendererSourceNamingContract": [
     "Extracted backend runtime sources must live under client/runtime/scene3d and be named webgl*.ts or webgpu*.ts.",
@@ -608,6 +608,11 @@
       "file": "client/runtime/tsconfig.scene3d.json",
       "source": "walk-input.ts",
       "count": 1
+    },
+    {
+      "file": "client/js/scene3d-frame-submission.test.mjs",
+      "source": "webgpu.ts",
+      "count": 1
     }
   ],
   "sourceSets": {
@@ -662,8 +667,8 @@
         "../runtime/scene3d/webgl-contact-shadows.ts",
         "../runtime/scene3d/webgl-taa.ts"
       ],
-      "maxLines": 12497,
-      "maxFileLines": 11292
+      "maxLines": 12502,
+      "maxFileLines": 11297
     },
     "webgpu": {
       "chunk": "bootstrap-feature-scene3d-webgpu.js",
@@ -715,17 +720,17 @@
         "../runtime/scene3d/webgpu-bloom.ts",
         "../runtime/scene3d/webgpu-contact-shadows.ts"
       ],
-      "maxLines": 21005,
-      "maxFileLines": 19605
+      "maxLines": 21015,
+      "maxFileLines": 19615
     }
   },
   "files": {
-    "../runtime/scene3d/webgl.ts": 11292,
-    "../runtime/scene3d/webgpu.ts": 19605,
+    "../runtime/scene3d/webgl.ts": 11297,
+    "../runtime/scene3d/webgpu.ts": 19615,
     "bootstrap-src/16a1-scene-webgpu-selena-uniforms.ts": 208,
     "../runtime/scene3d/hydrate-input.ts": 90,
-    "../runtime/scene3d/mount-webgl.ts": 5347,
-    "../runtime/scene3d/mount.ts": 3897,
+    "../runtime/scene3d/mount-webgl.ts": 5390,
+    "../runtime/scene3d/mount.ts": 3938,
     "../runtime/scene3d/webgl-ocean.ts": 242,
     "../runtime/scene3d/webgpu-ocean.ts": 233,
     "../runtime/scene3d/webgl-bloom.ts": 114,
@@ -907,7 +912,7 @@
     {
       "source": "../runtime/scene3d/webgl.ts",
       "name": "drawFrame@3883:5",
-      "lines": 407,
+      "lines": 408,
       "cyclomatic": 110,
       "cognitive": 138,
       "maxNesting": 4,
@@ -915,7 +920,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "createScenePostProcessor@4453:3",
+      "name": "createScenePostProcessor@4454:3",
       "lines": 586,
       "cyclomatic": 164,
       "cognitive": 232,
@@ -924,7 +929,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "anonymous@4874:14",
+      "name": "anonymous@4875:14",
       "lines": 153,
       "cyclomatic": 40,
       "cognitive": 87,
@@ -933,7 +938,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "scenePBRUploadLights@6961:3",
+      "name": "scenePBRUploadLights@6962:3",
       "lines": 116,
       "cyclomatic": 33,
       "cognitive": 64,
@@ -942,7 +947,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "scenePBRUploadEnvironmentMap@7303:3",
+      "name": "scenePBRUploadEnvironmentMap@7304:3",
       "lines": 126,
       "cyclomatic": 52,
       "cognitive": 98,
@@ -951,16 +956,16 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "createScenePBRRenderer@7590:3",
+      "name": "createScenePBRRenderer@7591:3",
       "lines": 3464,
-      "cyclomatic": 1062,
+      "cyclomatic": 1066,
       "cognitive": 1694,
       "maxNesting": 7,
       "parameters": 2
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "uploadCustomUniforms@8538:5",
+      "name": "uploadCustomUniforms@8539:5",
       "lines": 24,
       "cyclomatic": 21,
       "cognitive": 31,
@@ -969,16 +974,16 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "renderFrame@8760:5",
-      "lines": 339,
-      "cyclomatic": 114,
-      "cognitive": 164,
+      "name": "renderFrame@8761:5",
+      "lines": 340,
+      "cyclomatic": 116,
+      "cognitive": 166,
       "maxNesting": 4,
       "parameters": 4
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "prepareRigidMeshBatches@9580:5",
+      "name": "prepareRigidMeshBatches@9582:5",
       "lines": 148,
       "cyclomatic": 86,
       "cognitive": 198,
@@ -987,16 +992,16 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "drawPBRObjectList@9854:5",
+      "name": "drawPBRObjectList@9857:5",
       "lines": 292,
       "cyclomatic": 89,
       "cognitive": 219,
       "maxNesting": 6,
-      "parameters": 4
+      "parameters": 5
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "applyPointsAuthoredCustomUniforms@10222:5",
+      "name": "applyPointsAuthoredCustomUniforms@10227:5",
       "lines": 33,
       "cyclomatic": 16,
       "cognitive": 44,
@@ -1005,7 +1010,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "drawPointsEntries@10398:5",
+      "name": "drawPointsEntries@10403:5",
       "lines": 197,
       "cyclomatic": 63,
       "cognitive": 125,
@@ -1014,7 +1019,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "drawInstancedMeshes@10690:5",
+      "name": "drawInstancedMeshes@10695:5",
       "lines": 191,
       "cyclomatic": 57,
       "cognitive": 116,
@@ -1023,7 +1028,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "wgpuLoadTexture@3518:3",
+      "name": "wgpuLoadTexture@3519:3",
       "lines": 131,
       "cyclomatic": 42,
       "cognitive": 83,
@@ -1032,7 +1037,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "wgpuCreateSceneColorPipeline@4134:3",
+      "name": "wgpuCreateSceneColorPipeline@4135:3",
       "lines": 26,
       "cyclomatic": 2,
       "cognitive": 1,
@@ -1041,7 +1046,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "wgpuCreatePostProcessor@4375:3",
+      "name": "wgpuCreatePostProcessor@4376:3",
       "lines": 720,
       "cyclomatic": 131,
       "cognitive": 198,
@@ -1050,7 +1055,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "anonymous@4762:14",
+      "name": "anonymous@4763:14",
       "lines": 314,
       "cyclomatic": 29,
       "cognitive": 83,
@@ -1059,7 +1064,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "createSceneWebGPUPicker@5434:3",
+      "name": "createSceneWebGPUPicker@5435:3",
       "lines": 415,
       "cyclomatic": 118,
       "cognitive": 173,
@@ -1068,7 +1073,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "queuePick@5596:5",
+      "name": "queuePick@5597:5",
       "lines": 31,
       "cyclomatic": 9,
       "cognitive": 18,
@@ -1077,17 +1082,17 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "createSceneWebGPURenderer@6673:3",
-      "lines": 12241,
-      "cyclomatic": 4170,
-      "cognitive": 5385,
+      "name": "createSceneWebGPURenderer@6674:3",
+      "lines": 12245,
+      "cyclomatic": 4181,
+      "cognitive": 5409,
       "maxNesting": 7,
       "parameters": 2,
       "reason": "The existing renderer closure includes its draw and resource helpers. Excluding direct vertex draws from baked-buffer sizing adds one conditional to its cumulative metrics, covered by the mixed hull/canvas upload regression. Other limits remain fixed. Disabled alpha-cutoff upload distinguishes BLEND texture coverage (-2) from OPAQUE (-1) without changing the material uniform layout."
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "initGPUResources@7894:6",
+      "name": "initGPUResources@7895:6",
       "lines": 395,
       "cyclomatic": 26,
       "cognitive": 34,
@@ -1096,7 +1101,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "sceneSelenaPipelineAttributes@8634:5",
+      "name": "sceneSelenaPipelineAttributes@8635:5",
       "lines": 57,
       "cyclomatic": 28,
       "cognitive": 59,
@@ -1105,7 +1110,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "sceneWaterObjectState@10026:5",
+      "name": "sceneWaterObjectState@10027:5",
       "lines": 95,
       "cyclomatic": 39,
       "cognitive": 57,
@@ -1114,7 +1119,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "sceneWaterManifestShaderSources@10306:5",
+      "name": "sceneWaterManifestShaderSources@10307:5",
       "lines": 85,
       "cyclomatic": 74,
       "cognitive": 121,
@@ -1123,7 +1128,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "ingestManifestValue@10332:7",
+      "name": "ingestManifestValue@10333:7",
       "lines": 20,
       "cyclomatic": 19,
       "cognitive": 38,
@@ -1132,7 +1137,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "ingestManifestText@10352:7",
+      "name": "ingestManifestText@10353:7",
       "lines": 22,
       "cyclomatic": 22,
       "cognitive": 41,
@@ -1141,7 +1146,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "createSceneWaterSystem@10840:5",
+      "name": "createSceneWaterSystem@10841:5",
       "lines": 202,
       "cyclomatic": 33,
       "cognitive": 32,
@@ -1150,7 +1155,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "renderWaterObjectMeshTargetPass@11643:5",
+      "name": "renderWaterObjectMeshTargetPass@11644:5",
       "lines": 27,
       "cyclomatic": 14,
       "cognitive": 13,
@@ -1159,7 +1164,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "renderWaterObjectSceneTexturePasses@11980:5",
+      "name": "renderWaterObjectSceneTexturePasses@11981:5",
       "lines": 147,
       "cyclomatic": 39,
       "cognitive": 60,
@@ -1168,7 +1173,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "updateWaterSystems@12131:5",
+      "name": "updateWaterSystems@12132:5",
       "lines": 507,
       "cyclomatic": 168,
       "cognitive": 280,
@@ -1177,7 +1182,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawWaterPoolEntries@13659:5",
+      "name": "drawWaterPoolEntries@13660:5",
       "lines": 104,
       "cyclomatic": 34,
       "cognitive": 79,
@@ -1186,7 +1191,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawWaterSurfaceSide@13807:5",
+      "name": "drawWaterSurfaceSide@13808:5",
       "lines": 104,
       "cyclomatic": 34,
       "cognitive": 84,
@@ -1195,7 +1200,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "updateInstancedCullSystems@13968:5",
+      "name": "updateInstancedCullSystems@13969:5",
       "lines": 164,
       "cyclomatic": 69,
       "cognitive": 114,
@@ -1204,7 +1209,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "syncEnvironmentIBL@14408:5",
+      "name": "syncEnvironmentIBL@14409:5",
       "lines": 60,
       "cyclomatic": 31,
       "cognitive": 63,
@@ -1213,7 +1218,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "renderShadowPass@15999:116",
+      "name": "renderShadowPass@16000:116",
       "lines": 102,
       "cyclomatic": 31,
       "cognitive": 61,
@@ -1222,16 +1227,16 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawPBRObjects@16118:5",
-      "lines": 197,
-      "cyclomatic": 93,
-      "cognitive": 182,
+      "name": "drawPBRObjects@16119:5",
+      "lines": 203,
+      "cyclomatic": 99,
+      "cognitive": 204,
       "maxNesting": 6,
-      "parameters": 9
+      "parameters": 10
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "instancedMeshColorData@16359:5",
+      "name": "instancedMeshColorData@16366:5",
       "lines": 48,
       "cyclomatic": 20,
       "cognitive": 35,
@@ -1240,7 +1245,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawPointsEntries@17085:5",
+      "name": "drawPointsEntries@17092:5",
       "lines": 158,
       "cyclomatic": 51,
       "cognitive": 86,
@@ -1249,7 +1254,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawComputeParticleEntries@17260:5",
+      "name": "drawComputeParticleEntries@17267:5",
       "lines": 155,
       "cyclomatic": 44,
       "cognitive": 60,
@@ -1258,7 +1263,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "publishWebGPUFrameStats@17483:5",
+      "name": "publishWebGPUFrameStats@17490:5",
       "lines": 313,
       "cyclomatic": 257,
       "cognitive": 257,
@@ -1267,7 +1272,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawBoardLabels@18156:5",
+      "name": "drawBoardLabels@18163:5",
       "lines": 117,
       "cyclomatic": 39,
       "cognitive": 76,
@@ -1276,16 +1281,16 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "render@18391:5",
-      "lines": 738,
-      "cyclomatic": 235,
-      "cognitive": 294,
+      "name": "render@18398:5",
+      "lines": 741,
+      "cyclomatic": 240,
+      "cognitive": 299,
       "maxNesting": 4,
       "parameters": 3
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "dispose@19184:5",
+      "name": "dispose@19194:5",
       "lines": 145,
       "cyclomatic": 37,
       "cognitive": 61,
@@ -1295,7 +1300,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "diagnostics@19442:5",
+      "name": "diagnostics@19452:5",
       "lines": 90,
       "cyclomatic": 49,
       "cognitive": 49,
@@ -1337,7 +1342,7 @@
       "source": "../runtime/scene3d/webgl.ts",
       "name": "createScenePBRRenderer",
       "lines": 3464,
-      "cyclomatic": 1062,
+      "cyclomatic": 1066,
       "cognitive": 1694,
       "maxNesting": 7,
       "parameters": 2
@@ -1363,9 +1368,9 @@
     {
       "source": "../runtime/scene3d/webgpu.ts",
       "name": "createSceneWebGPURenderer",
-      "lines": 12241,
-      "cyclomatic": 4170,
-      "cognitive": 5385,
+      "lines": 12245,
+      "cyclomatic": 4181,
+      "cognitive": 5409,
       "maxNesting": 7,
       "parameters": 2
     },
@@ -1381,9 +1386,9 @@
     {
       "source": "../runtime/scene3d/webgpu.ts",
       "name": "render",
-      "lines": 738,
-      "cyclomatic": 235,
-      "cognitive": 294,
+      "lines": 741,
+      "cyclomatic": 240,
+      "cognitive": 299,
       "maxNesting": 4,
       "parameters": 3
     },
@@ -1417,7 +1422,7 @@
     {
       "source": "../runtime/scene3d/webgl.ts",
       "name": "drawFrame",
-      "lines": 407,
+      "lines": 408,
       "cyclomatic": 110,
       "cognitive": 138,
       "maxNesting": 4,
@@ -1430,16 +1435,16 @@
       "cyclomatic": 89,
       "cognitive": 219,
       "maxNesting": 6,
-      "parameters": 4
+      "parameters": 5
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
       "name": "drawPBRObjects",
-      "lines": 197,
-      "cyclomatic": 93,
-      "cognitive": 182,
+      "lines": 203,
+      "cyclomatic": 99,
+      "cognitive": 204,
       "maxNesting": 6,
-      "parameters": 9
+      "parameters": 10
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
@@ -1490,7 +1495,7 @@
       ],
       "raw": 979700,
       "gzip": 285000,
-      "brotli": 237769,
+      "brotli": 237848,
       "ledger": "The merged frame caching and GPU crowd motion build measures 908212 raw, 259370 gzip, and 217577 Brotli bytes. These targets leave narrow rounding room. Environment.Ocean measures 942585 raw, 272500 gzip and 227335 Brotli; targets rise by the smallest 100-byte steps. With motion milestone 2 and Environment.Ocean it measures 950560 / 274923 / 229285. Ocean geometry reflections add opaque captures, bounded SSR, mirrored PBR fallback, and shared quality policy. Targets use current generated byte counts rounded to 100 bytes. Living sky/atmosphere pass modules and opt-in ocean integration: targets equal current generated bytes rounded to 100. Living sky/atmosphere pass modules and opt-in ocean integration: targets equal current generated bytes rounded to 100. Shared wave packing for CPU/GPU parity measures {'raw': 954362, 'gzip': 276577, 'brotli': 230801}. Targets grow only where the existing 5% allowance is exhausted. Vessel lazy gates and one paced advance hook measure {'raw': 954971, 'gzip': 276829, 'brotli': 231033}; only exhausted targets rise. The merged frame caching and GPU crowd motion build measures 908212 raw, 259370 gzip, and 217577 Brotli bytes. These targets leave narrow rounding room. Combined startup readiness and normal-map sampling measures 944991 raw, 272560 gzip and 227672 Brotli bytes; only exceeded targets rise to the next sufficient 100-byte step. CSS post-effect retention and shader-failure recovery measure 945217 raw, 272627 gzip and 227865 Brotli bytes; only exceeded targets rise by the smallest sufficient 100-byte steps. Rich-material texture-slot negotiation adds 21 Brotli bytes; only exhausted targets move to the exact minimum without changing allowances."
     },
     "base+webgpu+gltf+animation": {

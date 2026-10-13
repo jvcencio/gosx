@@ -14,6 +14,8 @@ func surfaceFixture(t *testing.T) js.Value {
 	f := js.Global().Get("Function").New(`
 const names = ['document', 'CustomEvent', '__gosx_scene3d_instance_stream_apply', '__gosx'];
 const saved = names.map(name => Object.getOwnPropertyDescriptor(globalThis, name));
+const browserDocument = globalThis.document;
+const savedLookup = browserDocument && Object.getOwnPropertyDescriptor(browserDocument, "getElementById");
 const f = { queries: 0, loads: 0, lost: 0, restored: 0 };
 f.handle = { views: [], snapshots: [], updates: [], applyInstanceStream(bytes) {
   this.views.push(bytes); this.snapshots.push(bytes.slice()); return { applied: true };
@@ -23,12 +25,15 @@ f.canvas = { width: 800, height: 600, getContext(name) { return name === 'webgl2
     loseContext() { f.lost++; }, restoreContext() { f.restored++; }
   } : null; }
 } : null; } };
-f.newMount = () => ({ isConnected: true, __gosxScene3DHandle: f.handle, events: [],
+f.newMount = () => ({ isConnected: true, __gosxScene3DHandle: f.handle, events: [], listeners: new Map(),
+  addEventListener(type, fn) { this.listeners.set(type, fn); }, removeEventListener(type) { this.listeners.delete(type); },
   querySelector() { return f.canvas; }, querySelectorAll() { return [f.canvas]; },
-  dispatchEvent(event) { this.events.push(event); return true; }
+  dispatchEvent(event) { this.events.push(event); event.target = this; this.listeners.get(event.type)?.(event); return true; }
 });
 f.mount = f.newMount();
-globalThis.document = { getElementById(id) { f.queries++; return id === 'stage' ? f.mount : null; } };
+const lookup = id => { f.queries++; return id === 'stage' ? f.mount : null; };
+if (browserDocument) Object.defineProperty(browserDocument, 'getElementById', { configurable: true, value: lookup });
+else globalThis.document = { getElementById: lookup };
 globalThis.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
 globalThis.__gosx_scene3d_instance_stream_apply = () => {};
 globalThis.__gosx = { host: { scene3d: {} } };
@@ -38,9 +43,15 @@ f.deferLoad = () => {
     f.loads++; return new Promise((resolve, reject) => { f.resolve = resolve; f.reject = reject; });
   };
 };
-f.restore = () => names.forEach((name, i) => {
+f.restore = () => {
+if (browserDocument) {
+  if (savedLookup) Object.defineProperty(browserDocument, "getElementById", savedLookup);
+  else delete browserDocument.getElementById;
+}
+names.forEach((name, i) => {
   if (saved[i]) Object.defineProperty(globalThis, name, saved[i]); else delete globalThis[name];
 });
+};
 return f;
 `).Invoke()
 	t.Cleanup(func() { f.Call("restore") })
@@ -209,5 +220,51 @@ func TestSurfaceOwnsCommandSnapshotAndPartialOptions(t *testing.T) {
 	s.Dispose()
 	if err := s.DispatchCommands(batch); err == nil || s.mount.Truthy() {
 		t.Fatal("disposed surface accepted a command or retained mount")
+	}
+}
+
+func TestSurfaceFrameSubmissionSubscriptionAndExactCancellation(t *testing.T) {
+	f := surfaceFixture(t)
+	s := NewSurface("stage")
+	t.Cleanup(s.Dispose)
+	received := 0
+	cancel, err := s.OnFrameSubmitted(func(r MountFrameSubmission) {
+		received++
+		if r.RequestID != "drop" || len(r.ObjectIDs) != 1 {
+			t.Errorf("bad receipt: %#v", r)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail := map[string]any{"requestID": "drop", "revision": 6, "commandRevision": 9, "hydrationGeneration": 4, "frameSerial": 1, "renderer": "webgl", "modelIDs": []any{"hero/slot-0"}, "objectIDs": []any{"hero/slot-0/prim-0"}}
+	event := js.Global().Get("CustomEvent").New(MountFrameSubmittedEvent, map[string]any{"detail": detail})
+	f.Get("mount").Call("dispatchEvent", event)
+	if received != 1 {
+		t.Fatal("typed receipt was not delivered")
+	}
+	if err := s.CancelFrameRequest(""); err == nil {
+		t.Fatal("empty cancellation accepted")
+	}
+	if err := s.CancelFrameRequest("drop"); err != nil {
+		t.Fatal(err)
+	}
+	events := f.Get("mount").Get("events")
+	last := events.Index(events.Length() - 1)
+	if last.Get("type").String() != MountFrameCancelEvent || last.Get("detail").Get("id").String() != "drop" {
+		t.Fatal("cancellation identity lost")
+	}
+	cancel()
+	cancel()
+	f.Get("mount").Call("dispatchEvent", event)
+	if received != 1 {
+		t.Fatal("cancelled callback retained")
+	}
+	if _, err = s.OnFrameSubmitted(func(MountFrameSubmission) { received++ }); err != nil {
+		t.Fatal(err)
+	}
+	s.Dispose()
+	if f.Get("mount").Get("listeners").Get("size").Int() != 0 {
+		t.Fatal("disposed subscription retained")
 	}
 }

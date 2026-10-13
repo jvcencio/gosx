@@ -7,6 +7,25 @@
   RemoteAddr or origin policies. Nested handlers and completion observers share
   the result; malformed or repeated headers fall back to the peer.
 
+## v0.57.15
+
+- Add opt-in Scene3D frame requests to atomic command batches and typed
+  `scene.Surface.OnFrameSubmitted` receipts. A receipt requires the current
+  owning renderer and hydration generation, a complete submitted composition,
+  and every requested live model primitive in the color pass. Pending shaders,
+  stale owners and shadow-only draws cannot acknowledge the request. Submission
+  does not certify GPU completion or display presentation.
+- Preserve renderer outcomes through water-only and combined world/water
+  composition. Scene readiness now follows successful full-frame submission;
+  shader preparation continues to schedule retries.
+- Charge crowd bounds preprocessing for actual vertex influences and active
+  joint corners, sharing immutable source work across primitives while retaining
+  the bounded-work guard. Full imported rigs can use native crowd rendering
+  without an inflated preprocessing estimate forcing fallback.
+- Apply packed pose frames only to their requested actor batches. Unrelated
+  props and effects retain their committed transforms and playback state;
+  membership validation and atomic declaration replacement remain intact.
+
 ## v0.57.14
 
 - Preserve live WebGL sampler bindings when PNG, HDR and KTX2 textures upload
