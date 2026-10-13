@@ -36,6 +36,7 @@ type WorkletNodeJS struct {
 	message, messageError js.Func
 	processorError        js.Func
 	hasMessage, hasError  bool
+	wasmProcessor         bool
 }
 
 func (h *HostJS) NewWorklet(name string, options WorkletOptions) (node *WorkletNodeJS, err error) {
@@ -170,6 +171,11 @@ func (n *WorkletNodeJS) Close() (err error) {
 	defer recoverAudio("close worklet", &err)
 	if n.closed {
 		return nil
+	}
+	if n.wasmProcessor {
+		// Stop the audio-thread reactor before disconnecting its main-thread
+		// node. Generic external processors retain their own shutdown protocol.
+		_ = n.PostMessage(map[string]any{"t": "close"})
 	}
 	n.closed = true
 	n.OnMessage(nil)
