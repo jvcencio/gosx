@@ -172,7 +172,14 @@
         active = new Proxy({}, { get: function(_, method) {
           return function(...args: any[]) {
             if (method === "end" && guard.framePass === active) guard.framePass = null;
-            if (recording) deferred.push(function() { pass[method](...args); });
+            if (recording) deferred.push(function(canvasView: any) {
+              var group = method === "setBindGroup" && guard.canvasGroups && guard.canvasGroups.get(args[1]);
+              if (group) {
+                if (group.view !== canvasView) { group.group = group.create(canvasView); group.view = canvasView; }
+                args[1] = group.group;
+              }
+              pass[method](...args);
+            });
             else pass[method](...args);
           };
         } });
@@ -191,6 +198,19 @@
         if (key === "createCommandEncoder") return function(descriptor) {
           var encoder = target.createCommandEncoder(descriptor);
           return descriptor && descriptor.label === "gosx-frame" ? wgpuTrackFrameEncoder(encoder, guard) : encoder;
+        };
+        if (key === "createBindGroup") return function(descriptor: any) {
+          if (guard.canvasView && descriptor.entries.some(function(entry: any) { return entry.resource === guard.canvasView; })) {
+            var handle = {}, record: any = { view: null, group: null, create: function(view: any) {
+              return target.createBindGroup(Object.assign({}, descriptor, { entries: descriptor.entries.map(function(entry: any) {
+                return entry.resource === guard.canvasView ? Object.assign({}, entry, { resource: view }) : entry;
+              }) }));
+            } };
+            if (!guard.canvasGroups) guard.canvasGroups = new WeakMap();
+            guard.canvasGroups.set(handle, record);
+            return handle;
+          }
+          return target.createBindGroup(descriptor);
         };
         if (key === "createShaderModule") return function(descriptor) {
           target.pushErrorScope("validation");

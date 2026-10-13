@@ -118,3 +118,25 @@ test("a pipeline discovered inside the main pass never acquires or submits the c
     assert.equal(acquired, before + 1);
   } finally { h.renderer.dispose(); }
 });
+
+test("reflection capture binds the acquired canvas view after deferred encoding", async () => {
+  const h = await createBoardWebGPUHarness({ fresh: true });
+  try {
+    const create = h.fake.device.createRenderPipeline.bind(h.fake.device);
+    h.fake.device.createRenderPipeline = desc => Object.assign(create(desc), { getBindGroupLayout: () => h.fake.device.createBindGroupLayout({ entries: [] }) });
+    const group = h.fake.device.createBindGroup.bind(h.fake.device);
+    h.fake.device.createBindGroup = desc => {
+      for (const entry of desc.entries) if (entry.binding === 0 && !entry.resource.buffer && desc.entries[1]?.resource?.__kind === "textureView") {
+        assert.ok(entry.resource.__kind, "native texture bindings must receive a real view");
+      }
+      return group(desc);
+    };
+    const scene = firstScene(h.env.context.__gosx_scene3d_api, false);
+    scene.environment = { sky: { mode: "physical" }, ocean: { reflections: { mode: "ssr+planar", resolution: 0.5, strength: 0.8 } } };
+    h.renderer.render(scene, { width: 64, height: 64 });
+    assert.equal(h.renderer.getFailureReason(), "");
+    const capture = h.fake.state.renderPasses.find(pass => pass.descriptor.label === "gosx-reflection-capture");
+    assert.ok(capture);
+    assert.equal(capture.bindGroups[0].group.desc.entries[0].resource.__kind, "canvasTextureView");
+  } finally { h.renderer.dispose(); }
+});
