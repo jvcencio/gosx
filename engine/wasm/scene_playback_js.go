@@ -108,6 +108,16 @@ func playFramesOnClock(ctx context.Context, options FramePlaybackOptions, apply 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	write := apply
+	apply = func(at float64, final bool) error {
+		if err := write(at, final); err != nil {
+			return err
+		}
+		if o.Applied != nil {
+			o.Applied(at, final)
+		}
+		return nil
+	}
 	waiter := newSceneFrameWaiter()
 	defer waiter.dispose()
 	elapsed := o.Offset

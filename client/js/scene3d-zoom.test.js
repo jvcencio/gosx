@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('../runtime/node_modules/typescript');
-const source = ts.transpileModule(fs.readFileSync(require.resolve('../runtime/scene3d/mount-zoom.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+const source = ts.transpileModule(['mount-pan.ts', 'mount-zoom.ts'].map(name => fs.readFileSync(require.resolve('../runtime/scene3d/'+name), 'utf8')).join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 class Target {
   constructor() { this.listeners = []; this.style = {}; this.attrs = {}; }
   addEventListener(name, fn, options) { this.listeners.push({ name, fn, options }); }
@@ -23,22 +23,22 @@ class Target {
     return e;
   }
 }
-function harness(mode = 'first-person', reduced = false, enabled = true) {
-  const window = new Target(), canvas = new Target(), document = { activeElement: canvas }, media = new Target();
+function harness(mode = 'first-person', reduced = false, enabled = true, options = {}) {
+  const window = new Target(), canvas = new Target(), handle = new Target(), document = { activeElement: canvas, querySelector: () => handle }, media = new Target();
   window.__gosx_runtime_api = {};
   media.matches = reduced; window.matchMedia = () => media;
   vm.runInNewContext(source, { window, document, Map, Math, Number, Array });
   const api = window.__gosx_runtime_api.scene3DZoom, frames = new Map(), reasons = [];
   let id = 0, now = 0, pose = { x: 1, y: 2, z: 3, fov: 75 }, cancelled = 0, disposed = 0;
-  const controller = { mode, touched: false, zoomScale: 1, minDistance: 2, maxDistance: 100, orbit: { radius: 20 }, syncCamera() {},
+  const controller = { mode, target: {x:0,y:0,z:0}, touched: false, zoomScale: 1, minDistance: 2, maxDistance: 100, orbit: { radius: 20 }, syncCamera() {},
     currentCamera: () => pose, applyCamera: c => { pose = c; } };
   const base = { controller, cancelTouch: () => cancelled++, reset: () => { pose = { ...pose, fov: 75 }; }, dispose: () => disposed++ };
-  const helpers = { read: () => pose, schedule: r => reasons.push(r), now: () => now,
+  const helpers = { read: () => pose, pan: d => { pose = {...pose, x:pose.x+d.x, y:pose.y+d.y, z:pose.z+d.z}; }, schedule: r => reasons.push(r), now: () => now,
     requestFrame: fn => { frames.set(++id, fn); return id; }, cancelFrame: id => frames.delete(id) };
   if (mode === 'stern' || mode === 'wheel') { base.state = { mode: 'sailing', cameraMode: mode, length: 10 }; pose.fov = 65; }
-  api.setup(canvas, { controlZoom: enabled }, base, helpers);
+  api.setup(canvas, { controlZoom: enabled, ...options }, base, helpers);
   const flush = () => { for (let i = 0; frames.size && i < 200; i++) { now += 16; const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn(now)); } };
-  return { api, window, canvas, document, media, base, controller, frames, reasons, helpers, flush, cancelled: () => cancelled, disposed: () => disposed };
+  return { api, window, canvas, handle, document, media, base, controller, frames, reasons, helpers, flush, cancelled: () => cancelled, disposed: () => disposed };
 }
 const near = (a,b) => assert.ok(Math.abs(a-b)<1e-8, `${a} != ${b}`);
 test('zoom targets clamp and easing is invariant to frame subdivision', () => {
@@ -136,4 +136,57 @@ test('the lazy zoom loader finds the controller in the runtime API', () => {
  const api = { setup() {} }, env = { window: { __gosx_runtime_api: { scene3DZoom: api } } };
  vm.runInNewContext(source, env);
  assert.equal(env.sceneGatedFeatureAPI('zoom'), api);
+});
+
+
+test('fixed-camera zoom limits are explicit and two-finger pan preserves angle', () => {
+  const h=harness('fixed',true,true,{controlPan:true,controlZoomMinFOV:15,controlZoomMaxFOV:75});
+  h.canvas.emit('wheel',{deltaY:-6000}); assert.equal(h.controller.currentCamera().fov,15);
+  const before=h.controller.currentCamera();
+  const touch=(type,id,x,y)=>h.canvas.emit(type,{pointerType:'touch',pointerId:id,clientX:x,clientY:y});
+  assert.equal(touch('pointerdown',1,100,100).stopped,undefined,'one finger stays available to object interaction');
+  assert.equal(touch('pointerdown',2,200,100).stopped,true);
+  touch('pointermove',1,120,140); touch('pointermove',2,220,140);
+  const after=h.controller.currentCamera(); assert.notEqual(after.x,before.x); assert.notEqual(after.y,before.y);
+  assert.equal(after.rotationX,before.rotationX); assert.equal(after.rotationY,before.rotationY);
+  touch('pointerup',1,120,140);touch('pointerup',2,220,140);
+  assert.equal(touch('pointerdown',3,100,100).stopped,undefined,'gesture releases single-finger interactions');
+});
+
+test('pan handle supports capture, keyboard, cancellation and disposal', () => {
+  const h=harness('fixed',true,true,{controlPan:true,controlPanHandle:'#pan'});
+  const before=h.controller.currentCamera().x;
+  h.handle.emit('pointerdown',{pointerId:9,button:0,isPrimary:true,clientX:10,clientY:20});
+  h.handle.emit('pointermove',{pointerId:9,clientX:40,clientY:20});
+  assert.ok(h.controller.currentCamera().x<before);
+  h.handle.emit('pointercancel',{pointerId:9});
+  const canceled=h.controller.currentCamera().x;
+  h.handle.emit('pointermove',{pointerId:9,clientX:400,clientY:20}); assert.equal(h.controller.currentCamera().x,canceled);
+  const key=h.handle.emit('keydown',{key:'ArrowLeft',stopPropagation(){}}); assert.equal(key.defaultPrevented,true);
+  assert.ok(h.controller.currentCamera().x<canceled);
+  h.base.dispose(); assert.equal(h.handle.listeners.length,0);
+  assert.equal(h.window.listeners.length,0); assert.equal(h.frames.size,0);
+});
+
+test('screen-space pan follows pitched and orthographic cameras without changing pose', () => {
+  const {api}=harness();
+  const camera={kind:'perspective',x:0,y:10,z:0,fov:60,rotationX:-Math.PI/2};
+  const d=api.panDelta(camera,{x:0,y:0,z:0},0,100,1000);
+  near(d.x,0);near(d.y,0);near(d.z,-2*Math.tan(Math.PI/6));
+  const ortho={kind:'orthographic',x:0,y:0,z:10,top:5,bottom:-5,zoom:2};
+  const o=api.panDelta(ortho,{x:0,y:0,z:0},100,0,1000);near(o.x,-.5);near(o.y,0);near(o.z,0);
+});
+
+
+test('opt-in navigation creates a fixed controller without enabling orbit drag', () => {
+ const source=fs.readFileSync(require.resolve('../runtime/scene3d/mount-controls.ts'),'utf8');
+ let adapter, sourceCamera={kind:'perspective',x:0,y:5,z:4,fov:40,rotationX:-.8};
+ const env={window:{__gosx_runtime_api:{scene3DZoom:{setup:(_canvas,_props,base,helpers)=>{adapter={base,helpers};return base;}}}},
+  sceneNumber:(v,f)=>v??f,sceneRenderCamera:c=>({...c}),sceneControlsTarget:()=>({x:0,y:0,z:0}),sceneMotionRequestFrame(){},sceneMotionCancelFrame(){},sceneNowMilliseconds:()=>0,
+  sceneViewportCamera:c=>c};
+ vm.runInNewContext(source,env);env.setupSceneBaseControls=()=>({controller:null,dispose(){}});env.sceneVesselEnabled=()=>false;
+ const base=env.setupSceneBuiltInControls({}, {controlZoom:true,controlPan:true},()=>({cssWidth:640,cssHeight:360}),()=>sourceCamera,()=>{}, {camera:sourceCamera});
+ assert.equal(base.controller.mode,'fixed');assert.equal(adapter.helpers.read().rotationX,-.8);
+ adapter.helpers.pan({x:2,y:0,z:1});assert.equal(adapter.helpers.read().x,2);assert.equal(adapter.helpers.read().rotationX,-.8);
+ base.controller.applyCamera({...sourceCamera,x:0});assert.equal(adapter.helpers.read().x,0,'switching views resets the pan');
 });

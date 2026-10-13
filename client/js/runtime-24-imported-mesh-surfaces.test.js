@@ -82,14 +82,18 @@ test("world-mesh typed builder grows geometrically and finalizes exact owned sto
   assert.ok(finalized instanceof F32);
   assert.equal(finalized.length, 5);
   assert.notEqual(finalized, grownAllocation, "spare capacity is not exposed by the completed bundle");
-  assert.equal(new Set([firstAllocation, grownAllocation, finalized]).size, 3,
-    "one initial allocation, one bounded growth, and one exact finalization are sufficient");
+  assert.equal(finalized.buffer, grownAllocation.buffer, "finalization transfers storage without a copy");
+  assert.equal(builder.buffer, null, "the builder relinquishes completed storage");
+  assert.equal(builder.length, 0);
+  builderAPI.reserve(builder, 4); builderAPI.append4(builder, 99, 98, 97, 96);
+  assert.notEqual(builder.buffer.buffer, finalized.buffer, "reusing a finished builder cannot overwrite a held frame");
   assert.deepEqual(Array.from(finalized), Array.from(new F32([1 / 3, NaN, Infinity, -Infinity, undefined])));
 
   const exact = builderAPI.create();
   builderAPI.reserve(exact, 4);
   builderAPI.append4(exact, 1, 2, 3, 4);
-  assert.equal(builderAPI.finish(exact), exact.buffer, "exact capacity needs no final copy");
+  const exactStorage = exact.buffer;
+  assert.equal(builderAPI.finish(exact), exactStorage, "exact capacity needs no final copy");
 });
 
 test("immutable authored-shader world bake reuses exact finalized attributes without caching live routing", () => {
@@ -1609,4 +1613,34 @@ test("committed actor poses advance through held, rejected and superseded asset 
       assert.equal(state.objects.get(hero.id), hero);
     }
   });
+});
+
+
+test("object state patches keep normalized vertex buffers and clear old interaction defaults", async () => {
+  const env=importedMeshRuntime(),api=env.context.__gosx_scene3d_api;
+  const state=api.createSceneState({scene:{objects:[{id:"tile",kind:"mesh",interactive:true,label:"Play",interactiveOrder:7,pickable:true,selected:true,visible:false,
+   vertices:{positions:[0,0,0,1,0,0,0,1,0],immutable:true,revision:1}}]}});
+  const previous=state.objects.get("tile"),vertices=previous.vertices;
+  await api.applySceneCommands(state,[{kind:2,objectId:"tile",data:{x:0,y:0,z:0,rotationX:0,rotationY:0,rotationZ:0,scaleX:1,scaleY:1,scaleZ:1,parentMatrix:null,
+   interactive:false,label:"",interactiveOrder:0,pickable:false,visible:true,selected:false}}]);
+  const next=state.objects.get("tile");assert.equal(next.vertices,vertices,"turn changes must not normalize/re-upload unchanged geometry");
+  assert.equal(next.interactive,false);assert.equal(next.label,"");assert.equal(next.interactiveOrder,0);assert.equal(next.pickable,false);assert.equal(next.visible,true);assert.equal(next.selected,false);
+});
+
+
+test("geometry caches survive state patches and still invalidate changed transforms", async () => {
+  const env=importedMeshRuntime(),api=env.context.__gosx_scene3d_api;
+  const state=api.createSceneState({scene:{objects:[{id:"cached-tile",kind:"mesh",x:2,wireframe:false,
+   customVertex:"void main() { gl_Position = vec4(a_position, 1.0); }",customFragment:"void main() { gl_FragColor = vec4(1.0); }",
+   vertices:{positions:[0,0,0,1,0,0,0,1,0],immutable:true,revision:1}}]}});
+  const counts=env.context.__meshTest.countFallbackAttributeHelpers();
+  const first=buildWorldBakedBundle(env,[state.objects.get("cached-tile")]);const before=counts().worldNormalInto;
+  await api.applySceneCommands(state,[{kind:2,objectId:"cached-tile",data:{label:"Next turn",interactive:true}}]);
+  const second=buildWorldBakedBundle(env,[state.objects.get("cached-tile")]);
+  assert.equal(counts().worldNormalInto,before,"unchanged triangles stay warm across interaction patches");
+  assert.deepEqual(Array.from(second.worldMeshPositions),Array.from(first.worldMeshPositions));
+  await api.applySceneCommands(state,[{kind:2,objectId:"cached-tile",data:{x:3}}]);
+  const moved=buildWorldBakedBundle(env,[state.objects.get("cached-tile")]);
+  assert.equal(counts().worldNormalInto,before+3,"changed transform re-bakes the triangle");
+  assert.notDeepEqual(Array.from(moved.worldMeshPositions),Array.from(first.worldMeshPositions));
 });
