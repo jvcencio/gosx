@@ -37,7 +37,7 @@
         if(move) {
           if(next.view==='ship'&&vessel?.mode==='sailing') {
             if(!vessel.following)node.dispatchEvent(new CustomEvent('gosx:scene3d:vessel-command',{detail:{nodeId:vessel.nodeId,action:'helm'}}));
-          } else handle.setCamera(next.camera);
+          } else handle.setCamera({x:0,y:0,z:0,rotationX:0,rotationY:0,rotationZ:0,...next.camera});
           if(document.pointerLockElement)document.exitPointerLock();
           root.querySelector('.bgb__chart').open=false;
         }
