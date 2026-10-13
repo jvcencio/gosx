@@ -4595,13 +4595,18 @@
       if (name === "present") outputFormat = presentationFormat;
       var cacheKey = name + ":" + outputFormat;
       if (pipelines[cacheKey]) return pipelines[cacheKey];
-      // Preserve the removed rgba16float attachment's rounding before the
-      // canvas conversion, including values near an 8-bit rounding boundary.
+      // Preserve rgba16float attachment rounding before SDR canvas conversion.
+      // Explicit nearest-even avoids quantizeToF16's implementation-dependent
+      // rounding. Half subnormals are below the 8-bit canvas's visible precision.
       if (name !== "present" && outputFormat !== targetFormat) {
         fragmentSource = fragmentSource.replace(
           "@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f",
           "fn postEffect(uv: vec2f) -> vec4f") +
-          "\n@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f { return quantizeToF16(postEffect(uv)); }";
+          "\n@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {" +
+          " let color = clamp(postEffect(uv), vec4f(0.0), vec4f(1.0));" +
+          " let bits = bitcast<vec4u>(color);" +
+          " let rounded = bits + vec4u(0xfffu) + ((bits >> vec4u(13u)) & vec4u(1u));" +
+          " return bitcast<vec4f>(rounded & vec4u(0xffffe000u)); }";
       }
       var fragModule = device.createShaderModule({ label: "post-" + name, code: fragmentSource });
       var pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [layout] });
@@ -4806,6 +4811,7 @@
           var effect = effects[i];
           var outputView = currentTexView === sceneTexView ? auxTexView : sceneTexView;
           var directPresent = i === effects.length - 1 && scaledW === canvasW && scaledH === canvasH &&
+            (presentationFormat === "rgba8unorm" || presentationFormat === "bgra8unorm" || presentationFormat === targetFormat) &&
             (effect.kind === SCENE_POST_TONE_MAPPING || effect.kind === SCENE_POST_FXAA || effect.kind === "taa" ||
              effect.kind === SCENE_POST_VIGNETTE || effect.kind === SCENE_POST_COLOR_GRADE);
           if (directPresent) outputView = finalView;
