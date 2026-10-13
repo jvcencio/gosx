@@ -184,3 +184,28 @@ test('landing transfers the walker to a pier and reboarding preserves the ship p
  command('helm');assert.equal(snapshots.at(-1).mode,'sailing');assert.equal(snapshots.at(-1).position.x,ship.x);assert.equal(snapshots.at(-1).position.z,ship.z);
  h.handle.dispose();
 });
+
+for(const reduced of [false,true])test('navigation camera detaches while sailing and returns to the moving helm'+(reduced?' with reduced motion':''),async()=>{
+ const h=await mountScene(true,60,false,false,false,reduced,{quickBoard:true,navigation:true});
+ const api=h.env.context.__gosx_scene3d_vessel_physics,advance=api.advance;let state;
+ api.advance=(...args)=>{state=args[0];return advance(...args);};
+ const snapshots=[];h.mount.addEventListener('gosx:scene3d:vessel-state',e=>snapshots.push(e.detail));
+ const command=detail=>h.event(h.mount,'gosx:scene3d:vessel-command',{detail:{nodeId:'ship',...detail}});
+ command({action:'helm'});command({action:'trim',trim:1});command({action:'course',bearing:270});
+ for(let t=250;t<2000;t+=17)h.raf.flush(t);
+ const before=state.distance,course=state.course;
+ assert.equal(h.handle.setCamera({x:80,y:4.2,z:80,rotationX:0,rotationY:0}),true);
+ h.canvas.focus();h.event(h.env.document,'keydown',{code:'KeyW'});h.event(h.env.document,'keydown',{code:'KeyA'});
+ for(let t=2000;t<4000;t+=17)h.raf.flush(t);
+ h.event(h.env.document,'keyup',{code:'KeyW'});h.event(h.env.document,'keyup',{code:'KeyA'});
+ assert.equal(state.mode,'sailing');assert.equal(state.trim,1);assert.equal(state.course,course);
+ assert.ok(state.distance>before+2,'the vessel continues while the shore walker moves');
+ assert.equal(snapshots.at(-1).following,false);assert.ok(h.handle.getCamera().z<80,'W moves the detached walker');
+ assert.ok(Math.hypot(h.handle.getCamera().x-state.x,h.handle.getCamera().z-state.z)>50);
+ h.event(h.env.document,'keydown',{code:'KeyE'});assert.equal(state.detached,true,'ordinary E still requires boarding proximity');
+ const position={x:state.x,z:state.z};command({action:'helm'});
+ assert.equal(snapshots.at(-1).following,true);assert.equal(state.course,course);assert.equal(state.trim,1);
+ assert.equal(state.x,position.x);assert.equal(state.z,position.z);
+ h.raf.flush(4050);assert.ok(Math.hypot(h.handle.getCamera().x-state.x,h.handle.getCamera().z-state.z)<30);
+ assert.ok(h.raf.count()<=1);h.handle.dispose();
+});

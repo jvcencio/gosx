@@ -54,7 +54,7 @@ const budgets = [
   // raw target rises by 30 bytes; allowances and compressed targets stay fixed.
   // Validated island landing and sparse hull sampling measure 24,361 raw bytes;
   // only the optional vessel target rises by the exhausted 683 bytes.
-  { file: "bootstrap-feature-scene3d-vessel.js", raw: 22_313, gzip: 8_800, brotli: 7_800 },
+  { file: "bootstrap-feature-scene3d-vessel.js", raw: 22_693, gzip: 8_800, brotli: 7_832 },
   // bootstrap.js raw bumped 806_000 -> 812_000 for 28-video-sync-fallback.ts
   // (parity-locked JS drift engine on the brain-absent video path). gzip/brotli
   // headroom unchanged.

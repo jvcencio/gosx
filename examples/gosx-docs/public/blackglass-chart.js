@@ -38,14 +38,14 @@
     for(const place of places) {
       const link=document.createElementNS(namespace,'a'),dot=document.createElementNS(namespace,'circle'),label=document.createElementNS(namespace,'text');
       link.setAttribute('href',place.island?'#coast-course':'?view='+encodeURIComponent(place.view)+'&period='+encodeURIComponent(root.dataset.period));
-      if(place.island)link.addEventListener('click',event=>{event.preventDefault();route(place);input.focus();});
+      if(place.island)link.addEventListener('click',event=>{event.preventDefault();route(place);input.focus();});else link.dataset.coastView=place.view;
       link.setAttribute('aria-label',(place.island?'Plot course to ':'Visit ')+place.name);
       dot.setAttribute('cx',place.x);dot.setAttribute('cy',place.z);dot.setAttribute('r','1.2');
       label.setAttribute('x',place.x+2);label.setAttribute('y',place.z-2);label.textContent=place.name;
       link.append(dot,label);root.querySelector('[data-coast-map-places]').append(link);
       const visit=document.createElement(place.island?'button':'a');
       if(place.island) {visit.type='button';visit.dataset.coastIsland=place.view;visit.addEventListener('click',()=>route(place));}
-      else visit.href=link.getAttribute('href');visit.textContent=place.name;
+      else {visit.href=link.getAttribute('href');visit.dataset.coastView=place.view;}visit.textContent=place.name;
       chart.querySelector('[data-coast-chart-links]').append(visit);
     }
     root.addEventListener('gosx:scene3d:vessel-state',event=>{
@@ -60,7 +60,7 @@
       text('[data-coast-distance]',d.distance<1000?Math.round(d.distance)+' m':(d.distance/1000).toFixed(2)+' km');
       const active=d.mode==='sailing',held=d.course!==null;
       helm.disabled=false;hold.disabled=!active;sail.disabled=!active;
-      helm.textContent=active?'Leave helm':arrival?'Return to ship':'Pilot ship';
+      helm.textContent=active?(d.following?'Leave helm':'Return to helm'):arrival?'Return to ship':'Pilot ship';
       land.disabled=!d.landing;land.textContent=d.landing?'Step ashore · '+(places.find(place=>place.view===d.landing)?.name||'landing'):'Step ashore';
       if(destination) {
         if(passage.length&&held&&Math.hypot(p.x-passage[0].x,p.z-passage[0].z)<20) {passage.shift();departure=passage.length>0;const next=bearingTo(passage[0]||destination);input.value=String(Math.round(next));command('course',{bearing:next});}
@@ -75,7 +75,7 @@
       }
       sail.textContent=d.trim>.95?'Lower sail':'Full sail';hold.textContent=held?'Release course':'Hold course';
       hold.setAttribute('aria-pressed',String(held));
-      text('[data-coast-chart-status]',d.grounded?'Grounded · steer toward deeper water':held?'Holding '+degrees(d.course)+' · manual steering takes over':active?'At the helm · set a course or steer freely':'Board the ship to start your voyage.');
+      text('[data-coast-chart-status]',d.grounded?'Grounded · steer toward deeper water':held?'Holding '+degrees(d.course)+' · '+(d.following?'manual steering takes over':'voyage continues'):active?(d.following?'At the helm · set a course or steer freely':'Ship sailing · return to the helm when ready'):'Board the ship to start your voyage.');
     });
     helm.addEventListener('click',()=>{arrival=false;command('helm');});
     land.addEventListener('click',()=>{if(!state?.landing)return;arrival=true;command('land');chart.open=false;});

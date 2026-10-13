@@ -14,6 +14,7 @@ import (
 	"m31labs.dev/gosx/auth"
 	"m31labs.dev/gosx/env"
 	docsapp "m31labs.dev/gosx/examples/gosx-docs/app"
+	beacon "m31labs.dev/gosx/examples/gosx-docs/app/demos/beacon"
 	checkers "m31labs.dev/gosx/examples/gosx-docs/app/demos/checkers"
 	collab "m31labs.dev/gosx/examples/gosx-docs/app/demos/collab"
 	fluid "m31labs.dev/gosx/examples/gosx-docs/app/demos/fluid"
@@ -150,6 +151,10 @@ func buildDocsApp(root, port string) (*server.App, error) {
 	if err := mountBlackglassCartridge(app, root); err != nil {
 		return nil, err
 	}
+	app.API("GET /api/blackglass-view", func(ctx *server.Context) (any, error) {
+		q := ctx.Request.URL.Query()
+		return beacon.BlackglassBeachViewUpdate(q.Get("view"), q.Get("from"), q.Get("period")), nil
+	})
 	app.API("GET /api/docs-hubs/open-tabs", func(ctx *server.Context) (any, error) {
 		return map[string]any{
 			"html": fmt.Sprintf("<h2>Open guide tabs: %d</h2>", docshubs.ExampleHub.Presence().Count()),

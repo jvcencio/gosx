@@ -115,17 +115,21 @@ func Page() Node {
 				Tide pools ashore. Three islands offshore. Plot a course, step ashore, and bring discoveries back in your journal.
 			</p>
 			<nav class="bgb__group" aria-label="View">
-				<a class="bgb__link bgb__view-shore" href={data.shoreHref}>Shore</a>
-				<a class="bgb__link bgb__view-glass" href={data.glassHref}>Glass</a>
-				<a class="bgb__link bgb__view-cliff" href={data.cliffHref}>Overlook</a>
-				<a class="bgb__link bgb__view-pools" href={data.poolsHref}>Tide pools</a>
-				<a class="bgb__link bgb__view-ship" href={data.shipHref}>Ship view</a>
-				<button class="bgb__link bgb__reset" type="button" data-gosx-scene3d-reset="">Reset view</button>
+				<a class="bgb__link bgb__view-shore" data-coast-view="shore" href={data.shoreHref}>Shore</a>
+				<a class="bgb__link bgb__view-glass" data-coast-view="glass" href={data.glassHref}>Glass</a>
+				<a class="bgb__link bgb__view-cliff" data-coast-view="cliff" href={data.cliffHref}>Overlook</a>
+				<a class="bgb__link bgb__view-pools" data-coast-view="pools" href={data.poolsHref}>Tide pools</a>
+				<a class="bgb__link bgb__view-ship" data-coast-view="ship" href={data.shipHref}>Ship view</a>
+				<button class="bgb__link bgb__reset" type="button" data-coast-reset-view>Reset view</button>
 			</nav>
 			<nav class="bgb__group" aria-label="Light">
-				<a class="bgb__link bgb__period-golden-hour" href={data.goldenHref}>Golden hour</a>
-				<a class="bgb__link bgb__period-blue-hour" href={data.blueHref}>Blue hour</a>
-				<a class="bgb__link bgb__period-noon" href={data.noonHref}>Midday</a>
+				<a
+					class="bgb__link bgb__period-golden-hour"
+					data-coast-period="golden-hour"
+					href={data.goldenHref}
+				>Golden hour</a>
+				<a class="bgb__link bgb__period-blue-hour" data-coast-period="blue-hour" href={data.blueHref}>Blue hour</a>
+				<a class="bgb__link bgb__period-noon" data-coast-period="noon" href={data.noonHref}>Midday</a>
 			</nav>
 			<button
 				class="bgb__link bgb__pocket"

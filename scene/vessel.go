@@ -53,7 +53,8 @@ type VesselCommand struct {
 // Position and Distance are metres, Speed and WindStrength metres per second.
 type VesselState struct {
 	NodeID       string   `json:"nodeId"`
-	Mode         string   `json:"mode"` // moored, deck or sailing
+	Mode         string   `json:"mode"`      // moored, deck or sailing
+	Following    bool     `json:"following"` // camera follows the helm; false while viewing or walking elsewhere
 	Position     Vector3  `json:"position"`
 	Bearing      float64  `json:"bearing"`
 	Speed        float64  `json:"speed"`

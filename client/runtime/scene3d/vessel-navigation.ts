@@ -35,7 +35,7 @@
     function publish() {
       mount.setAttribute('data-gosx-scene3d-vessel',state.mode);
       mount.setAttribute('data-gosx-scene3d-course-hold',String(Number.isFinite(state.course)));
-      const detail={nodeId:config.nodeId,mode:state.mode,position:{x:state.x,y:state.y,z:state.z},bearing:bearing(state.heading),
+      const detail={nodeId:config.nodeId,mode:state.mode,following:state.mode==='sailing'&&!state.detached,position:{x:state.x,y:state.y,z:state.z},bearing:bearing(state.heading),
         speed:state.speed,trim:state.trim,distance:state.distance,grounded:state.grounded,windFrom:bearing(state.wind),windStrength:state.strength,
         course:Number.isFinite(state.course)?bearing(state.course):null,landing:landing(state)?.id||null};
       mount.dispatchEvent(new CustomEvent('gosx:scene3d:vessel-state',{detail,bubbles:true}));
