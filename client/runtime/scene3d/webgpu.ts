@@ -4601,8 +4601,8 @@
       if (name !== "present" && outputFormat !== targetFormat) {
         fragmentSource = fragmentSource.replace(
           "@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f",
-          "fn postEffect(uv: vec2f) -> vec4f");
-        var roundSource = "\nfn postRound(color: vec4f) -> vec4f {" +
+          "fn _p(uv: vec2f) -> vec4f");
+        var roundSource = "\nfn _r(color: vec4f) -> vec4f {" +
           " let bits = bitcast<vec4u>(clamp(color, vec4f(0.0), vec4f(1.0)));" +
           " let rounded = bits + vec4u(0xfffu) + ((bits >> vec4u(13u)) & vec4u(1u));" +
           " return bitcast<vec4f>(rounded & vec4u(0xffffe000u)); }";
@@ -4616,14 +4616,14 @@
             " let size = vec2f(textureDimensions(inputTex)); let samplePos = uv * size - vec2f(0.5);" +
             " let delta = floor(samplePos) - floor(position.xy); let weight = fract(samplePos);" +
             " let dx = dpdx(uv); let dy = dpdy(uv); let start = uv + dx * delta.x + dy * delta.y;" +
-            " let a = postRound(postEffect(start));" +
+            " let a = _r(_p(start));" +
             " if (all(weight == vec2f(0.0))) { return a; }" +
-            " if (weight.y == 0.0) { return mix(a, postRound(postEffect(start + dx)), weight.x); }" +
-            " let c = postRound(postEffect(start + dy)); if (weight.x == 0.0) { return mix(a, c, weight.y); }" +
-            " let b = postRound(postEffect(start + dx)); let d = postRound(postEffect(start + dx + dy));" +
+            " if (weight.y == 0.0) { return mix(a, _r(_p(start + dx)), weight.x); }" +
+            " let c = _r(_p(start + dy)); if (weight.x == 0.0) { return mix(a, c, weight.y); }" +
+            " let b = _r(_p(start + dx)); let d = _r(_p(start + dx + dy));" +
             " return mix(mix(a, b, weight.x), mix(c, d, weight.x), weight.y); }";
         } else {
-          fragmentSource += roundSource + "\n@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f { return postRound(postEffect(uv)); }";
+          fragmentSource += roundSource + "\n@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f { return _r(_p(uv)); }";
         }
       }
       var fragModule = device.createShaderModule({ label: "post-" + name, code: fragmentSource });
