@@ -36,7 +36,7 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 // and every unaffected metric stay fixed. The real generated-bundle optics
 // oracle validates both backends, including opaque and custom-signal coverage.
 // Retaining ordinary skeletal bind streams adds 416 raw and 133 Brotli bytes
-// to Scene3D. Five breached targets move to their exact measured minimum;
+// to Scene3D. Five breached targets are updated to cover measured growth;
 // shared allowances and every unaffected metric remain unchanged.
 // Supported rich-material device negotiation adds 155 monolith / 153 route raw
 // and 21 route Brotli bytes; only breached targets move to exact minima.

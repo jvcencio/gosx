@@ -99,9 +99,12 @@ type RouteBudget struct {
 	Limits  map[string]int64 `json:"limits"`
 	Require []string         `json:"require"`
 	// Raise names each limit or policy that this change loosens compared
-	// with the base branch, with the reason. The ratchet check fails on any
-	// loosening that is not named here.
+	// with the base branch, with the reason. Limit raises may instead use
+	// RaiseReason; policy drops must be named here.
 	Raise map[string]string `json:"raise,omitempty"`
+	// RaiseReason explains all limit raises for this route. Dropped policies
+	// still need an explicit reason in Raise.
+	RaiseReason string `json:"raiseReason,omitempty"`
 }
 
 // ReadBudget loads a budget file.
@@ -386,8 +389,8 @@ func Update(b Budget, measured []Route, allowRaise bool) Budget {
 }
 
 // Ratchet compares a head budget with its base-branch version. Every limit
-// that rose and every required policy that was dropped must be named in the
-// route's raise map with a reason.
+// that rose needs a metric-specific or route-level reason. Every required
+// policy that was dropped must be named in the route's raise map with a reason.
 func Ratchet(base, head Budget) []Finding {
 	var out []Finding
 	for app, routes := range base.Apps {
@@ -398,8 +401,8 @@ func Ratchet(base, head Budget) []Finding {
 				continue
 			}
 			for m, limit := range br.Limits {
-				if hv, ok := hr.Limits[m]; (!ok || hv > limit) && strings.TrimSpace(hr.Raise[m]) == "" {
-					out = append(out, Finding{app, route, m, fmt.Sprintf("limit raised from %d to %d without a reason in raise[%q]", limit, hv, m)})
+				if hv, ok := hr.Limits[m]; (!ok || hv > limit) && strings.TrimSpace(hr.Raise[m]) == "" && strings.TrimSpace(hr.RaiseReason) == "" {
+					out = append(out, Finding{app, route, m, fmt.Sprintf("limit raised from %d to %d without a reason in raise[%q] or raiseReason", limit, hv, m)})
 				}
 			}
 			for _, p := range br.Require {
