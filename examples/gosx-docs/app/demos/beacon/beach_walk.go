@@ -28,6 +28,10 @@ func blackglassBeachWalk() *scene.Walk {
 	}
 	var grounds []scene.WalkGround
 	for _, island := range beachgen.OffshoreIslands() {
+
+		for _, shape := range beachgen.OffshoreRockColliders(island) {
+			colliders = append(colliders, scene.WalkCollider{Kind: shape.Kind, X: shape.X, Y: shape.Y, Z: shape.Z, Radius: shape.Radius, Height: shape.Height})
+		}
 		g := beachgen.IslandGrid(island)
 		grounds = append(grounds, scene.NewWalkGround(g.MinX, g.MinZ, g.SizeX, g.SizeZ, g.Cols, g.Rows, g.Heights))
 		pier := beachgen.IslandPier(island)

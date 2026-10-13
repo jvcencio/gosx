@@ -175,3 +175,30 @@ func offshoreDepth(seed int64, islands []OffshoreIsland) ([]byte, error) {
 	}
 	return encodePNG(out)
 }
+
+// OffshoreRockPlacement reuses the coast's fractured stack mesh at an island
+// ridge. The shared source is fetched once; its collider transforms match.
+func OffshoreRockPlacement(island OffshoreIsland) [6]float64 {
+	height := .8
+	if island.ID == "bell-rock" {
+		height = 1.1
+	}
+	if island.ID == "starglass" {
+		height = .65
+	}
+	return [6]float64{island.X, IslandHeight(island, island.X, island.Z-8) - 1, island.Z - 8, .32, height, .32}
+}
+
+func OffshoreRockColliders(island OffshoreIsland) []WalkShape {
+	pose := OffshoreRockPlacement(island)
+	shapes := WalkColliders(Seed)[:len(stackSpecs(Seed))]
+	for i := range shapes {
+		s := &shapes[i]
+		s.X = pose[0] + s.X*pose[3]
+		s.Y = pose[1] + s.Y*pose[4]
+		s.Z = pose[2] + s.Z*pose[5]
+		s.Radius *= math.Max(pose[3], pose[5])
+		s.Height *= pose[4]
+	}
+	return shapes
+}

@@ -55,7 +55,7 @@ func TestOffshoreAssetsMatchSourceAndStayBounded(t *testing.T) {
 		}
 		t.Logf("%s: %d bytes", name, len(data))
 	}
-	if len(assets) != 6 || total > 900000 {
+	if len(assets) != 7 || total > 900000 {
 		t.Fatalf("offshore assets count/size: %d / %d", len(assets), total)
 	}
 }

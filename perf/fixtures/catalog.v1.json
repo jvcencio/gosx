@@ -110,6 +110,7 @@
     {"id":"app/docs/public/models/blackglass/beach-v2-albedo.jpg","owner":"app","kind":"image","phase":"dormant","condition":"always","dependencies":[]},
     {"id":"app/docs/public/models/blackglass/beach-v2-height.png","owner":"app","kind":"image","phase":"dormant","condition":"always","dependencies":[]},
     {"id":"app/docs/public/models/blackglass/beach-v2-mr.png","owner":"app","kind":"image","phase":"dormant","condition":"always","dependencies":[]},
+    {"id":"app/docs/public/models/blackglass/offshore-ground-cover.glb","owner":"app","kind":"model","phase":"dormant","condition":"always","dependencies":[]},
     {"id":"app/docs/public/models/blackglass/offshore-islands.glb","owner":"app","kind":"model","phase":"dormant","condition":"always","dependencies":[]},
     {"id":"app/docs/public/models/blackglass/offshore-piers.glb","owner":"app","kind":"model","phase":"dormant","condition":"always","dependencies":[]},
     {"id":"app/docs/public/models/blackglass/offshore-depth.png","owner":"app","kind":"image","phase":"dormant","condition":"always","dependencies":[]},

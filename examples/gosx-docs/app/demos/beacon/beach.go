@@ -138,7 +138,7 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 	program := scene.Props{
 		Width: 1280, Height: 720,
 		Label:       "Blackglass Beach — " + view.Name + " at " + period.Name,
-		AriaLabel:   "A black-sand coast at " + period.Name + ": basalt cliffs, sea stacks, footprints to black glass, tide pools with marine life, a wreck and a lighthouse. A violet handheld rests beside the pools; a clipper waits at the jetty.",
+		AriaLabel:   "A black-sand coast at " + period.Name + ": basalt cliffs, sea stacks, footprints to black glass, tide pools with marine life, a wreck and a lighthouse. A violet handheld rests beside the pools; a clipper waits at the jetty. Three offshore islands have piers, a letter cache, a tide bell and a star dial.",
 		ControlZoom: scene.Bool(true), ControlTarget: view.Target, ControlMinDistance: 2, ControlMaxDistance: 240,
 		Background: horizon, Controls: blackglassBeachControls(view.ID), Walk: blackglassBeachWalk(), Vessel: blackglassBeachVessel(), PointerLock: scene.Bool(true),
 		AutoRotate: scene.Bool(false), Responsive: scene.Bool(true), FillHeight: scene.Bool(true),
