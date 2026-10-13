@@ -103,6 +103,7 @@ type App struct {
 	observers           []RequestObserver
 	readyChecks         []*namedReadyCheck
 	readiness           readinessState
+	trustedProxies      *compiledProxyPolicy
 	redirects           map[string]registeredRedirectRoute
 	rewrites            map[string]registeredRewriteRoute
 	mounts              map[string]registeredMountedRoute
@@ -144,7 +145,7 @@ func New() *App {
 		revalidator: NewRevalidator(),
 	}
 	app.middleware = []Middleware{
-		requestIDMiddleware(),
+		app.requestIDMiddleware(),
 		app.securityHeaders(),
 		recoveryMiddleware(),
 	}
@@ -956,6 +957,9 @@ func RequestID(r *http.Request) string {
 	if r == nil {
 		return ""
 	}
+	if metadata := cachedRequestMetadata(r); metadata != nil {
+		return metadata.id
+	}
 	if id, ok := r.Context().Value(requestIDContextKey).(string); ok {
 		return id
 	}
@@ -1276,16 +1280,25 @@ func (a *App) readyHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(report)
 }
 
-func requestIDMiddleware() Middleware {
+func (a *App) requestIDMiddleware() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id := r.Header.Get(requestIDHeader)
-			if id == "" {
-				id = nextRequestID()
+			metadata := cachedRequestMetadata(r)
+			if metadata == nil {
+				id := r.Header.Get(requestIDHeader)
+				if id == "" {
+					id = nextRequestID()
+				}
+				peer := requestPeer(r.RemoteAddr)
+				metadata = &requestMetadata{id: id, peer: peer, client: a.trustedProxies.resolve(peer, r.Header)}
+				if state, ok := r.Context().Value(requestObservationContextKey).(*requestObservation); ok {
+					state.metadata = metadata
+				}
+				ctx := context.WithValue(r.Context(), requestIDContextKey, metadata)
+				r = r.WithContext(ctx)
 			}
-			w.Header().Set(requestIDHeader, id)
-			ctx := context.WithValue(r.Context(), requestIDContextKey, id)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			w.Header().Set(requestIDHeader, metadata.id)
+			next.ServeHTTP(w, r)
 		})
 	}
 }
