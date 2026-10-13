@@ -519,6 +519,34 @@
       }
     }
 
+    let lastMountCommandRevision = 0;
+    let pendingFrameRequest: ReturnType<typeof sceneCreateFrameRequest> = null;
+    let submittedFrameSerial = 0;
+    function finishSceneSubmission(outcome: unknown, meta: ReturnType<typeof createSceneRenderFrameMeta>) {
+      if (disposed || meta.frameRenderer !== renderer ||
+          meta.commandRevision !== lastMountCommandRevision ||
+          meta.hydrationGeneration !== sceneState._modelHydrationGeneration) return false;
+      // An initialized empty renderer is mounted even when its model failed
+      // to load. It has no submitted visuals and cannot admit readiness.
+      if (outcome === "empty") publishMounted();
+      if (outcome !== "submitted") return false;
+      submittedFrameSerial++;
+      const request = meta && meta.frameRequest;
+      if (request && pendingFrameRequest === request &&
+          sceneFrameRequestSubmitted(request, sceneState, lastMountCommandRevision, outcome)) {
+        pendingFrameRequest = null;
+        mount.dispatchEvent(new CustomEvent("gosx:scene3d:frame-submitted", { bubbles: true, detail: {
+          requestID: request.id, revision: request.revision, commandRevision: request.commandRevision,
+          hydrationGeneration: request.generation, frameSerial: submittedFrameSerial,
+          renderer: renderer.kind, modelIDs: request.modelIDs, objectIDs: Array.from(request.expected),
+        } }));
+      }
+      return true;
+    }
+    function cancelSceneFrameRequest(event: CustomEvent<{ id?: string }>) {
+      const id = event && event.detail && event.detail.id;
+      if (event.target === mount && id && pendingFrameRequest && pendingFrameRequest.id === id) pendingFrameRequest = null;
+    }
     function createSceneRenderFrameMeta(now) {
       const nowMS = sceneFrameNowMS(now);
       const active = sceneCanRender();
@@ -531,6 +559,9 @@
         ? adaptiveQuality.activeProfile
         : null;
       return {
+        frameRenderer: renderer, commandRevision: lastMountCommandRevision,
+        hydrationGeneration: sceneState._modelHydrationGeneration,
+        frameRequest: pendingFrameRequest ? scenePrepareFrameRequest(pendingFrameRequest, sceneState, lastMountCommandRevision) : null,
         nowMS: nowMS,
         displayDeltaMS: displayDeltaMS,
         active: active,
@@ -607,11 +638,11 @@
       }
     }
 
-    function renderSceneLayers() {
-      renderSceneLabels(labelLayer, latestBundle, labelLayoutCache, labelElements, viewport.cssWidth, viewport.cssHeight);
-      renderSceneSprites(labelLayer, latestBundle, spriteElements, viewport.cssWidth, viewport.cssHeight);
-      syncSceneNodeFocusProxies.call(null, sceneFocusProxies, latestBundle, sceneState);
-      renderSceneHTML(labelLayer, latestBundle, htmlElements, viewport.cssWidth, viewport.cssHeight, htmlTextureState);
+    function renderSceneLayers(bundle: any = latestBundle) {
+      renderSceneLabels(labelLayer, bundle, labelLayoutCache, labelElements, viewport.cssWidth, viewport.cssHeight);
+      renderSceneSprites(labelLayer, bundle, spriteElements, viewport.cssWidth, viewport.cssHeight);
+      syncSceneNodeFocusProxies.call(null, sceneFocusProxies, bundle, sceneState);
+      renderSceneHTML(labelLayer, bundle, htmlElements, viewport.cssWidth, viewport.cssHeight, htmlTextureState);
     }
 
     const releaseTextLayoutListener = onTextLayoutInvalidated(function() {
@@ -638,6 +669,7 @@
     let initPending = true;
     let initReason = "";
     let readySent = false;
+    let mountedSent = false;
     let revealSent = false;
     let disposed = false;
     if (typeof mount.addEventListener === "function") {
@@ -1498,6 +1530,7 @@
 	        return false;
 	      }
       const previous = renderer;
+      pendingFrameRequest = null;
       renderer = nextRenderer;
       sceneState._crowdRenderer = renderer;
       const variantScopeChange = replaceSceneModelTextureVariantScope(sceneState, renderer);
@@ -1820,7 +1853,9 @@
       }
       recordScenePerfCounter("render:" + (reason || "restore"));
       syncSceneNodeSentinels(latestBundle);
-      sceneRenderWithTiming(renderer, latestBundle, viewport, createSceneRenderFrameMeta(null), renderTiming);
+      const frameMeta = createSceneRenderFrameMeta(null);
+      const frameOutcome = sceneRenderWithTiming(renderer, latestBundle, viewport, frameMeta, renderTiming);
+      finishSceneSubmission(frameOutcome, frameMeta);
       recordSceneWaterFrame(mount, latestBundle);
       emitRendererWarmup(reason, latestBundle);
       maybeEmitRenderEmpty(latestBundle);
@@ -1882,7 +1917,7 @@
     // runs means those queued callbacks harmlessly no-op instead.
     const sceneRendererLostStub = {
       kind: "lost",
-      render: function () {},
+      render: function () { return "pending"; },
       dispose: function () {},
     };
 
@@ -2318,7 +2353,6 @@
 	    // Page-owned simulation/engine programs use this mount-scoped event seam
 	    // to apply typed Scene3D diffs. A monotonic revision rejects late async
 	    // search results and replayed batches without exposing renderer internals.
-	    let lastMountCommandRevision = 0;
 	    function emitMountCommandsApplied(revision, commandCount) {
 	      if (!mount || typeof mount.dispatchEvent !== "function") return;
 	      const detail = { revision, commandCount };
@@ -2333,14 +2367,21 @@
 	      const commands = Array.isArray(detail.commands) ? detail.commands : null;
 	      if (!Number.isSafeInteger(revision) || revision <= 0 || revision <= lastMountCommandRevision || !commands) return;
 	      lastMountCommandRevision = revision;
+      const frameRequest = detail.frameRequest ? sceneCreateFrameRequest(detail.frameRequest, revision) : null;
+      if (detail.frameRequest) pendingFrameRequest = frameRequest;
 	      // applyMountedSceneCommands always returns a Promise, so the async
 	      // dispatch below always applies; there is no synchronous fallback.
 	      applyMountedSceneCommands(commands, "mount-commands").then(function() {
-	        emitMountCommandsApplied(revision, commands.length);
+	        if (frameRequest && pendingFrameRequest === frameRequest && !disposed) {
+          frameRequest.accepted = true;
+          scheduleRender("frame-request");
+        }
+        emitMountCommandsApplied(revision, commands.length);
 	      });
 	    }
 	    if (mount && typeof mount.addEventListener === "function") {
 	      mount.addEventListener("gosx:scene3d:commands", onMountCommands);
+      mount.addEventListener("gosx:scene3d:frame-cancel", cancelSceneFrameRequest);
 	    }
 
 	    let lastPublishedCamera = null;
@@ -2942,6 +2983,12 @@
       }
       readySent = true;
       setAttrValue(mount, readyAttr, "true");
+      publishMounted();
+    }
+
+    function publishMounted() {
+      if (mountedSent || disposed) return;
+      mountedSent = true;
       setAttrValue(mount, mountedAttr, "true");
       ctx.emit("mounted", {
         width: viewport.cssWidth,
@@ -2996,6 +3043,31 @@
       performance.measure(name, start, end);
       performance.clearMarks(start);
       performance.clearMarks(end);
+    }
+
+    function renderMountedFrame(bundle: any, now: number, frameStart: number, checkEmpty = false) {
+      if (!ensureRendererCanCoverBundle(bundle)) {
+        scheduleNextAnimationFrame();
+        return;
+      }
+      syncSceneNodeSentinels(bundle);
+      const frameMeta = createSceneRenderFrameMeta(now);
+      const frameOutcome = sceneRenderWithTiming(renderer, bundle, viewport, frameMeta, renderTiming);
+      recordSceneWaterFrame(mount, bundle);
+      if (checkEmpty) maybeEmitRenderEmpty(bundle);
+      renderSceneLayers(bundle);
+      if (statsOverlay) statsOverlay.update(bundle, frameStart, renderer, viewport);
+      if (inspectorOverlay) inspectorOverlay.update();
+      if (sceneUpdateAdaptiveQuality(adaptiveQuality, mount, sceneState, viewport, frameStart, now, renderer)) {
+        viewportDirty = true;
+        scheduleRender("quality-transition");
+      }
+      if (finishSceneSubmission(frameOutcome, frameMeta)) {
+        publishReady();
+        publishRevealed(bundle);
+        notifySceneProgressiveModelRenderCommitted(sceneState);
+      }
+      scheduleNextAnimationFrame();
     }
 
     function renderFrame(now, reason) {
@@ -3063,31 +3135,7 @@
           sceneHydrateBundleWaterShaderSources(effectiveBundle, effectiveBundle.waterShaderSourcesByID);
           latestBundle = effectiveBundle;
           publishMountedSceneCamera(effectiveBundle.camera, reason || "render");
-          if (!ensureRendererCanCoverBundle(effectiveBundle)) {
-            scheduleNextAnimationFrame();
-            return;
-          }
-          syncSceneNodeSentinels(effectiveBundle);
-          sceneRenderWithTiming(renderer, effectiveBundle, viewport, createSceneRenderFrameMeta(now), renderTiming);
-          recordSceneWaterFrame(mount, effectiveBundle);
-          renderSceneLabels(labelLayer, effectiveBundle, labelLayoutCache, labelElements, viewport.cssWidth, viewport.cssHeight);
-          renderSceneSprites(labelLayer, effectiveBundle, spriteElements, viewport.cssWidth, viewport.cssHeight);
-          syncSceneNodeFocusProxies.call(null, sceneFocusProxies, effectiveBundle, sceneState);
-          renderSceneHTML(labelLayer, effectiveBundle, htmlElements, viewport.cssWidth, viewport.cssHeight, htmlTextureState);
-          if (statsOverlay) {
-            statsOverlay.update(effectiveBundle, frameStart, renderer, viewport);
-          }
-          if (inspectorOverlay) {
-            inspectorOverlay.update();
-          }
-          if (sceneUpdateAdaptiveQuality(adaptiveQuality, mount, sceneState, viewport, frameStart, now, renderer)) {
-            viewportDirty = true;
-            scheduleRender("quality-transition");
-          }
-          publishReady();
-          publishRevealed(effectiveBundle);
-          notifySceneProgressiveModelRenderCommitted(sceneState);
-          scheduleNextAnimationFrame();
+          renderMountedFrame(effectiveBundle, now, frameStart);
           return;
         }
       }
@@ -3175,32 +3223,7 @@
       publishSceneFrameAttr(sceneAttr("compute-quality-reduced-instances"),
         String(Math.max(0, computeQualitySourceInstances - computeQualityActiveInstances)));
       if (perfEnabled) finishScenePerfMeasure("scene3d-bundle");
-      if (!ensureRendererCanCoverBundle(latestBundle)) {
-        scheduleNextAnimationFrame();
-        return;
-      }
-      syncSceneNodeSentinels(latestBundle);
-      sceneRenderWithTiming(renderer, latestBundle, viewport, createSceneRenderFrameMeta(now), renderTiming);
-      recordSceneWaterFrame(mount, latestBundle);
-      maybeEmitRenderEmpty(latestBundle);
-      renderSceneLabels(labelLayer, latestBundle, labelLayoutCache, labelElements, viewport.cssWidth, viewport.cssHeight);
-      renderSceneSprites(labelLayer, latestBundle, spriteElements, viewport.cssWidth, viewport.cssHeight);
-      syncSceneNodeFocusProxies.call(null, sceneFocusProxies, latestBundle, sceneState);
-      renderSceneHTML(labelLayer, latestBundle, htmlElements, viewport.cssWidth, viewport.cssHeight, htmlTextureState);
-      if (statsOverlay) {
-        statsOverlay.update(latestBundle, frameStart, renderer, viewport);
-      }
-      if (inspectorOverlay) {
-        inspectorOverlay.update();
-      }
-      if (sceneUpdateAdaptiveQuality(adaptiveQuality, mount, sceneState, viewport, frameStart, now, renderer)) {
-        viewportDirty = true;
-        scheduleRender("quality-transition");
-      }
-      publishReady();
-      publishRevealed(latestBundle);
-      notifySceneProgressiveModelRenderCommitted(sceneState);
-      scheduleNextAnimationFrame();
+      renderMountedFrame(latestBundle, now, frameStart, true);
     }
 
     function maybeEmitRenderEmpty(bundle) {
@@ -3603,6 +3626,7 @@
     };
 
     function disposeMountedScene() {
+      pendingFrameRequest = null;
       const ownsMount = mount.__gosxScene3DOwner === sceneMountOwner;
       disposed = true;
       if (sceneFrameRegistration) sceneFrameRegistration.dispose(); detachMotionScene(); detachMotionScene = function() {};
@@ -3629,6 +3653,7 @@
       }
       if (mount && typeof mount.removeEventListener === "function") {
         mount.removeEventListener("gosx:scene3d:commands", onMountCommands);
+        mount.removeEventListener("gosx:scene3d:frame-cancel", cancelSceneFrameRequest);
       }
       if (handle) handle.__gosxScene3DCommandReady = false;
       if (ownsMount) {

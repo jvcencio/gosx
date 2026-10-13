@@ -18,7 +18,7 @@ const {
 
 const gltfSource = fs.readFileSync(path.join(__dirname, "bootstrap-feature-scene3d-gltf.js"), "utf8");
 
-async function mountPendingModel(renderBeforeModels) {
+async function mountPendingModel(renderBeforeModels, options = {}) {
   const mount = new FakeElement("div", null);
   mount.id = "scene-first-frame";
   let resolveModel;
@@ -41,6 +41,8 @@ async function mountPendingModel(renderBeforeModels) {
       models: [{ id: "asset", src: "/models/first-frame.glb" }],
     },
   };
+  if (options.empty) props.scene = { models: [{ id: 'asset', src: '/_test-fixture/skinned.glb' }] };
+  const modelSrc = props.scene.models[0].src;
   if (renderBeforeModels !== undefined) props.renderBeforeModels = renderBeforeModels;
   const env = createContext({
     elements: [mount],
@@ -50,7 +52,7 @@ async function mountPendingModel(renderBeforeModels) {
     fetchRoutes: {
       "/gosx/bootstrap-feature-engines.js": { text: bootstrapFeatureEnginesSource },
       "/gosx/bootstrap-feature-scene3d-gltf.js": { text: gltfSource },
-      "/models/first-frame.glb": () => pendingModel,
+      [modelSrc]: () => pendingModel,
     },
     manifest: { engines: [{
       id: "first-frame-engine", component: "GoSXScene3D", kind: "surface", mountId: mount.id, props,
@@ -63,7 +65,7 @@ async function mountPendingModel(renderBeforeModels) {
     createSceneWaterRendererWebGL: () => ({ kind: "webgl", render() {}, dispose() { rendererDisposals++; } }),
     createScenePBRRendererOrFallback: () => ({
       kind: "webgl",
-      render(bundle) { renders.push(bundle); },
+      render(bundle) { renders.push(bundle); return options.outcome; },
       renderSurfaces() {},
       dispose() { rendererDisposals++; },
     }),
@@ -73,14 +75,14 @@ async function mountPendingModel(renderBeforeModels) {
   runScript(bootstrapFeatureScene3DSource, env.context, "bootstrap-feature-scene3d.js");
   for (let attempt = 0; attempt < 10; attempt++) {
     await flushAsyncWork();
-    if (env.fetchCalls.some(call => call.url === "/models/first-frame.glb")) break;
+    if (env.fetchCalls.some(call => call.url === modelSrc)) break;
   }
-  assert.ok(env.fetchCalls.some(call => call.url === "/models/first-frame.glb"), "model loader must be waiting on I/O");
+  assert.ok(env.fetchCalls.some(call => call.url === modelSrc), "model loader must be waiting on I/O");
   assert.equal(env.consoleLogs.error.length, 0);
   return {
     env, mount, raf, renders,
     resolveModel: () => resolveModel({ bytes: buildMinimalGLBBytes() }),
-    rejectModel: () => rejectModel(new Error("model download failed")),
+    rejectModel: () => rejectModel(new Error(options.empty ? 'HTTP 404: model not found' : 'model download failed')),
     rendererDisposals: () => rendererDisposals,
   };
 }
@@ -164,6 +166,40 @@ test("failed model hydration schedules a models render and keeps the first frame
   assert.equal(mount.__gosxScene3DScheduleCounts["render:models"], 1);
   assert.equal(mount.getAttribute("data-gosx-scene3d-first-frame"), "before-models");
   assert.equal(env.consoleLogs.error.length, 0);
+});
+
+test('an intentional missing model degrades to a mounted WebGL renderer without admitting empty visuals', async () => {
+  const {env,mount,raf,renders,rejectModel}=await mountPendingModel(false,{empty:true,outcome:'empty'});
+  await drawInitialFrame(raf);
+  assert.equal(renders.length,0,'the model transaction has not completed');
+  assert.notEqual(mount.getAttribute('data-gosx-scene3d-mounted'),'true');
+  rejectModel();
+  await flushAsyncWork();
+  await drawInitialFrame(raf);
+  assert.ok(renders.length>0,'an initialized renderer attempted the empty frame');
+  assert.equal(mount.getAttribute('data-gosx-scene3d-renderer'),'webgl');
+  assert.equal(mount.getAttribute('data-gosx-scene3d-model-status'),'error');
+  assert.equal(mount.getAttribute('data-gosx-scene3d-mounted'),'true');
+  assert.notEqual(mount.getAttribute('data-gosx-scene3d-ready'),'true');
+  assert.notEqual(mount.getAttribute('data-gosx-scene3d-revealed'),'true');
+  const receipts=[];
+  mount.addEventListener('gosx:scene3d:frame-submitted',event=>receipts.push(event.detail));
+  mount.dispatchEvent(new env.context.CustomEvent('gosx:scene3d:commands',{detail:{revision:1,commands:[],frameRequest:{id:'missing',modelIDs:['asset']}}}));
+  await flushAsyncWork();
+  await drawInitialFrame(raf);
+  assert.equal(receipts.length,0,'missing hydrated primitives cannot acknowledge the model request');
+  assert.equal(env.consoleLogs.error.length,0,'the asset failure is handled by the model lifecycle');
+});
+
+test('a pending renderer attempt with no content cannot publish mounted lifecycle', async () => {
+  const {mount,raf,renders,rejectModel}=await mountPendingModel(false,{empty:true,outcome:'pending'});
+  rejectModel();
+  await flushAsyncWork();
+  await drawInitialFrame(raf);
+  assert.ok(renders.length>0);
+  assert.equal(mount.getAttribute('data-gosx-scene3d-model-status'),'error');
+  assert.notEqual(mount.getAttribute('data-gosx-scene3d-mounted'),'true');
+  assert.notEqual(mount.getAttribute('data-gosx-scene3d-ready'),'true');
 });
 
 test("a superseded mount refuses late model hydration and does not render", async () => {

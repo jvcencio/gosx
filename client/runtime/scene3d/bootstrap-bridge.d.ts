@@ -160,6 +160,7 @@ declare var sceneHasActiveTransitions: any;
 declare var sceneInstancedGLBHydrationTemplates: any;
 declare var sceneInstancedGLBMeshes: any;
 declare var sceneInstancedGLBModelsFromBatches: any;
+declare function sceneInstancedGLBMeshToModels(batch: any, batchIndex: number): any[];
 declare var sceneIsNumericTypedArray: any;
 declare var sceneIsPlainObject: any;
 declare var sceneLabelAnimated: any;

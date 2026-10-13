@@ -21,10 +21,11 @@
     }
     function wrapFrame(render: any, endFrame: any) {
       return function(bundle: any, viewport: any, frameMeta: any) {
-        try { render(bundle, viewport, frameMeta); }
+        try { return render(bundle, viewport, frameMeta); }
         catch (error) {
           wgpuSubmitPendingFrame(guard, error);
           if (!error || !error.pipelineValidation) fail("frame", String(error && error.message || error));
+          return error && error.pipelineValidation ? "pending" : "failed";
         } finally { guard.frameEncoder = guard.framePass = guard.frameCleanup = null; endFrame(); }
       };
     }
@@ -16115,7 +16116,7 @@
     // PBR object drawing
     // -----------------------------------------------------------------------
 
-    function drawPBRObjects(pass, objectList, bundle, materials, frameBindGroup, blendMode, depthWrite, pbrBuffers, stats) {
+    function drawPBRObjects(pass, objectList, bundle, materials, frameBindGroup, blendMode, depthWrite, pbrBuffers, stats, frameRequest = null) {
       var lastMaterialIndex = -1;
       var lastReceiveShadow = null;
       var lastMaterialOwner = null;
@@ -16229,6 +16230,7 @@
                 var selenaSkinIndexCount = webGPUBindRetainedMeshIndexBuffer(pass, obj);
                 if (selenaSkinIndexCount > 0) pass.drawIndexed(selenaSkinIndexCount);
                 else pass.draw(count);
+                if (frameRequest) frameRequest.record(obj.id);
                 if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
               }
               continue;
@@ -16246,6 +16248,7 @@
             var selenaIndexCount = webGPUBindRetainedMeshIndexBuffer(pass, obj);
             if (selenaIndexCount > 0) pass.drawIndexed(selenaIndexCount);
             else pass.draw(count);
+            if (frameRequest) frameRequest.record(obj.id);
             if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
             continue;
           }
@@ -16267,6 +16270,7 @@
             var skinnedPBRIndexCount = webGPUBindRetainedMeshIndexBuffer(pass, obj);
             if (skinnedPBRIndexCount > 0) pass.drawIndexed(skinnedPBRIndexCount);
             else pass.draw(count);
+            if (frameRequest) frameRequest.record(obj.id);
             if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
           }
           continue;
@@ -16295,6 +16299,7 @@
           if (!webGPUBindSceneMeshVertexBuffer(pass, 2, pbrBuffers && pbrBuffers.uvs, offset, count)) continue;
           if (!webGPUBindComputedMorphBuffer(pass, 3, computedMorphRecord.tangentBuffer, count, 4)) continue;
           pass.draw(count);
+          if (frameRequest) frameRequest.record(obj.id);
           if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
           continue;
         }
@@ -16310,6 +16315,7 @@
           } else {
             pass.draw(count);
           }
+          if (frameRequest) frameRequest.record(obj.id);
           if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
           continue;
         }
@@ -16320,6 +16326,7 @@
         if (!webGPUBindSceneMeshVertexBuffer(pass, 3, pbrBuffers && pbrBuffers.tangents, offset, count)) continue;
 
         pass.draw(count);
+        if (frameRequest) frameRequest.record(obj.id);
         if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
       }
     }
@@ -18395,9 +18402,11 @@
       adaptOrtho2DBoardBundle(bundle);
       if (!device) {
         startInit();
-        return;
+        return "pending";
       }
-      if (initFailed || pipelineGuard.coreError || pipelineGuard.pending || !bundle) return;
+      if (initFailed || pipelineGuard.coreError) return "failed";
+      if (pipelineGuard.pending) return "pending";
+      if (!bundle) return "empty";
 
       var hasPBRData = Boolean(
         bundle.worldMeshPositions &&
@@ -18473,12 +18482,12 @@
       webGPUSweepInstancedCacheOwners();
       if (!hasPBRData && !hasPointsData && !hasInstancedData && !hasWorldLines && !hasScreenLines && !hasSurfaces && !hasLabels && !hasWaterData && !(bundle.environment && (bundle.environment.sky || bundle.environment.ocean)) && !skyResources.renderer && !oceanResources.renderer) {
         webGPUSweepRetainedMeshBuffers();
-        return;
+        return "empty";
       }
 
       var width = canvas.width;
       var height = canvas.height;
-      if (width <= 0 || height <= 0) return;
+      if (width <= 0 || height <= 0) return "empty";
 
       // Opt-in perf instrumentation. Mirrors the WebGL renderer: when
       // window.__gosx_scene3d_perf is truthy, emit performance.mark +
@@ -18946,7 +18955,7 @@
       var bundleReason = sceneWebGPUBundleIneligibleReason({
         // Both halves must exist. An implementation that can build a bundle but
         // not replay one would leave the frame blank.
-        disabled: selectiveBloom || hasTransmission || !webGPURenderBundlesEnabled() ||
+        disabled: Boolean(frameMeta && frameMeta.frameRequest) || selectiveBloom || hasTransmission || !webGPURenderBundlesEnabled() ||
           typeof device.createRenderBundleEncoder !== "function" ||
           typeof mainPass.executeBundles !== "function",
         gpuDrivenSplit: gpuDriven.splitsMainPass(),
@@ -19020,7 +19029,7 @@
           var opaquePipeline = getPBRPipeline("opaque", true);
           mainPass.setPipeline(wgpuRequirePipeline(opaquePipeline));
           mainPass.setBindGroup(0, frameBindGroup);
-          drawPBRObjects(mainPass, drawList.opaque, bundle, materials, frameBindGroup, "opaque", true, pbrSceneBuffers, frameStats);
+          drawPBRObjects(mainPass, drawList.opaque, bundle, materials, frameBindGroup, "opaque", true, pbrSceneBuffers, frameStats, frameMeta && frameMeta.frameRequest);
         }
         if (instancedDrawList.opaque.length > 0) {
           mainPass.setBindGroup(0, frameBindGroup);
@@ -19065,7 +19074,7 @@
           var alphaPipeline = getPBRPipeline("alpha", false);
           mainPass.setPipeline(wgpuRequirePipeline(alphaPipeline));
           mainPass.setBindGroup(0, frameBindGroup);
-          drawPBRObjects(mainPass, drawList.alpha, bundle, materials, frameBindGroup, "alpha", false, pbrSceneBuffers, frameStats);
+          drawPBRObjects(mainPass, drawList.alpha, bundle, materials, frameBindGroup, "alpha", false, pbrSceneBuffers, frameStats, frameMeta && frameMeta.frameRequest);
         }
         if (instancedDrawList.alpha.length > 0) {
           mainPass.setBindGroup(0, frameBindGroup);
@@ -19085,7 +19094,7 @@
           var additivePipeline = getPBRPipeline("additive", false);
           mainPass.setPipeline(wgpuRequirePipeline(additivePipeline));
           mainPass.setBindGroup(0, frameBindGroup);
-          drawPBRObjects(mainPass, drawList.additive, bundle, materials, frameBindGroup, "additive", false, pbrSceneBuffers, frameStats);
+          drawPBRObjects(mainPass, drawList.additive, bundle, materials, frameBindGroup, "additive", false, pbrSceneBuffers, frameStats, frameMeta && frameMeta.frameRequest);
         }
         if (instancedDrawList.additive.length > 0) {
           mainPass.setBindGroup(0, frameBindGroup);
@@ -19170,6 +19179,7 @@
         performance.clearMarks("scene3d-render-start");
         performance.clearMarks("scene3d-render-end");
       }
+      return "submitted";
     }
 
     // -----------------------------------------------------------------------

@@ -67,7 +67,7 @@ test('mirrors and ordinary singular models retain the winding/bake path', () => 
 test('uncommitted additions cannot replace a committed identity during partial poses', () => {
   const {run}=fixture();
   run("state._modelHydrationPromise={};model.scaleX=model.scaleY=model.scaleZ=0;state.models.push({id:'debris/new',_instancedGLB:true,scaleX:1,scaleY:1,scaleZ:1,x:42})");
-  assert.equal(run("sceneUpdateRigidInstancePoses(state,null,[{id:'debris',instances:[{id:'slot-0'},{id:'new'}]}])"),true);
+  assert.equal(run("sceneUpdateRigidInstancePoses(state,state.models,[{id:'debris',instances:[{id:'slot-0'},{id:'new'}]}])"),true);
   assert.equal(run('state.objects.size'),1);
 });
 
@@ -101,6 +101,156 @@ test('CPU playback replacement remains atomic when a later identity is invalid',
   assert.equal(run('sceneUpdateRigidInstancePoses(state)'),false);
   assert.equal(run('playback.rootTransform'),'before');
   assert.equal(run('playback.poseDirty'),false);
+});
+
+function packedFixture() {
+  const c = vm.createContext({window:{},console,Float32Array,Map,Set,WeakMap,TextDecoder,
+    Uint8Array,ArrayBuffer,DataView,Date,Promise,setTimeout});
+  for (const name of ['10-runtime-primitives.ts','10-runtime-scene-utils.ts',
+    '11-scene-math.ts','12-scene-geometry.ts','13-scene-material.ts','10-runtime-scene-core.ts']) {
+    let text = fs.readFileSync(path.join(root,'client/js/bootstrap-src',name),'utf8');
+    if (name === '10-runtime-scene-core.ts') text = text.slice(0,text.indexOf('// Scene3D shared API'));
+    vm.runInContext(text,c,{filename:name});
+  }
+  vm.runInContext(functions('sceneStaticModelHydrationKey','sceneCommitRigidInstancePatch')+
+    functions('sceneCommitRigidInstancePatch','sceneUpdateRigidInstanceMotion')+
+    functions('sceneRigidMembershipModelID','sceneRigidMembershipSnapshotModel')+
+    functions('sceneHydrationModels','sceneClearHydratedModelRecords'),c);
+  c.sceneModelTransformMatrix = model => c.sceneObjectModelMatrix(model,0);
+  c.sceneApplyModelSkinPose = record => {record.sampledPose=record.model._crowdPose;};
+  vm.runInContext(ts.transpileModule(fs.readFileSync(path.join(root,'client/runtime/scene3d/command-runtime.ts'),'utf8'),
+    {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,c);
+  const run = text => vm.runInContext(text,c);
+  run(`
+    const actors=normalizeSceneInstancedGLBMeshEntry({id:'actors',src:'actors.glb',
+      instances:[{id:'a',x:1,animation:'Walk'},{id:'b',x:2,animation:'Walk'}]},0);
+    const scenery=normalizeSceneInstancedGLBMeshEntry({id:'scenery',src:'scenery.glb',
+      instances:Array.from({length:1000},(_,i)=>({id:'prop-'+i,x:i}))},1);
+    const effects=normalizeSceneInstancedGLBMeshEntry({id:'effects',src:'effects.glb',
+      instances:[{id:'debris',x:50},{id:'retired',x:-10000,scaleX:0,scaleY:0,scaleZ:0}]},2);
+    const ordinary=normalizeSceneModel({id:'ordinary',src:'ordinary.glb',x:80},0);
+    const state={models:[ordinary],instancedGLBMeshes:[actors,scenery,effects],objects:new Map(),
+      _modelTextureVariantScope:{key:'scope-v1'}};
+    const initial=sceneHydrationModels(state,null);
+    const records={modelCount:initial.length,staticModels:new Map(),rigidInstances:new Map(),rigidInstancesByID:new Map()};
+    state._hydratedModelRecords=records;
+    for(const model of initial) {
+      const object={id:model.id+'/primitive',vertices:{immutable:true,revision:0},parentMatrix:sceneModelTransformMatrix(model)};
+      const staged={model,rigidInstanceModel:model,objects:[object],modelSkins:[],modelAnimations:[],points:[],labels:[],sprites:[],html:[],lights:[],_poseRevision:7};
+      const key=sceneRigidInstanceHydrationKey(state,model);
+      records.rigidInstances.set(key,staged);
+      const membership=sceneRigidMembershipDescriptor(state,key,staged);
+      if(membership)records.rigidInstancesByID.set(model.id,membership);
+      state.objects.set(object.id,object);
+    }
+    const handle={};let renders=0;
+    function poseBatch(batch=actors) {return {id:batch.id,instances:batch.instances.map(i=>({...i,x:i.x+10}))};}
+    function submit(batches) {return window.__gosx_scene3d_command_bridge.applyMountedPoseFrame(
+      state,batches,sceneUpdateRigidInstancePoses,()=>renders++,handle);}
+  `);
+  const expanded=[];
+  const expand=c.sceneInstancedGLBMeshToModels;
+  c.sceneInstancedGLBMeshToModels=(batch,index)=>{
+    expanded.push({id:batch.id,instances:batch.instances.length});
+    return expand(batch,index);
+  };
+  let fullExpansions=0;
+  const hydrate=c.sceneHydrationModels;
+  c.sceneHydrationModels=(...args)=>{fullExpansions++;return hydrate(...args);};
+  return {c,run,expanded,fullExpansions:()=>fullExpansions};
+}
+
+test('packed actor poses leave a thousand props, effects and ordinary models unexpanded and unchanged', () => {
+  const {run,expanded,fullExpansions}=packedFixture();
+  const untouched=run("Array.from(records.rigidInstances.values()).filter(s=>!s.model.id.startsWith('actors/')).map(s=>({staged:s,model:s.model,matrix:s.objects[0].parentMatrix,revision:s._poseRevision}))");
+  for(let frame=0;frame<30;frame++)assert.equal(run('submit([poseBatch()]).applied'),true);
+  assert.equal(fullExpansions(),0);
+  assert.equal(expanded.length,30);
+  assert.ok(expanded.every(b=>b.id==='actors'&&b.instances===2));
+  for(const prior of untouched) {
+    assert.equal(prior.staged.model,prior.model);
+    assert.equal(prior.staged.objects[0].parentMatrix,prior.matrix);
+    assert.equal(prior.staged._poseRevision,prior.revision);
+  }
+  assert.equal(run("records.rigidInstancesByID.get('actors/a').staged.objects[0].parentMatrix[12]"),301);
+  assert.equal(run('renders'),30);
+});
+
+test('a stale scope, template or retired target rejects packed poses with complete rollback', () => {
+  for(const invalidation of [
+    "records.rigidInstancesByID.get('actors/b').scope='old-scope'",
+    "records.rigidInstancesByID.get('actors/b').template='old-template'",
+    "records.rigidInstances.delete(records.rigidInstancesByID.get('actors/b').key)",
+    "state.objects.delete('actors/b/primitive')",
+  ]) {
+    const {run}=packedFixture();
+    const matrix=run("state.objects.get('actors/a/primitive').parentMatrix");
+    run(invalidation);
+    assert.throws(()=>run('submit([poseBatch()])'),/retained-pose-unavailable/);
+    assert.equal(run('actors.instances[0].x'),1);
+    assert.equal(run('actors.instances[1].x'),2);
+    assert.equal(run("state.objects.get('actors/a/primitive').parentMatrix"),matrix);
+    assert.equal(run("records.rigidInstancesByID.get('actors/a').staged._poseRevision"),7);
+    assert.equal(run('renders'),0);
+  }
+});
+
+test('wrong, reordered and dropped packed memberships cannot move a surviving actor', () => {
+  for(const batches of [
+    "[{id:'missing',instances:poseBatch().instances}]",
+    "[{id:'actors',instances:poseBatch().instances.slice().reverse()}]",
+    "[{id:'actors',instances:poseBatch().instances.slice(0,1)}]",
+    "[{id:'actors',instances:[]}]",
+  ]) {
+    const {run}=packedFixture();
+    assert.throws(()=>run('submit('+batches+')'),/membership/);
+    assert.equal(run('actors.instances[0].x'),1);
+    assert.equal(run("records.rigidInstancesByID.get('actors/a').staged._poseRevision"),7);
+  }
+  const {run,expanded}=packedFixture();
+  run("state.instancedGLBMeshes.push(normalizeSceneInstancedGLBMeshEntry({id:'empty',src:'empty.glb',instances:[]},3))");
+  assert.equal(run("submit([{id:'empty',instances:[]}]).applied"),true);
+  assert.deepEqual(expanded,[{id:'empty',instances:0}]);
+  assert.equal(run("records.rigidInstancesByID.get('actors/a').staged._poseRevision"),7);
+});
+
+test('duplicate binary batches cannot commit a retained actor twice', () => {
+  const {run}=packedFixture();
+  const matrix=run("state.objects.get('actors/a/primitive').parentMatrix");
+  assert.equal(run('sceneUpdateRigidInstancePoses(state,null,[poseBatch(),poseBatch()])'),false);
+  assert.equal(run("state.objects.get('actors/a/primitive').parentMatrix"),matrix);
+  assert.equal(run("records.rigidInstancesByID.get('actors/a').staged._poseRevision"),7);
+});
+
+test('pending packed subsets advance compatible identities and defer uncommitted templates', () => {
+  const {run,expanded,fullExpansions}=packedFixture();
+  const oldB=run("records.rigidInstancesByID.get('actors/b').staged.objects[0].parentMatrix");
+  run("state._modelHydrationUncommitted=true;actors.instances.push({id:'new',x:3});records.rigidInstancesByID.get('actors/b').template='old-template'");
+  assert.equal(run("submit([{id:'actors',instances:[{...actors.instances[0],x:11},{...actors.instances[1],x:12},{...actors.instances[2],x:13}]}]).applied"),true);
+  assert.equal(fullExpansions(),0);
+  assert.deepEqual(expanded,[{id:'actors',instances:3}]);
+  assert.equal(run("state.objects.get('actors/a/primitive').parentMatrix[12]"),11);
+  assert.equal(run("state.objects.get('actors/b/primitive').parentMatrix"),oldB);
+  assert.equal(run("state.objects.has('actors/new/primitive')"),false);
+  expanded.length=0;
+  assert.equal(run("submit([{id:'actors',instances:[{...actors.instances[0],x:21}]}]).applied"),true);
+  assert.deepEqual(expanded,[{id:'actors',instances:1}]);
+  assert.equal(run("state.objects.get('actors/a/primitive').parentMatrix[12]"),21);
+  assert.equal(run("records.rigidInstancesByID.get('scenery/prop-0').staged._poseRevision"),7);
+});
+
+test('renderer ownership and full declaration pose validation remain authoritative', () => {
+  const {run,fullExpansions}=packedFixture();
+  run('state._modelOwner=()=>false');
+  assert.throws(()=>run('submit([poseBatch()])'),/retained-pose-unavailable/);
+  assert.equal(run('actors.instances[0].x'),1);
+  run('state._modelOwner=()=>true;scenery.instances[0].x=42');
+  assert.equal(run('sceneUpdateRigidInstancePoses(state)'),true);
+  assert.equal(fullExpansions(),1);
+  assert.equal(run("state.objects.get('scenery/prop-0/primitive').parentMatrix[12]"),42);
+  assert.equal(run("records.rigidInstancesByID.get('effects/retired').staged._poseRevision"),8);
+  run('records.modelCount++');
+  assert.equal(run('sceneUpdateRigidInstancePoses(state)'),false);
 });
 
 

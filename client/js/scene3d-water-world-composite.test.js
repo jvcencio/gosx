@@ -178,3 +178,38 @@ test('water restores the shared target after simulation without clearing world d
   assert.equal(gl.ops.some(op => op[0] === 'deleteFramebuffer' && op[1] === target.framebuffer.id), false,
     'the water pass must not own the world target');
 });
+
+
+test("water composition propagates complete outcomes and rejects partial subpasses", () => {
+  for (const world of [false, true]) {
+    for (const worldOutcome of ["submitted", "pending", "failed", "empty"]) {
+      for (const waterOutcome of ["submitted", "pending", "failed", "empty"]) {
+        const calls = []; const gl = {};
+        const context = {
+          sceneNumber: (v, fallback) => Number(v) || fallback,
+          sceneBool: (v, fallback) => v == null ? fallback : Boolean(v),
+          window: { __gosx_scene3d_webgl_api: {
+            createSceneWaterRendererWebGL: () => ({ render() { calls.push("water"); return waterOutcome; }, dispose() {} }),
+            createScenePBRRendererOrFallback: () => ({
+              render(bundle, viewport, meta) {
+                calls.push("world");
+                if (worldOutcome === "submitted") meta.compositeBeforePost({});
+                return worldOutcome;
+              }, renderSurfaces() { calls.push("surfaces"); }, dispose() {},
+            }),
+          } },
+        };
+        vm.createContext(context);
+        vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
+        const result = context.createSceneWaterWebGLResult({ getContext: () => gl },
+          { scene: { waterSystems: [{ id: "cove" }], models: world ? [{ id: "cliff" }] : [] } }, { tier: "full" }, "");
+        const outcome = result.renderer.render({}, {}, {});
+        assert.equal(outcome, world && worldOutcome !== "submitted" ? worldOutcome : waterOutcome,
+          `${world ? "world+water" : "water"}: world=${worldOutcome}, water=${waterOutcome}`);
+        assert.equal(outcome === "submitted", waterOutcome === "submitted" && (!world || worldOutcome === "submitted"));
+        if (world && worldOutcome !== "submitted") assert.equal(calls.includes("water"), false);
+        result.renderer.dispose();
+      }
+    }
+  }
+});

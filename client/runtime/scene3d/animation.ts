@@ -916,9 +916,16 @@
     bounds.minZ = Math.min(bounds.minZ, z); bounds.maxZ = Math.max(bounds.maxZ, z);
   }
 
-  function sceneCrowdPrimitiveBounds(vertices, jointCount, data, width, height, weights) {
+  function sceneCrowdChargeBoundsWork(budget, work) {
+    if (!budget) return;
+    budget.work += work;
+    if (!Number.isSafeInteger(budget.work) || budget.work > 32 * 1024 * 1024) throw new Error("crowd bounds preprocessing budget exceeded");
+  }
+
+  function sceneCrowdPrimitiveBounds(vertices, jointCount, data, width, height, weights, budget = null) {
     const bounds = { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity };
     const jointBounds = new Array(jointCount);
+    const activeJoints = [];
     let maxWeightSumError = 0;
     let maxTransformTerms = 0;
     for (let i = 0; i < vertices.count; i++) {
@@ -936,12 +943,18 @@
         if (!weights[i * 4 + k]) continue;
         const joint = vertices.joints[i * 4 + k];
         let influenced = jointBounds[joint];
-        if (!influenced) influenced = jointBounds[joint] = { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity };
+        if (!influenced) {
+          influenced = jointBounds[joint] = { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity };
+          activeJoints.push(joint);
+        }
         sceneCrowdIncludeBoundPoint(influenced, x, y, z);
       }
     }
-    for (let row = 0; row < height; row++) for (let joint = 0; joint < jointCount; joint++) {
-      const influenced = jointBounds[joint]; if (!influenced) continue;
+    // The conservative algorithm scans vertices once, then transforms eight
+    // influence-box corners per active joint/row, never every vertex/row.
+    sceneCrowdChargeBoundsWork(budget, height * activeJoints.length * 8);
+    for (let row = 0; row < height; row++) for (const joint of activeJoints) {
+      const influenced = jointBounds[joint];
       const o = row * width * 4 + joint * 16;
       for (let corner = 0; corner < 8; corner++) {
         const x = corner & 1 ? influenced.maxX : influenced.minX;
@@ -1020,13 +1033,16 @@
       for (let i = 0; i <= clip.segments; i++) sample(channels, clip.segments ? clip.duration * i / clip.segments : 0, clip.start + i);
     }
     const primitives = new Map();
-    let work = 0;
+    const boundsBudget = { work: 0 };
     for (const object of asset.objects || []) {
       if (object.skinIndex !== skinIndex) continue;
       const v = object.vertices;
-      if (!v || !v.positions || !v.joints || !v.weights || v.positions.length < v.count * 3 || v.joints.length < v.count * 4 || v.weights.length < v.count * 4) throw new Error("invalid crowd bind streams");
-      work += v.count * height;
-      if (work > 32 * 1024 * 1024) throw new Error("crowd bounds preprocessing budget exceeded");
+      if (!v || !Number.isSafeInteger(v.count) || v.count < 0 || !v.positions || !v.joints || !v.weights || v.positions.length < v.count * 3 || v.joints.length < v.count * 4 || v.weights.length < v.count * 4) throw new Error("invalid crowd bind streams");
+      if (primitives.has(v)) continue;
+      // Bound all four four-influence loops: validation/sum, normalization,
+      // normalized sum/drift, and influence boxes. Charge before stream copies;
+      // palette construction has its own unchanged limits.
+      sceneCrowdChargeBoundsWork(boundsBudget, v.count * 4);
       const weights = new Float32Array(v.weights);
       for (let i = 0; i < v.count; i++) {
         let sum = 0;
@@ -1037,7 +1053,7 @@
         }
         if (sum > 0) for (let k = 0; k < 4; k++) weights[i * 4 + k] /= sum;
       }
-      const bounds = sceneCrowdPrimitiveBounds(v, joints.length, data, width, height, weights);
+      const bounds = sceneCrowdPrimitiveBounds(v, joints.length, data, width, height, weights, boundsBudget);
       // Original streams remain immutable; only normalized weights are copied.
       primitives.set(v, { vertices: Object.assign({}, v, { weights, immutable: true, revision: 0, _rigidPool: true }), bounds });
     }
