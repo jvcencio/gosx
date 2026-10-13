@@ -15284,7 +15284,7 @@
       return matBG;
     }
 
-    // The frame group stays valid while its bound GPU resources retain identity.
+    // _frameBindGroupCache memoizes the frame group by GPU resource identity.
     var _frameBindGroupCache = JSON.parse("null");
     var transmissionResources = JSON.parse("null"), transmissionView = JSON.parse("null");
 
