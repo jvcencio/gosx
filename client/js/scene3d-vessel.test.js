@@ -9,6 +9,7 @@ async function mountScene(vessel=true,maxFPS=60,realShip=false,coarse=false,spec
  if(vessel) {props.vessel={nodeId:'ship',heading:Math.PI/2,windStrength:8,helm:{x:0,y:4.2,z:6.5},wake:false};props.camera={...camera,x:6.5,z:0};props.scene.camera=props.camera;props.scene.environment={ocean:{waveHeight:.9,waveLength:17,choppiness:.7}};}
  if(vessel&&options.quickBoard)props.vessel.quickBoard=true;
  if(vessel&&options.navigation)props.vessel.navigation=true;
+ if(vessel&&options.wake){props.vessel.wake=true;props.vessel.wakeTexture='/foam.png';}
  if(vessel&&options.landings)props.vessel.landings=options.landings;
  if(vessel&&options.openWater) {
   props.vessel.openWater=true;props.vessel.position={x:2000,z:-3000};
@@ -69,6 +70,19 @@ test('navigation telemetry remains live with a frozen reduced-motion animation c
  assert.equal(h.mount.getAttribute('data-gosx-scene3d-animation-clock'),'0.000');
  assert.ok(snapshots.length>8);assert.ok(snapshots.at(-1).distance>0);h.handle.dispose();
 });
+for(const reduced of [false,true])test('hull and foam sample the rendered ocean clock'+(reduced?' with reduced motion':''),async()=>{
+ const h=await mountScene(true,60,false,false,false,reduced,{navigation:true,quickBoard:true});
+ const query=h.env.context.__gosx_scene3d_ocean_query,original=query.sample,times=[];
+ query.sample=(...args)=>{times.push(args[3]);return original(...args);};
+ h.event(h.mount,'gosx:scene3d:vessel-command',{detail:{nodeId:'ship',action:'helm'}});
+ h.event(h.mount,'gosx:scene3d:vessel-command',{detail:{nodeId:'ship',action:'trim',trim:1}});
+ for(let t=500;t<3000;t+=50) {
+  times.length=0;h.raf.flush(t);
+  const clock=Number(h.mount.getAttribute('data-gosx-scene3d-animation-clock'));
+  assert.ok(times.length>0);for(const sampled of times)assert.ok(Math.abs(sampled-clock)<.001,'water queries and shader must share the same clock');
+ }
+ assert.equal(h.mount.getAttribute('data-gosx-scene3d-vessel'),'sailing');h.handle.dispose();
+});
 test('ordinary vessels ignore navigation events and publish no telemetry',async()=>{
  const h=await mountScene();let calls=0;h.mount.addEventListener('gosx:scene3d:vessel-state',()=>calls++);
  h.event(h.mount,'gosx:scene3d:vessel-command',{detail:{nodeId:'ship',action:'helm'}});h.raf.flush(250);
@@ -109,6 +123,17 @@ test('a scene without a vessel fetches neither vessel nor ocean query even when 
  const h=await mountScene(false);assert.equal(h.env.context.__gosx_scene3d_vessel_api,undefined);assert.equal(h.env.context.__gosx_scene3d_ocean_query,undefined);
  assert.ok(!h.env.fetchCalls.some(c=>/vessel\.js|ocean-query\.js/.test(String(c.url||c))));h.handle.dispose();
 });
+test('mounted foam reaches the textured indexed alpha mesh pipeline instead of wireframe lines',async()=>{
+ const h=await mountScene(true,60,false,false,false,false,{wake:true,quickBoard:true,navigation:true});
+ h.event(h.mount,'gosx:scene3d:vessel-command',{detail:{nodeId:'ship',action:'helm'}});
+ h.event(h.mount,'gosx:scene3d:vessel-command',{detail:{nodeId:'ship',action:'trim',trim:1}});
+ for(let t=250;t<1200;t+=50)h.raf.flush(t);
+ const objects=h.mount.__gosxScene3DState.objects,foam=objects.get('gosx-vessel-wake:ship');
+ assert.equal(foam.materialKind,'standard');assert.equal(foam.wireframe,false);assert.equal(foam.texture,'/foam.png');assert.equal(foam.renderPass,'alpha');assert.equal(foam.depthWrite,false);
+ assert.equal(foam.vertices.indices.BYTES_PER_ELEMENT,4);assert.ok(foam.opacity>0&&foam.opacity<1);
+ assert.ok(h.gl.ops.some(op=>op[1]===h.gl.TRIANGLES&&((op[0]==='drawElements'&&op[2]===foam.vertices.indices.length)||(op[0]==='drawArrays'&&op[3]===foam.vertices.indices.length))),'the actual indexed triangle draw must reach WebGL: '+JSON.stringify(h.gl.ops.filter(op=>op[0]==='drawElements'||op[0]==='drawArrays').slice(-8)));
+ h.handle.dispose();assert.equal(objects.has('gosx-vessel-wake:ship'),false);
+});
 test('initially hidden real LODs become drawable when a distant walker views the ship',async()=>{
  const h=await mountScene(true,60,true,false,true);
  assert.ok(h.gl.ops.some(op=>(op[0]==='drawElements'&&op[2]===360)||(op[0]==='drawArrays'&&op[3]===360)),'low hull renders at distance; imported hidden state must be cleared');
@@ -119,7 +144,7 @@ test('mounted touch rudder and sail buttons retain independent pointers and clea
  const api=h.env.context.__gosx_scene3d_vessel_physics,advance=api.advance;let input;
  api.advance=(...args)=>{input=args[3];return advance(...args);};
  const panel=h.mount.querySelector('.gosx-scene3d-vessel-controls'),raise=Array.from(panel.querySelectorAll('button')).find(n=>n.textContent==='Raise sail');
- const hint=Array.from(h.mount.querySelectorAll('span')).find(n=>n.textContent==='Drag left to steer');assert.equal(hint.hidden,false);assert.match(panel.style.width,/50%/);
+ const hint=Array.from(h.mount.querySelectorAll('span')).find(n=>n.textContent==='Left: steer · right: look');assert.equal(hint.hidden,false);assert.match(panel.style.width,/50%/);
  h.event(h.canvas,'pointerdown',{pointerType:'touch',pointerId:11,clientX:20,clientY:200});
  h.event(h.canvas,'pointermove',{pointerType:'touch',pointerId:11,clientX:75,clientY:200});h.event(raise,'pointerdown',{pointerId:22});h.raf.flush(300);
  assert.equal(input.rudder,1);assert.equal(input.sail,1);h.event(raise,'pointerup',{pointerId:22});h.raf.flush(350);
@@ -208,4 +233,39 @@ for(const reduced of [false,true])test('navigation camera detaches while sailing
  assert.equal(state.x,position.x);assert.equal(state.z,position.z);
  h.raf.flush(4050);assert.ok(Math.hypot(h.handle.getCamera().x-state.x,h.handle.getCamera().z-state.z)<30);
  assert.ok(h.raf.count()<=1);h.handle.dispose();
+});
+
+test('sailing free look uses drag and arrows without steering or releasing the held course',async()=>{
+ const h=await mountScene(true,60,false,false,false,false,{navigation:true,quickBoard:true});
+ const api=h.env.context.__gosx_scene3d_vessel_physics,advance=api.advance;let state;
+ api.advance=(...args)=>{state=args[0];return advance(...args);};
+ const command=detail=>h.event(h.mount,'gosx:scene3d:vessel-command',{detail:{nodeId:'ship',...detail}});
+ command({action:'helm'});command({action:'course',bearing:270});command({action:'trim',trim:1});h.raf.flush(250);
+ const course=state.course,heading=state.heading;
+ h.event(h.canvas,'pointerdown',{pointerType:'mouse',button:0,pointerId:31,clientX:100,clientY:100});
+ h.event(h.canvas,'pointermove',{pointerType:'mouse',pointerId:31,clientX:300,clientY:125});h.raf.flush(300);
+ assert.ok(state.lookYaw<-.5);assert.ok(state.lookPitch<0);assert.equal(state.course,course);assert.equal(state.heading,heading);assert.equal(state.trim,1);
+ h.event(h.canvas,'pointerup',{pointerId:31});const yaw=state.lookYaw;
+ h.event(h.canvas,'pointermove',{pointerType:'mouse',pointerId:31,clientX:500,clientY:125});assert.equal(state.lookYaw,yaw);
+ h.canvas.focus();h.event(h.env.document,'keydown',{code:'ArrowRight'});for(let t=350;t<1250;t+=17)h.raf.flush(t);
+ h.event(h.env.document,'keyup',{code:'ArrowRight'});assert.ok(state.lookYaw<yaw-.8);assert.equal(state.course,course);assert.equal(state.heading,heading);
+ const ship={x:state.x,z:state.z};command({action:'center-view'});assert.equal(state.lookYaw,0);assert.equal(state.lookPitch,0);
+ assert.equal(state.x,ship.x);assert.equal(state.z,ship.z);assert.equal(state.trim,1);assert.equal(state.course,course);
+ assert.ok(h.raf.count()<=1);h.handle.dispose();
+});
+
+test('right-thumb look retains independent rudder and sail pointers and cancels on blur',async()=>{
+ const h=await mountScene(true,60,false,true),api=h.env.context.__gosx_scene3d_vessel_physics,advance=api.advance;let state,input;
+ api.advance=(...args)=>{state=args[0];input=args[3];return advance(...args);};
+ h.canvas.focus();h.event(h.env.document,'keydown',{code:'KeyE'});h.raf.flush(250);
+ const rect=h.canvas.getBoundingClientRect(),x=rect.left+rect.width*.8;
+ h.event(h.canvas,'pointerdown',{pointerType:'touch',pointerId:11,clientX:20,clientY:200});
+ h.event(h.canvas,'pointermove',{pointerType:'touch',pointerId:11,clientX:75,clientY:200});
+ h.event(h.canvas,'pointerdown',{pointerType:'touch',pointerId:33,clientX:x,clientY:200});
+ h.event(h.canvas,'pointermove',{pointerType:'touch',pointerId:33,clientX:x+30,clientY:180});
+ const raise=Array.from(h.mount.querySelector('.gosx-scene3d-vessel-controls').querySelectorAll('button')).find(n=>n.textContent==='Raise sail');
+ h.event(raise,'pointerdown',{pointerId:22});h.raf.flush(300);assert.equal(input.rudder,1);assert.equal(input.sail,1);assert.ok(state.lookYaw<0&&state.lookPitch>0);
+ h.event(h.canvas,'pointercancel',{pointerId:33});const yaw=state.lookYaw;h.event(h.canvas,'pointermove',{pointerType:'touch',pointerId:33,clientX:x+60,clientY:180});h.raf.flush(350);
+ assert.equal(state.lookYaw,yaw);assert.equal(input.rudder,1);assert.equal(input.sail,1);
+ h.event(h.env.context,'blur');h.raf.flush(400);assert.equal(input.rudder,0);assert.equal(input.sail,0);h.handle.dispose();
 });

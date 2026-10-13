@@ -510,6 +510,7 @@
     // interpolation can drift alpha below an exact cutoff mid-triangle.
     "    float coverage = u_opacity * clamp(v_instanceColor.a, 0.0, 1.0) * texAlpha;",
     "    bool masked = u_alphaCutoff >= 0.0;",
+    "    float blendTexAlpha = u_alphaCutoff < -1.5 ? texAlpha : 1.0;",
     "    if (masked && coverage < u_alphaCutoff) {",
     "        discard;",
     "    }",
@@ -551,7 +552,7 @@
     "        vec3 color = albedo + emissiveColor * emissiveStrength;",
     "        float opacity = u_opacity;",
     "        gosxApplyCustomFragment(color, opacity, normalize(v_normal), v_worldPosition, v_uv);",
-    "        fragColor = vec4(color, masked ? 1.0 : opacity * v_instanceColor.a);",
+    "        fragColor = vec4(color, masked ? 1.0 : opacity * v_instanceColor.a * blendTexAlpha);",
     "        gosxSpecularOutput = vec4(0.0, 0.0, 0.0, fragColor.a);",
     "        return;",
     "    }",
@@ -855,7 +856,7 @@
     "",
     "    float opacity = u_opacity;",
     "    gosxApplyCustomFragment(color, opacity, N, v_worldPosition, v_uv);",
-    "    fragColor = vec4(color, masked ? 1.0 : opacity * v_instanceColor.a);",
+    "    fragColor = vec4(color, masked ? 1.0 : opacity * v_instanceColor.a * blendTexAlpha);",
     "    gosxSpecularOutput = vec4(max(specularRadiance, vec3(0.0)), fragColor.a);",
     "}",
   ].join("\n");
@@ -8615,7 +8616,7 @@
       const alphaCutoff = sceneNormalizeMaterialAlphaCutoff(mat.alphaCutoff, null);
       const cutoffValue = (typeof alphaCutoff === "number" && Number.isFinite(alphaCutoff) && alphaCutoff >= 0)
         ? (alphaCutoff <= 1 ? Math.fround(alphaCutoff) : 2)
-        : -1;
+        : (["alpha", "additive"].includes(mat.renderPass || mat.blendMode) ? -2 : -1); // BLEND coverage marker; OPAQUE keeps -1.
       gl.uniform1f(uniforms.alphaCutoff, cutoffValue);
       gl.uniform1i(uniforms.unlit, mat.unlit ? 1 : 0);
 

@@ -2322,7 +2322,7 @@
         vertices: vertices,
         material: material,
         transform: worldTransform,
-        renderPass: renderPass,
+        renderPass: renderPass, blendMode: renderPass, depthWrite: renderPass === "opaque",
         doubleSided: material.doubleSided,
       };
 

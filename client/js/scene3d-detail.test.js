@@ -59,7 +59,7 @@ test("WebGL detail is a cached compile variant with nil source unchanged", () =>
   assert.equal(c.sceneWebGLDetailFragment(base, null), base);
   // Reviewed optics/MRT base: thickness, geometric AA and reflected-radiance output.
   // The browser optics oracle covers behavior; nil detail must keep this base exact.
-  assert.equal(crypto.createHash("sha256").update(base).digest("hex"), "84eebd140305d8f6246935ec8d3a8187bacfa8dcae8258f2351f3b7a8c4e5165");
+  assert.equal(crypto.createHash("sha256").update(base).digest("hex"), "613af02ff18141cc4a1a6bc751596478100a1a4cf688e3a4565075dc49a540bf");
   const shader = c.sceneWebGLDetailFragment(base, true);
   const glWithUnits = units => ({ MAX_TEXTURE_IMAGE_UNITS: 1, getParameter: () => units });
   assert.match(c.scenePBRFragmentSourceForContext(glWithUnits(16), base), /#define GOSX_HDR_IBL 1/);
@@ -94,7 +94,7 @@ test("WebGPU detail preserves the nil shader and uses a separate array binding",
   assert.equal(c.sceneWebGPUDetailFragment(base, null), base);
   // Reviewed optics/MRT base: thickness, geometric AA and reflected-radiance output.
   // The browser optics oracle covers behavior; nil detail must keep this base exact.
-  assert.equal(crypto.createHash("sha256").update(base).digest("hex"), "e3659667c185579625abbcf4cb04b16edc2950711fadf344cbb0352abf07e65f");
+  assert.equal(crypto.createHash("sha256").update(base).digest("hex"), "4b6ef60279df5c93caf81692696fdd71c60144899d0185d548bcf590ac52124d");
   const shader = c.sceneWebGPUDetailFragment(base, true);
   assert.match(shader, /textureSampleGrad\(detailAtlas/);
   assert.match(shader, /@group\(2\) @binding\(1\) var detailAtlas: texture_2d_array/);

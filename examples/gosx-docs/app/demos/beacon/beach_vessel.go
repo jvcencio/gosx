@@ -5,6 +5,8 @@ import (
 	"m31labs.dev/gosx/scene"
 )
 
+const blackglassWakeTextureSrc = blackglassBeachModelRoot + "wake-foam.png?v=b36af47c3cc6"
+
 func blackglassBeachVessel() *scene.Vessel {
 	return &scene.Vessel{
 		NodeID: "clipper", Position: scene.Vec3(beachgen.ShipX, 0, beachgen.ShipZ), Heading: beachgen.ShipHeading,
@@ -14,6 +16,6 @@ func blackglassBeachVessel() *scene.Vessel {
 		Navigation:  true,
 		Landings:    blackglassIslandLandings(),
 		LODs:        []scene.VesselLOD{{NodeID: "clipper-mid", Distance: 65}, {NodeID: "clipper-low", Distance: 120}},
-		WakeTexture: blackglassBeachModelRoot + "wake-foam.png",
+		WakeTexture: blackglassWakeTextureSrc,
 	}
 }

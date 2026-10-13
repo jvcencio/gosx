@@ -19,7 +19,19 @@ func main() {
 	env := flag.String("env", "examples/gosx-docs/public/env/blackglass-beach", "baked IBL output directory")
 	descriptors := flag.String("descriptors", "examples/gosx-docs/app/demos/beacon/ibl-beach", "IBL descriptor directory")
 	offshore := flag.Bool("offshore-only", false, "regenerate offshore terrain, piers, depth and discovery assets")
+	wake := flag.Bool("wake-only", false, "regenerate the shared bow and stern foam texture")
 	flag.Parse()
+	if *wake {
+		data, err := beachgen.WakeFoam()
+		if err == nil {
+			err = os.WriteFile(filepath.Join(*out, "wake-foam.png"), data, 0644)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *offshore {
 		files, err := docs.BlackglassBeachOffshoreAssets()
 		if err == nil {

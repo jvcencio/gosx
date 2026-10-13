@@ -1,7 +1,7 @@
 // Focus-scoped controls; steering and sail gestures never share a pointer ID.
 (function() {
   function create() {
-    return { keys:new Set(), rudderID:-1, sailID:-1, origin:0, rudder:0, sail:0 };
+    return { keys:new Set(), rudderID:-1, sailID:-1, lookID:-1, lookX:0,lookY:0,origin:0, rudder:0, sail:0 };
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function down(input, role, id, x) {
@@ -15,13 +15,37 @@
   function up(input,id) {
     if(id===input.rudderID) {input.rudderID=-1;input.rudder=0;}
     if(id===input.sailID) {input.sailID=-1;input.sail=0;}
+    if(id===input.lookID)input.lookID=-1;
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-  function clear(input) { input.keys.clear();input.rudderID=-1;input.sailID=-1;input.rudder=0;input.sail=0; }
+  function clear(input) { input.keys.clear();input.rudderID=-1;input.sailID=-1;input.lookID=-1;input.rudder=0;input.sail=0; }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-  function value(input) {
-    return {rudder:Math.max(-1,Math.min(1,input.rudder+Number(input.keys.has('KeyD'))-Number(input.keys.has('KeyA')))),
+  function value(input,withLook=false) {
+    const result={rudder:Math.max(-1,Math.min(1,input.rudder+Number(input.keys.has('KeyD'))-Number(input.keys.has('KeyA')))),
       sail:input.sail+Number(input.keys.has('KeyW'))-Number(input.keys.has('KeyS'))};
+    if(withLook)Object.assign(result,{lookYaw:Number(input.keys.has('ArrowLeft'))-Number(input.keys.has('ArrowRight')),lookPitch:Number(input.keys.has('ArrowUp'))-Number(input.keys.has('ArrowDown'))});
+    return result;
+  }
+  // @ts-ignore TS7006 -- one scoped pointer owns look; left touch remains rudder.
+  function bindLook(canvas,state,input,listen,actions) {
+    const active=()=>state.mode==='sailing'&&!state.detached;
+    // @ts-ignore TS7006 -- pointer events are also tested without transpilation.
+    listen(canvas,'pointerdown',event=>{
+      if(!active()||input.lookID>=0)return;
+      if(event.pointerType==='touch'&&event.clientX<canvas.getBoundingClientRect().left+canvas.getBoundingClientRect().width/2)return;
+      if(event.pointerType!=='touch'&&event.button!==0)return;
+      input.lookID=event.pointerId;input.lookX=event.clientX;input.lookY=event.clientY;
+      if(event.pointerType!=='touch')event.preventDefault();canvas.focus({preventScroll:true});canvas.setPointerCapture?.(event.pointerId);
+    });
+    // @ts-ignore TS7006 -- pointer events are also tested without transpilation.
+    listen(canvas,'pointermove',event=>{
+      if(!active())return;
+      const locked=document.pointerLockElement===canvas;
+      if(!locked&&event.pointerId!==input.lookID)return;
+      const dx=locked?event.movementX:event.clientX-input.lookX,dy=locked?event.movementY:event.clientY-input.lookY;
+      input.lookX=event.clientX;input.lookY=event.clientY;
+      event.preventDefault();actions.look(-dx*.0028,-dy*.0028);
+    });
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function setup(canvas,mount,state,actions) {
@@ -30,7 +54,8 @@
     const helmLabels=touch?{take:'Take helm',leave:'Leave helm'}:{take:'Press E to take the helm',leave:'Leave helm · E'};
     const panel=document.createElement('div'),helm=document.createElement('button'),view=document.createElement('button');
     const readout=document.createElement('span'),raise=document.createElement('button'),lower=document.createElement('button');
-    const steerHint=document.createElement('span');steerHint.textContent='Drag left to steer';steerHint.hidden=true;
+    const steerHint=document.createElement('span');steerHint.textContent='Left: steer · right: look';steerHint.hidden=true;
+    let layout='',label='';
     steerHint.style.cssText='position:absolute;left:14px;bottom:140px;z-index:12;padding:10px;border-radius:8px;background:rgba(14,20,24,.75);color:#fff;font:13px sans-serif;pointer-events:none';mount.appendChild(steerHint);
     panel.className='gosx-scene3d-vessel-controls';panel.setAttribute('class',panel.className);
     panel.style.cssText='position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:12;display:none;grid-template-columns:1fr 1fr;gap:6px;align-items:center;padding:6px;border-radius:8px;background:rgba(14,20,24,.75);color:#fff;font:13px sans-serif';
@@ -41,6 +66,7 @@
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     function listen(target,name,fn) {target.addEventListener(name,fn,{passive:false});listeners.push([target,name,fn]);}
     function focused() {return document.activeElement===canvas || document.pointerLockElement===canvas;}
+    bindLook(canvas,state,input,listen,actions);
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     listen(helm,'click',()=>{actions.helm(!!state.config.quickBoard);canvas.focus({preventScroll:true});});
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
@@ -59,7 +85,7 @@
     listen(canvas,'pointerdown',event=>{
       if(state.mode!=='sailing'||state.detached||event.pointerType!=='touch')return;
       const rect=canvas.getBoundingClientRect();
-      if(event.clientX-rect.left<rect.width/2 && down(input,'rudder',event.pointerId,event.clientX)) {event.preventDefault();canvas.setPointerCapture?.(event.pointerId);}
+      if(event.clientX-rect.left<rect.width/2 && down(input,'rudder',event.pointerId,event.clientX))canvas.setPointerCapture?.(event.pointerId);
     });
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     listen(canvas,'pointermove',event=>{if(event.pointerId===input.rudderID) {event.preventDefault();move(input,event.pointerId,event.clientX);}});
@@ -72,7 +98,7 @@
       if(event.code==='Home') {event.preventDefault();actions.reset();return;}
       if(state.mode!=='sailing'||state.detached)return;
       if(event.code==='KeyV'&&!event.repeat) {event.preventDefault();actions.camera();}
-      if(['KeyW','KeyS','KeyA','KeyD'].includes(event.code)) {event.preventDefault();input.keys.add(event.code);}
+      if(['KeyW','KeyS','KeyA','KeyD','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.code)) {event.preventDefault();input.keys.add(event.code);actions.look(0,0);}
     });
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     listen(document,'click',event=>{
@@ -88,14 +114,17 @@
     listen(document,'pointerlockchange',()=>{if(!document.pointerLockElement)clear(input);});
   // @ts-ignore TS7006 -- plain JS method parameters are exercised without transpilation.
     return {input,refresh(near) {
-      const active=state.mode==='sailing'&&!state.detached;panel.hidden=!active&&!near&&!state.config.quickBoard;
-      steerHint.hidden=!active||!touch;
-      panel.style.display=panel.hidden?'none':'grid';panel.style.left=active?'auto':'50%';panel.style.right=active?'14px':'auto';
-      panel.style.top=active?'auto':'58px';panel.style.bottom=active?'110px':'auto';panel.style.transform=active?'none':'translateX(-50%)';
-      panel.style.width=active?(touch?'min(220px, calc(50% - 14px))':'280px'):'auto';panel.style.gridTemplateColumns=active?'1fr 1fr':'1fr';
-      helm.textContent=active?helmLabels.leave:state.detached?'Return to helm':state.config.quickBoard?'Pilot ship':helmLabels.take;
-      view.hidden=!active;raise.hidden=!active;lower.hidden=!active;readout.hidden=!active;
-      readout.textContent=state.grounded?'Grounded · turn toward deeper water':window.__gosx_scene3d_vessel_physics.speedCurve(state.heading-state.wind)===0?'Into the wind · '+(touch?'steer to tack':'hold A/D to tack'):Math.round(state.trim*100)+'% sail · '+state.speed.toFixed(1)+' m/s'+(touch?'':' · A/D steer · W/S sail');
+      const active=state.mode==='sailing'&&!state.detached,hidden=!active&&!near&&!state.config.quickBoard,key=active+':'+hidden+':'+state.detached;
+      if(layout!==key) {
+        layout=key;panel.hidden=hidden;steerHint.hidden=!active||!touch;
+        panel.style.display=hidden?'none':'grid';panel.style.left=active?'auto':'50%';panel.style.right=active?'14px':'auto';
+        panel.style.top=active?'auto':'58px';panel.style.bottom=active?'110px':'auto';panel.style.transform=active?'none':'translateX(-50%)';
+        panel.style.width=active?(touch?'min(220px, calc(50% - 14px))':'280px'):'auto';panel.style.gridTemplateColumns=active?'1fr 1fr':'1fr';
+        helm.textContent=active?helmLabels.leave:state.detached?'Return to helm':state.config.quickBoard?'Pilot ship':helmLabels.take;
+        view.hidden=!active;raise.hidden=!active;lower.hidden=!active;readout.hidden=!active;
+      }
+      const next=state.grounded?'Grounded · turn toward deeper water':window.__gosx_scene3d_vessel_physics.speedCurve(state.heading-state.wind)===0?'Into the wind · '+(touch?'steer to tack':'hold A/D to tack'):Math.round(state.trim*100)+'% sail · '+state.speed.toFixed(1)+' m/s'+(touch?'':' · drag to look · A/D steer · W/S sail');
+      if(label!==next) {label=next;readout.textContent=next;}
     },dispose() {clear(input);panel.remove();steerHint.remove();for(const [target,name,fn] of listeners)target.removeEventListener(name,fn);} };
   }
   window.__gosx_scene3d_vessel_input={create,down,move,up,clear,value,setup};

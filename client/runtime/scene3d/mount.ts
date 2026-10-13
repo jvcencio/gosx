@@ -3075,7 +3075,7 @@
       const advanceVessel = sceneControlHandle && sceneControlHandle.advance;
       if (advanceVessel) {
         advanceVessel(frameDeltaSeconds, frameStart / 1000,
-          sceneQualityLadderPointBudgetScale(adaptiveQuality), animationPaused);
+          sceneQualityLadderPointBudgetScale(adaptiveQuality), animationPaused, timeSeconds);
       }
       // Publish the scene clock for tests, QA diffing, and honest telemetry:
       // both render paths (wasm runtime bundle and JS fall-through) sample it,

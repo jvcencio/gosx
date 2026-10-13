@@ -1062,10 +1062,12 @@ test("WebGPU fragment shaders pin coverage discard and corrected alpha selects",
     "strictly-less discard in unlit, main, and water paths");
   assert.doesNotMatch(source, /coverage <= cutoff/);
   assert.strictEqual(
-    (source.match(/select\(finalOpacity, 1\.0, alphaEnabled\)/g) || []).length, 2,
-    "unlit and main survivors emit full opacity");
-  assert.match(source, /select\(unmaskedOpacity, 1\.0, alphaEnabled\)/);
+    (source.match(/select\(blendOpacity, 1\.0, alphaEnabled\)/g) || []).length, 3,
+    "unlit, main and water cutout survivors emit full opacity");
+  assert.match(source, /select\(blendOpacity, 1\.0, alphaEnabled\)/);
   assert.doesNotMatch(source, /select\(\w+, coverage, alphaEnabled\)/);
+  assert.match(source, /select\(finalOpacity, coverage, cutoff < -1\.5\)/);
+  assert.match(source, /select\(unmaskedOpacity, coverage, cutoff < -1\.5\)/);
 });
 
 test("WebGPU instanceColor varyings are flat (primitive-constant, no interpolation drift)", () => {
