@@ -6674,15 +6674,19 @@
   function wgpuArrayContentsMatch(a: ArrayLike<unknown> | null | undefined, b: ArrayLike<unknown> | null | undefined): boolean {
     if (!a || !b) return !a && !b;
     if (a.length !== b.length) return false;
+    if (!a.length) return true;
+    if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b) && a.byteLength === b.byteLength && !(a.byteLength % 4 || a.byteOffset % 4 || b.byteOffset % 4)) {
+      a = new Uint32Array(a.buffer, a.byteOffset, a.byteLength / 4);
+      b = new Uint32Array(b.buffer, b.byteOffset, b.byteLength / 4);
+    }
     for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
     return true;
   }
-
-  function wgpuShadowFrameBindGroup(device: any, groups: any[], lightSlot: number, layout: any, buffer: any) {
-    var slot = Math.max(0, Math.floor(sceneNumber(lightSlot, 0)));
-    var cached = groups[slot];
+  function wgpuIsPackedInstanceColors(data: any, count: number): boolean { return data instanceof Float32Array && data.length >= count * 4; }
+  function wgpuShadowFrameBindGroup(device: any, groups: any[], layout: any, buffer: any) {
+    var cached = groups[0];
     if (!cached || cached.buffer !== buffer) {
-      cached = groups[slot] = { buffer: buffer, group: device.createBindGroup({
+      cached = groups[0] = { buffer: buffer, group: device.createBindGroup({
         layout: layout, entries: [{ binding: 0, resource: { buffer: buffer, offset: 0, size: 64 } }],
       }) };
     }
@@ -7757,44 +7761,30 @@
       return buffer;
     }
 
-    // wgpuStablePBRAttributeBuffer backs ensurePBRSceneAttributeBuffers: one
-    // GPU buffer per attribute `slot`, cached on the renderer-scoped
-    // pbrSceneAttributeCache (bundle can't be the owner -- see its comment
-    // above). Skips BOTH the buffer (re)allocation and the queue.writeBuffer
-    // call whenever `typedArray`'s CONTENT matches the last upload -- not
-    // just its identity, which is never stable across frames even for scene
-    // geometry that never moves (createSceneRenderBundle hands back a fresh
-    // Float32Array every call). Every water-demo float-* object has zero
-    // drift/bob/spin (program.go), so once placed this collapses "4 buffer
-    // allocs + 4 full uploads every frame forever" to "once" -- a scene with
-    // genuinely animating mesh geometry still uploads whenever content changes.
+    // Owned snapshots compare once per frame/input, reusing storage on edits.
+    // Fresh equal arrays and repeated passes skip allocation and uploads.
     function wgpuStablePBRAttributeBuffer(slot, typedArray, owner = pbrSceneAttributeCache, bufferSlot = slot + "B") {
-      // Reuse the cached snapshot's IDENTITY (not typedArray's, which is
-      // fresh every frame) once content-equal, so the delegated
-      // wgpuCachedTrackedBuffer call below (identity-based) naturally skips
-      // its own writeBuffer -- see this function's comment above.
+      var frame = owner[slot + "Frame"] || (owner[slot + "Frame"] = { epoch: -1, data: null });
+      if (frame.epoch === instancedCacheOwnerEpoch && frame.data === typedArray && pointsEntryGPUBuffers.has(owner[bufferSlot])) return owner[bufferSlot];
       var snap = owner[slot];
-      var same = wgpuArrayContentsMatch(snap, typedArray);
-      if (!same) owner[slot] = snap = typedArray.slice();
-      return wgpuCachedTrackedBuffer(owner, bufferSlot, snap, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, false);
+      var changed = !wgpuArrayContentsMatch(snap, typedArray);
+      if (changed) {
+        if (snap && snap.length === typedArray.length) snap.set(typedArray);
+        else owner[slot] = snap = typedArray.slice();
+      }
+      var buffer = wgpuCachedTrackedBuffer(owner, bufferSlot, snap, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, changed);
+      frame.epoch = instancedCacheOwnerEpoch; frame.data = typedArray;
+      return buffer;
     }
-
     function wgpuCachedTrackedBuffer(owner, slot, typedArray, usage, dynamic) {
       if (!owner || !typedArray) return null;
-      // Cross-renderer staleness guard: if the buffer cached at owner[slot] was
-      // created by a prior renderer (not in this renderer's pointsEntryGPUBuffers
-      // set), the underlying GPU resource was destroyed when that renderer was
-      // disposed or lost its device. Clear the stale JS reference so that the
-      // alloc path below creates a fresh buffer on the current device.  Without
-      // this, sceneCachedSlotBuffer would blindly reuse the dead buffer (its .size
-      // property survives .destroy()), causing "Buffer with '' label is invalid"
-      // errors on every frame after device-loss recovery until the page is reloaded.
+      // Foreign buffers can still report a size after device-loss disposal.
+      // Retire them and their bind-group caches so recovery allocates resources
+      // tracked by this renderer's device.
       var staleCandidate = owner[slot];
       if (staleCandidate && !pointsEntryGPUBuffers.has(staleCandidate)) {
         owner[slot] = null;
-        // Clearing the pool that caches bind groups built around this uniform
-        // buffer removes any stale entries that reference the dead buffer object.
-        // The pool key is "_gosxWGPUSBGC" + slot (see createSelenaBindGroup).
+        // Drop bind-group pools referencing this foreign buffer.
         var staleBGPool = "_gosxWGPUSBGC" + slot;
         if (Array.isArray(owner[staleBGPool])) owner[staleBGPool] = [];
         // Clear the material bind-group single-entry caches that key on the
@@ -16038,7 +16028,7 @@
       var baseMatrixOffset = baseSlot * shadowFrameBufferStride;
       if (!ensureShadowFrameBufferCapacity(Math.max(2 * (objects.length + 1), baseSlot + objects.length + 1))) return;
       device.queue.writeBuffer(shadowFrameBuffer, baseMatrixOffset, lightMatrix, 0, 16);
-      var shadowBG = wgpuShadowFrameBindGroup(device, shadowFrameBindGroups, shadowResource.lightSlot, shadowBindGroupLayout, shadowFrameBuffer);
+      var shadowBG = wgpuShadowFrameBindGroup(device, shadowFrameBindGroups, shadowBindGroupLayout, shadowFrameBuffer);
       var shadowPassDescriptor = {
         colorAttachments: [],
         depthStencilAttachment: {
@@ -16183,7 +16173,7 @@
         var mat = materials[matIndex] || null;
         objectDepthWrite = sceneTransmissionDepthWrite(obj, mat, depthWrite);
         var receiveShadow = !!obj.receiveShadow;
-        var offset = obj.vertexOffset;
+        var offset = Math.max(0, Math.floor(obj.vertexOffset));
         var count = obj.vertexCount;
         var isSkinned = webGPUObjectIsSkinned(obj);
         var computedMorphRecord = !isSkinned ? webGPUObjectComputedMorphDrawRecord(obj) : null;
@@ -16369,9 +16359,9 @@
     function instancedMeshColorData(mesh, count) {
       if (!mesh || count <= 0) return null;
       var rawColors = mesh.colors;
+      if (wgpuIsPackedInstanceColors(rawColors, count)) return rawColors;
       var owner = webGPUInstancedCacheOwner(mesh.id, mesh);
-      if (
-        owner._cachedWGPUInstanceColors &&
+      if (owner._cachedWGPUInstanceColors &&
         owner._cachedWGPUInstanceColorCount === count &&
         wgpuArrayContentsMatch(owner._cachedWGPUInstanceColorSource, rawColors)
       ) {
@@ -16389,7 +16379,7 @@
             data[ci * 4 + 3] = rgba[3];
           }
         } else if (rawColors.length >= count * 4) {
-          data = rawColors instanceof Float32Array ? rawColors : new Float32Array(rawColors);
+          data = new Float32Array(rawColors);
         } else if (rawColors.length >= count * 3) {
           data = new Float32Array(count * 4);
           for (var ni = 0; ni < count; ni++) {
