@@ -4261,7 +4261,10 @@ function makeFakeGPUDevice(options) {
       return pipeline;
     },
     createComputePipelineAsync(desc) {
-      return Promise.resolve({ __kind: "computePipeline", label: desc && desc.label });
+      const pipeline = device.createComputePipeline(desc);
+      // Match the default fake's immediately settled validation scopes.
+      // Tests of parallel compilation install controllable promises instead.
+      return { then(resolve) { return Promise.resolve(resolve(pipeline)); } };
     },
     createRenderPipeline(desc) {
       validateRenderPipelineDesc(desc);
@@ -5209,6 +5212,14 @@ function makeFakeGPUDeviceForCompute(options) {
 // createBoardWebGPUHarness but injects a caller-supplied fake device instead
 // of the default makeFakeGPUDevice(), enabling per-test async pipeline control.
 async function createComputeParticleHarness(fakeDevice, options) {
+  // Callers inject authored-shader failures. Builtin parallel preparation has
+  // its own coverage in scene3d-webgpu-first-frame.test.js.
+  const authoredRenderAsync = fakeDevice.createRenderPipelineAsync;
+  if (typeof authoredRenderAsync === "function") fakeDevice.createRenderPipelineAsync = function(desc) {
+    if (/^gosx-(?:points-authored|particle-render-authored|selena-post)/.test(desc.label || "")) return authoredRenderAsync.call(fakeDevice, desc);
+    const pipeline = fakeDevice.createRenderPipeline(desc);
+    return { then(resolve) { return Promise.resolve(resolve(pipeline)); } };
+  };
   const opts = options || {};
   const env = createContext({
     enableWebGPU: true,
@@ -5310,6 +5321,10 @@ function makeFakeGPUDeviceForPoints(options) {
     return Promise.resolve(null);
   };
   device.createRenderPipelineAsync = function(desc) {
+    if (!/^gosx-(?:points-authored|particle-render-authored|selena-post)/.test(desc.label || "")) {
+      const pipeline = device.createRenderPipeline(desc);
+      return { then(resolve) { return Promise.resolve(resolve(pipeline)); } };
+    }
     renderPipelineAsyncCalls.push(desc);
     if (typeof opts.pipelineAsyncBehavior === "function") {
       return opts.pipelineAsyncBehavior(desc);

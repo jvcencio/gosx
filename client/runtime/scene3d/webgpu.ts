@@ -5,7 +5,7 @@
   }
 
   function wgpuCreatePipelineGuard(canvas: any): any {
-    var guard = { pending: 0, disposed: false, frameEncoder: null, framePass: null, frameCleanup: null, coreError: "", failures: [], disabled: new Set(), fail: fail, uncaptured: uncaptured, wrapFrame: wrapFrame, release: release, snapshot: snapshot, changed: changed };
+    var guard: any = { frameAbort: null, pending: 0, disposed: false, frameEncoder: null, framePass: null, frameCleanup: null, coreError: "", failures: [], disabled: new Set(), fail: fail, uncaptured: uncaptured, wrapFrame: wrapFrame, release: release, snapshot: snapshot, changed: changed };
     var notificationPending = false;
     function changed() {
       if (guard.disposed || notificationPending) return;
@@ -32,7 +32,7 @@
           wgpuSubmitPendingFrame(guard, error);
           if (!error || !error.pipelineValidation) fail("frame", String(error && error.message || error));
           return error && error.pipelineValidation ? "pending" : "failed";
-        } finally { guard.frameEncoder = guard.framePass = guard.frameCleanup = null; endFrame(); }
+        } finally { guard.frameEncoder = guard.framePass = guard.frameCleanup = guard.frameAbort = null; endFrame(); }
       };
     }
     function release(raw: any) {
@@ -55,12 +55,12 @@
   function wgpuRequirePipeline(pipeline: any): any {
     var state = pipeline && wgpuPipelineValidation.get(pipeline);
     if (state && !state.ready) throw state;
-    return pipeline;
+    return state && state.pipeline || pipeline;
   }
 
   function wgpuCreateValidatedPipeline(device: any, kind: string, descriptor: any): any {
     var guard = device.__gosxPipelineGuard;
-    var state = { ready: false, pipelineValidation: true };
+    var state: any = { ready: false, pipelineValidation: true };
     var pipeline: any;
     var scoped = false;
     var error: any = null;
@@ -72,6 +72,20 @@
         if (failure && !guard.disposed) guard.fail(descriptor.label || kind, failure.message || String(failure));
         if (!guard.pending) guard.changed();
       }
+    }
+    var createAsync = kind === "render" ? device.createRenderPipelineAsync : device.createComputePipelineAsync;
+    if (typeof createAsync === "function") {
+      // Async creation reports validation on this descriptor's promise, without
+      // sharing a device error scope with parallel builds or frame encoding.
+      pipeline = {};
+      wgpuPipelineValidation.set(pipeline, state);
+      try {
+        createAsync.call(device, descriptor).then(function(result: any) {
+          state.pipeline = result;
+          finish(null);
+        }, finish);
+      } catch (failure) { finish(failure); }
+      return pipeline;
     }
     try {
       device.pushErrorScope("validation");
@@ -99,6 +113,7 @@
     if (!error || !error.pipelineValidation || !guard.frameEncoder) return;
     try {
       if (guard.framePass) guard.framePass.end();
+      if (guard.frameAbort) guard.frameAbort();
       if (guard.frameCleanup) guard.frameCleanup();
       guard.submit([guard.frameEncoder.finish()]);
     } catch (failure) { guard.fail("frame", String(failure && failure.message || failure)); }
@@ -108,25 +123,61 @@
     if (host) host.finishEncoding(encoder);
   }
 
+  function wgpuDeferredCanvasView(guard: any, context: any): any {
+    guard.canvasContext = context;
+    return guard.canvasView || (guard.canvasView = {});
+  }
+
   function wgpuTrackFrameEncoder(encoder: any, guard: any): any {
     guard.frameEncoder = encoder;
+    var deferred: any[] = [];
+    var recording = false;
+    guard.frameAbort = function() { recording = false; deferred.length = 0; };
     return new Proxy(encoder, { get: function(target, key) {
       var value = Reflect.get(target, key, target);
-      if (key !== "beginRenderPass" && key !== "beginComputePass") return typeof value === "function" ? value.bind(target) : value;
-      return function(descriptor) {
-        var pass = value.call(target, descriptor);
-        guard.framePass = pass;
-        var methods = Object.create(null);
-        return new Proxy(pass, { get: function(active, method) {
-          if (method === "end") return function() {
-            active.end();
-            if (guard.framePass === active) guard.framePass = null;
+      if (typeof value !== "function") return value;
+      if (key === "finish") return function(descriptor: any) {
+        // Nothing acquires the canvas until all pipeline requirements passed.
+        var canvasView = recording ? guard.canvasContext.getCurrentTexture().createView() : null;
+        for (var replay of deferred) replay(canvasView);
+        return target.finish(descriptor);
+      };
+      if (key !== "beginRenderPass" && key !== "beginComputePass") return function(...args: any[]) {
+        if (recording) { deferred.push(function() { value.apply(target, args); }); return; }
+        return value.apply(target, args);
+      };
+      return function(descriptor: any) {
+        var canvasPass = guard.canvasView && key === "beginRenderPass" && descriptor.colorAttachments.some(function(attachment: any) {
+          return attachment && (attachment.view === guard.canvasView || attachment.resolveTarget === guard.canvasView);
+        });
+        if (canvasPass) recording = true;
+        if (recording) {
+          descriptor = Object.assign({}, descriptor);
+          if (descriptor.colorAttachments) descriptor.colorAttachments = descriptor.colorAttachments.map(function(attachment: any) { return attachment && Object.assign({}, attachment); });
+          if (descriptor.depthStencilAttachment) descriptor.depthStencilAttachment = Object.assign({}, descriptor.depthStencilAttachment);
+        }
+        var pass: any = recording ? null : value.call(target, descriptor);
+        var active: any;
+        if (recording) deferred.push(function(canvasView: any) {
+          var resolved = Object.assign({}, descriptor);
+          if (key === "beginRenderPass") resolved.colorAttachments = descriptor.colorAttachments.map(function(attachment: any) {
+            if (!attachment) return attachment;
+            var out = Object.assign({}, attachment);
+            if (out.view === guard.canvasView) out.view = canvasView;
+            if (out.resolveTarget === guard.canvasView) out.resolveTarget = canvasView;
+            return out;
+          });
+          pass = value.call(target, resolved);
+        });
+        active = new Proxy({}, { get: function(_, method) {
+          return function(...args: any[]) {
+            if (method === "end" && guard.framePass === active) guard.framePass = null;
+            if (recording) deferred.push(function() { pass[method](...args); });
+            else pass[method](...args);
           };
-          var fn = Reflect.get(active, method, active);
-          if (typeof fn !== "function") return fn;
-          if (!methods[method]) methods[method] = fn.bind(active);
-          return methods[method];
         } });
+        guard.framePass = active;
+        return active;
       };
     } });
   }
@@ -4817,7 +4868,28 @@
       var pass = encoder.beginRenderPass({ label: "gosx-post-depth-resolve", colorAttachments: [], depthStencilAttachment: { view: depthTexView, depthLoadOp: "clear", depthClearValue: 1, depthStoreOp: "store" } });
       pass.setPipeline(wgpuRequirePipeline(depthResolvePipeline)); pass.setBindGroup(0, group); pass.draw(4); pass.end();
     }
+    function preparePipelines(effects: any[]) {
+      getPipeline("blit", WGSL_POST_BLIT_FRAGMENT, getPostBlitLayout());
+      getPipeline("present", WGSL_POST_BLIT_FRAGMENT, getPostBlitLayout());
+      for (var effect of effects) {
+        switch (effect.kind) {
+          case SCENE_POST_TONE_MAPPING: getPipeline("toneMapping", WGSL_POST_TONEMAPPING_FRAGMENT, getPostParamsLayout()); break;
+          case SCENE_POST_BLOOM:
+            if (effect.mode === "mip") break;
+            getPipeline("bloomBright", WGSL_POST_BLOOM_BRIGHT_FRAGMENT, getPostParamsLayout());
+            getPipeline("blur", postUsesF16 ? WGSL_POST_BLUR_FRAGMENT_F16 : WGSL_POST_BLUR_FRAGMENT, getPostParamsLayout());
+            getPipeline("bloomComposite", WGSL_POST_BLOOM_COMPOSITE_FRAGMENT, getBloomCompositeLayout()); break;
+          case "contactShadows": getPipeline("contactShadows", WGSL_POST_CONTACT_SHADOWS_FRAGMENT, getSSAOLayout()); break;
+          case SCENE_POST_SSAO: getPipeline("ssao", WGSL_POST_SSAO_FRAGMENT, getSSAOLayout()); break;
+          case SCENE_POST_DOF: getPipeline("dof", WGSL_POST_DOF_FRAGMENT, getSSAOLayout()); break;
+          case SCENE_POST_FXAA: getPipeline("fxaa", postUsesF16 ? WGSL_POST_FXAA_FRAGMENT_F16 : WGSL_POST_FXAA_FRAGMENT, getPostBlitLayout()); break;
+          case SCENE_POST_VIGNETTE: getPipeline("vignette", WGSL_POST_VIGNETTE_FRAGMENT, getPostParamsLayout()); break;
+          case SCENE_POST_COLOR_GRADE: getPipeline("colorGrade", WGSL_POST_COLORGRADE_FRAGMENT, getPostParamsLayout()); break;
+        }
+      }
+    }
     return {
+      preparePipelines: preparePipelines,
       setSpecularSource: function(view: any) { specularSource = view; },
       getSceneTarget: function(width, height) {
         ensureFBOs(width, height);
@@ -7012,8 +7084,8 @@
     var pointsAuthoredStoragePipelineLayout = null;  // [frame, userUniform, pointsStorage] for ComputeParticle render
     var shadowBindGroupLayout = null;
     var pbrPipelineLayout = null;
-    var elioSkinPipelineLayout = null;
-    var computedMorphPipelineLayout = null;
+    var elioSkinPipelineLayout: any = null;
+    var computedMorphPipelineLayout: any = null;
     var pointsPipelineLayout = null;
     var pointsVertexPipelineLayout = null;
     var selenaPipelineCache = new Map();
@@ -7045,34 +7117,34 @@
     var pbrInstancedVertexModule = null;
     var pbrInstancedCullVertexModule = null;
     var pbrFragmentModule = null;
-    var elioSkinShaderModule = null;
-    var elioSkinPipeline = null;
-    var computedMorphShaderModule = null;
-    var computedMorphPipeline = null;
-    var waterComputeShaderModule = null;
-    var waterRenderVertexModule = null;
-    var waterRenderFragmentModule = null;
-    var waterRenderBelowFragmentModule = null;
-    var waterPoolVertexModule = null;
-    var waterPoolFragmentModule = null;
-    var waterCausticsVertexModule = null;
-    var waterCausticsFragmentModule = null;
-    var waterObjectTextureVertexModule = null;
-    var waterObjectTextureFragmentModule = null;
-    var waterObjectShadowFragmentModule = null;
-    var waterObjectMeshShadowVertexModule = null;
-    var waterObjectMeshShadowFragmentModule = null;
-    var waterObjectMeshRefractionFragmentModule = null;
-    var waterObjectMeshClippedFragmentModule = null;
-    var waterSeedPipeline = null;
-    var waterDropPipeline = null;
-    var waterDisplacementPipeline = null;
-    var waterStepPipeline = null;
-    var waterNormalPipeline = null;
-    var waterCausticsPipeline = null;
-    var waterObjectTexturePipeline = null;
-    var waterObjectShadowPipeline = null;
-    var waterObjectMeshShadowPipeline = null;
+    var elioSkinShaderModule: any = null;
+    var elioSkinPipeline: any = null;
+    var computedMorphShaderModule: any = null;
+    var computedMorphPipeline: any = null;
+    var waterComputeShaderModule: any = null;
+    var waterRenderVertexModule: any = null;
+    var waterRenderFragmentModule: any = null;
+    var waterRenderBelowFragmentModule: any = null;
+    var waterPoolVertexModule: any = null;
+    var waterPoolFragmentModule: any = null;
+    var waterCausticsVertexModule: any = null;
+    var waterCausticsFragmentModule: any = null;
+    var waterObjectTextureVertexModule: any = null;
+    var waterObjectTextureFragmentModule: any = null;
+    var waterObjectShadowFragmentModule: any = null;
+    var waterObjectMeshShadowVertexModule: any = null;
+    var waterObjectMeshShadowFragmentModule: any = null;
+    var waterObjectMeshRefractionFragmentModule: any = null;
+    var waterObjectMeshClippedFragmentModule: any = null;
+    var waterSeedPipeline: any = null;
+    var waterDropPipeline: any = null;
+    var waterDisplacementPipeline: any = null;
+    var waterStepPipeline: any = null;
+    var waterNormalPipeline: any = null;
+    var waterCausticsPipeline: any = null;
+    var waterObjectTexturePipeline: any = null;
+    var waterObjectShadowPipeline: any = null;
+    var waterObjectMeshShadowPipeline: any = null;
     var waterObjectMeshPipelineCache = {};
     var waterPoolPipelineCache = {};
     var shadowVertexModule = null;
@@ -7701,12 +7773,12 @@
     var waterCausticsBindGroupLayout = null;
     var waterObjectTextureBindGroupLayout = null;
     var waterObjectMeshShadowBindGroupLayout = null;
-    var waterComputePipelineLayout = null;
-    var waterRenderPipelineLayout = null;
-    var waterPoolPipelineLayout = null;
-    var waterCausticsPipelineLayout = null;
-    var waterObjectTexturePipelineLayout = null;
-    var waterObjectMeshShadowPipelineLayout = null;
+    var waterComputePipelineLayout: any = null;
+    var waterRenderPipelineLayout: any = null;
+    var waterPoolPipelineLayout: any = null;
+    var waterCausticsPipelineLayout: any = null;
+    var waterObjectTexturePipelineLayout: any = null;
+    var waterObjectMeshShadowPipelineLayout: any = null;
     var waterRenderPipelineCache = new Map();
     var WATER_MAX_DISPLACEMENT_SPHERES = 32;
     var WATER_CAUSTICS_TEXTURE_FORMAT = "rgba8unorm";
@@ -8243,106 +8315,6 @@
         pbrInstancedVertexModule = device.createShaderModule({ label: "pbr-instanced-vert", code: WGSL_PBR_INSTANCED_VERTEX });
         pbrInstancedCullVertexModule = device.createShaderModule({ label: "pbr-instanced-cull-vert", code: WGSL_PBR_INSTANCED_CULL_VERTEX });
         pbrFragmentModule = device.createShaderModule({ label: "pbr-frag", code: WGSL_PBR_FRAGMENT });
-        elioSkinShaderModule = device.createShaderModule({ label: "elio-skin-lbs", code: SCENE_ELIO_SKIN_LBS_SOURCE });
-        elioSkinPipeline = wgpuCreateValidatedPipeline(device, "compute", {
-          label: "gosx-elio-skin-lbs",
-          layout: elioSkinPipelineLayout,
-          compute: { module: elioSkinShaderModule, entryPoint: "skin" },
-        });
-        computedMorphShaderModule = device.createShaderModule({ label: "computed-morph", code: SCENE_COMPUTED_MORPH_SOURCE });
-        computedMorphPipeline = wgpuCreateValidatedPipeline(device, "compute", {
-          label: "gosx-computed-morph",
-          layout: computedMorphPipelineLayout,
-          compute: { module: computedMorphShaderModule, entryPoint: "morphPose" },
-        });
-        waterComputeShaderModule = device.createShaderModule({ label: "gosx-water-compute", code: SCENE_WATER_COMPUTE_SOURCE });
-        waterSeedPipeline = wgpuCreateValidatedPipeline(device, "compute", {
-          label: "gosx-water-seed-drops",
-          layout: waterComputePipelineLayout,
-          compute: { module: waterComputeShaderModule, entryPoint: "seedDrops" },
-        });
-        waterDropPipeline = wgpuCreateValidatedPipeline(device, "compute", {
-          label: "gosx-water-add-drop",
-          layout: waterComputePipelineLayout,
-          compute: { module: waterComputeShaderModule, entryPoint: "addDrop" },
-        });
-        waterDisplacementPipeline = wgpuCreateValidatedPipeline(device, "compute", {
-          label: "gosx-water-displace-object",
-          layout: waterComputePipelineLayout,
-          compute: { module: waterComputeShaderModule, entryPoint: "displaceObject" },
-        });
-        waterStepPipeline = wgpuCreateValidatedPipeline(device, "compute", {
-          label: "gosx-water-step",
-          layout: waterComputePipelineLayout,
-          compute: { module: waterComputeShaderModule, entryPoint: "stepSimulation" },
-        });
-        waterNormalPipeline = wgpuCreateValidatedPipeline(device, "compute", {
-          label: "gosx-water-normals",
-          layout: waterComputePipelineLayout,
-          compute: { module: waterComputeShaderModule, entryPoint: "updateNormals" },
-        });
-        waterRenderVertexModule = device.createShaderModule({ label: "gosx-water-render-vert", code: SCENE_WATER_RENDER_VERTEX_SOURCE });
-        waterRenderFragmentModule = device.createShaderModule({ label: "gosx-water-render-frag", code: SCENE_WATER_RENDER_FRAGMENT_SOURCE });
-        waterRenderBelowFragmentModule = device.createShaderModule({ label: "gosx-water-render-below-frag", code: SCENE_WATER_RENDER_BELOW_FRAGMENT_SOURCE });
-        waterPoolVertexModule = device.createShaderModule({ label: "gosx-water-pool-vert", code: SCENE_WATER_POOL_VERTEX_SOURCE });
-        waterPoolFragmentModule = device.createShaderModule({ label: "gosx-water-pool-frag", code: SCENE_WATER_POOL_FRAGMENT_SOURCE });
-        waterCausticsVertexModule = device.createShaderModule({ label: "gosx-water-caustics-vert", code: SCENE_WATER_CAUSTICS_VERTEX_SOURCE });
-        waterCausticsFragmentModule = device.createShaderModule({ label: "gosx-water-caustics-frag", code: SCENE_WATER_CAUSTICS_FRAGMENT_SOURCE });
-        waterCausticsPipeline = wgpuCreateValidatedPipeline(device, "render", {
-          label: "gosx-water-caustics-pass",
-          layout: waterCausticsPipelineLayout,
-          vertex: { module: waterCausticsVertexModule, entryPoint: "vertexMain", buffers: [] },
-          fragment: {
-            module: waterCausticsFragmentModule,
-            entryPoint: "fragmentMain",
-            targets: [{ format: WATER_CAUSTICS_TEXTURE_FORMAT }],
-          },
-          primitive: { topology: "triangle-list" },
-        });
-        waterObjectTextureVertexModule = device.createShaderModule({ label: "gosx-water-object-texture-vert", code: SCENE_WATER_OBJECT_TEXTURE_VERTEX_SOURCE });
-        waterObjectTextureFragmentModule = device.createShaderModule({ label: "gosx-water-object-texture-frag", code: SCENE_WATER_OBJECT_TEXTURE_FRAGMENT_SOURCE });
-        waterObjectShadowFragmentModule = device.createShaderModule({ label: "gosx-water-object-shadow-frag", code: SCENE_WATER_OBJECT_SHADOW_FRAGMENT_SOURCE });
-        waterObjectMeshShadowVertexModule = device.createShaderModule({ label: "gosx-water-object-mesh-shadow-vert", code: SCENE_WATER_OBJECT_MESH_SHADOW_VERTEX_SOURCE });
-        waterObjectMeshShadowFragmentModule = device.createShaderModule({ label: "gosx-water-object-mesh-shadow-frag", code: SCENE_WATER_OBJECT_MESH_SHADOW_FRAGMENT_SOURCE });
-        waterObjectMeshRefractionFragmentModule = device.createShaderModule({ label: "gosx-water-object-mesh-texture-frag", code: sceneWaterObjectMeshFragmentSource(1) });
-        waterObjectMeshClippedFragmentModule = device.createShaderModule({ label: "gosx-water-object-mesh-clipped-frag", code: sceneWaterObjectMeshFragmentSource(2) });
-        waterObjectTexturePipeline = wgpuCreateValidatedPipeline(device, "render", {
-          label: "gosx-water-object-texture-pass",
-          layout: waterObjectTexturePipelineLayout,
-          vertex: { module: waterObjectTextureVertexModule, entryPoint: "vertexMain", buffers: [] },
-          fragment: {
-            module: waterObjectTextureFragmentModule,
-            entryPoint: "fragmentMain",
-            targets: [
-              { format: WATER_OBJECT_TEXTURE_FORMAT },
-              { format: WATER_OBJECT_TEXTURE_FORMAT },
-              { format: WATER_OBJECT_TEXTURE_FORMAT },
-            ],
-          },
-          primitive: { topology: "triangle-list" },
-        });
-        waterObjectShadowPipeline = wgpuCreateValidatedPipeline(device, "render", {
-          label: "gosx-water-object-shadow-pass",
-          layout: waterObjectTexturePipelineLayout,
-          vertex: { module: waterObjectTextureVertexModule, entryPoint: "vertexMain", buffers: [] },
-          fragment: {
-            module: waterObjectShadowFragmentModule,
-            entryPoint: "shadowMain",
-            targets: [{ format: WATER_OBJECT_TEXTURE_FORMAT }],
-          },
-          primitive: { topology: "triangle-list" },
-        });
-        waterObjectMeshShadowPipeline = wgpuCreateValidatedPipeline(device, "render", {
-          label: "gosx-water-object-mesh-shadow-pass",
-          layout: waterObjectMeshShadowPipelineLayout,
-          vertex: { module: waterObjectMeshShadowVertexModule, entryPoint: "vertexMain", buffers: WGPU_PBR_VERTEX_LAYOUT },
-          fragment: {
-            module: waterObjectMeshShadowFragmentModule,
-            entryPoint: "fragmentMain",
-            targets: [{ format: WATER_OBJECT_TEXTURE_FORMAT }],
-          },
-          primitive: { topology: "triangle-list", cullMode: "none" },
-        });
         shadowVertexModule = device.createShaderModule({ label: "shadow-vert", code: WGSL_SHADOW_VERTEX });
         shadowInstancedVertexModule = device.createShaderModule({ label: "shadow-instanced-vert", code: WGSL_SHADOW_INSTANCED_VERTEX });
         shadowFragmentModule = device.createShaderModule({ label: "shadow-frag", code: WGSL_SHADOW_FRAGMENT });
@@ -8503,6 +8475,155 @@
       mainMSAASampleCount = sampleCount;
       mainMSAAFormat = targetFormat;
       return mainMSAAView;
+    }
+
+    function ensureElioSkinPipeline() {
+      if (elioSkinPipeline) return;
+      elioSkinShaderModule = device.createShaderModule({ label: "elio-skin-lbs", code: SCENE_ELIO_SKIN_LBS_SOURCE });
+      elioSkinPipeline = wgpuCreateValidatedPipeline(device, "compute", {
+        label: "gosx-elio-skin-lbs",
+        layout: elioSkinPipelineLayout,
+        compute: { module: elioSkinShaderModule, entryPoint: "skin" },
+      });
+    }
+
+    function ensureComputedMorphPipeline() {
+      if (computedMorphPipeline) return;
+      computedMorphShaderModule = device.createShaderModule({ label: "computed-morph", code: SCENE_COMPUTED_MORPH_SOURCE });
+      computedMorphPipeline = wgpuCreateValidatedPipeline(device, "compute", {
+        label: "gosx-computed-morph",
+        layout: computedMorphPipelineLayout,
+        compute: { module: computedMorphShaderModule, entryPoint: "morphPose" },
+      });
+    }
+
+    function ensureWaterPipelines() {
+      if (waterComputeShaderModule) return;
+      waterComputeShaderModule = device.createShaderModule({ label: "gosx-water-compute", code: SCENE_WATER_COMPUTE_SOURCE });
+      waterSeedPipeline = wgpuCreateValidatedPipeline(device, "compute", {
+        label: "gosx-water-seed-drops",
+        layout: waterComputePipelineLayout,
+        compute: { module: waterComputeShaderModule, entryPoint: "seedDrops" },
+      });
+      waterDropPipeline = wgpuCreateValidatedPipeline(device, "compute", {
+        label: "gosx-water-add-drop",
+        layout: waterComputePipelineLayout,
+        compute: { module: waterComputeShaderModule, entryPoint: "addDrop" },
+      });
+      waterDisplacementPipeline = wgpuCreateValidatedPipeline(device, "compute", {
+        label: "gosx-water-displace-object",
+        layout: waterComputePipelineLayout,
+        compute: { module: waterComputeShaderModule, entryPoint: "displaceObject" },
+      });
+      waterStepPipeline = wgpuCreateValidatedPipeline(device, "compute", {
+        label: "gosx-water-step",
+        layout: waterComputePipelineLayout,
+        compute: { module: waterComputeShaderModule, entryPoint: "stepSimulation" },
+      });
+      waterNormalPipeline = wgpuCreateValidatedPipeline(device, "compute", {
+        label: "gosx-water-normals",
+        layout: waterComputePipelineLayout,
+        compute: { module: waterComputeShaderModule, entryPoint: "updateNormals" },
+      });
+      waterRenderVertexModule = device.createShaderModule({ label: "gosx-water-render-vert", code: SCENE_WATER_RENDER_VERTEX_SOURCE });
+      waterRenderFragmentModule = device.createShaderModule({ label: "gosx-water-render-frag", code: SCENE_WATER_RENDER_FRAGMENT_SOURCE });
+      waterRenderBelowFragmentModule = device.createShaderModule({ label: "gosx-water-render-below-frag", code: SCENE_WATER_RENDER_BELOW_FRAGMENT_SOURCE });
+      waterPoolVertexModule = device.createShaderModule({ label: "gosx-water-pool-vert", code: SCENE_WATER_POOL_VERTEX_SOURCE });
+      waterPoolFragmentModule = device.createShaderModule({ label: "gosx-water-pool-frag", code: SCENE_WATER_POOL_FRAGMENT_SOURCE });
+      waterCausticsVertexModule = device.createShaderModule({ label: "gosx-water-caustics-vert", code: SCENE_WATER_CAUSTICS_VERTEX_SOURCE });
+      waterCausticsFragmentModule = device.createShaderModule({ label: "gosx-water-caustics-frag", code: SCENE_WATER_CAUSTICS_FRAGMENT_SOURCE });
+      waterCausticsPipeline = wgpuCreateValidatedPipeline(device, "render", {
+        label: "gosx-water-caustics-pass",
+        layout: waterCausticsPipelineLayout,
+        vertex: { module: waterCausticsVertexModule, entryPoint: "vertexMain", buffers: [] },
+        fragment: {
+          module: waterCausticsFragmentModule,
+          entryPoint: "fragmentMain",
+          targets: [{ format: WATER_CAUSTICS_TEXTURE_FORMAT }],
+        },
+        primitive: { topology: "triangle-list" },
+      });
+      waterObjectTextureVertexModule = device.createShaderModule({ label: "gosx-water-object-texture-vert", code: SCENE_WATER_OBJECT_TEXTURE_VERTEX_SOURCE });
+      waterObjectTextureFragmentModule = device.createShaderModule({ label: "gosx-water-object-texture-frag", code: SCENE_WATER_OBJECT_TEXTURE_FRAGMENT_SOURCE });
+      waterObjectShadowFragmentModule = device.createShaderModule({ label: "gosx-water-object-shadow-frag", code: SCENE_WATER_OBJECT_SHADOW_FRAGMENT_SOURCE });
+      waterObjectMeshShadowVertexModule = device.createShaderModule({ label: "gosx-water-object-mesh-shadow-vert", code: SCENE_WATER_OBJECT_MESH_SHADOW_VERTEX_SOURCE });
+      waterObjectMeshShadowFragmentModule = device.createShaderModule({ label: "gosx-water-object-mesh-shadow-frag", code: SCENE_WATER_OBJECT_MESH_SHADOW_FRAGMENT_SOURCE });
+      waterObjectMeshRefractionFragmentModule = device.createShaderModule({ label: "gosx-water-object-mesh-texture-frag", code: sceneWaterObjectMeshFragmentSource(1) });
+      waterObjectMeshClippedFragmentModule = device.createShaderModule({ label: "gosx-water-object-mesh-clipped-frag", code: sceneWaterObjectMeshFragmentSource(2) });
+      waterObjectTexturePipeline = wgpuCreateValidatedPipeline(device, "render", {
+        label: "gosx-water-object-texture-pass",
+        layout: waterObjectTexturePipelineLayout,
+        vertex: { module: waterObjectTextureVertexModule, entryPoint: "vertexMain", buffers: [] },
+        fragment: {
+          module: waterObjectTextureFragmentModule,
+          entryPoint: "fragmentMain",
+          targets: [
+            { format: WATER_OBJECT_TEXTURE_FORMAT },
+            { format: WATER_OBJECT_TEXTURE_FORMAT },
+            { format: WATER_OBJECT_TEXTURE_FORMAT },
+          ],
+        },
+        primitive: { topology: "triangle-list" },
+      });
+      waterObjectShadowPipeline = wgpuCreateValidatedPipeline(device, "render", {
+        label: "gosx-water-object-shadow-pass",
+        layout: waterObjectTexturePipelineLayout,
+        vertex: { module: waterObjectTextureVertexModule, entryPoint: "vertexMain", buffers: [] },
+        fragment: {
+          module: waterObjectShadowFragmentModule,
+          entryPoint: "shadowMain",
+          targets: [{ format: WATER_OBJECT_TEXTURE_FORMAT }],
+        },
+        primitive: { topology: "triangle-list" },
+      });
+      waterObjectMeshShadowPipeline = wgpuCreateValidatedPipeline(device, "render", {
+        label: "gosx-water-object-mesh-shadow-pass",
+        layout: waterObjectMeshShadowPipelineLayout,
+        vertex: { module: waterObjectMeshShadowVertexModule, entryPoint: "vertexMain", buffers: WGPU_PBR_VERTEX_LAYOUT },
+        fragment: {
+          module: waterObjectMeshShadowFragmentModule,
+          entryPoint: "fragmentMain",
+          targets: [{ format: WATER_OBJECT_TEXTURE_FORMAT }],
+        },
+        primitive: { topology: "triangle-list", cullMode: "none" },
+      });
+    }
+
+    var initialPipelinesPrepared = false, preparedPipelineKey = "";
+    function prepareBundlePipelines(bundle: any, prepared: any, effects: any[], post: boolean) {
+      var key = prepared ? prepared.signature + "|" + targetFormat + "|" + activeSampleCount + "|" + selectiveBloom + "|" + effects.map(function(effect: any) { return effect.kind + ":" + effect.mode; }).join(",") : "";
+      if (key && key === preparedPipelineKey) return;
+      var materials = bundle.materials || [];
+      var passes = prepared && prepared.pbrPasses || buildDrawList(bundle);
+      var shadows = Array.isArray(bundle.lights) && bundle.lights.some(function(light: any) { return light.castShadow; });
+      for (var blend of ["opaque", "alpha", "additive"]) {
+        var objects = passes[blend] || [];
+        var depth = blend === "opaque";
+        if (objects.length) getPBRPipeline(blend, depth, "ccw");
+        for (var object of objects) {
+          var material = materials[object.materialIndex];
+          var reflected = sceneAffineDeterminant(object.modelMatrix, 0) < 0;
+          getPBRPipeline(blend, sceneTransmissionDepthWrite(object, material, depth), reflected ? "cw" : "ccw", Boolean(material && material.detail));
+          if (shadows && object.castShadow) getShadowPipeline(reflected);
+          if (webGPUObjectIsSkinned(object)) ensureElioSkinPipeline();
+          else if (object.computedMorph) ensureComputedMorphPipeline();
+        }
+      }
+      for (var mesh of bundle.instancedMeshes || []) {
+        var material = instancedMeshMaterial(mesh, materials);
+        var meshBlend = scenePBRObjectRenderPass(mesh, material);
+        getPBRInstancedPipeline(meshBlend, meshBlend === "opaque", Boolean(material && material.detail));
+        if (shadows && mesh.castShadow) getShadowInstancedPipeline();
+      }
+      if (bundle.waterSystems && bundle.waterSystems.length) ensureWaterPipelines();
+      if (post) {
+        if (!postProcessor) postProcessor = wgpuCreatePostProcessor(device, presentationFormat, reportWebGPUFrameError, function(material: any, owner: any, context: any) {
+          return sceneSelenaUniformData(material, owner, context, selenaFrame);
+        });
+        postProcessor.preparePipelines(effects);
+      }
+      initialPipelinesPrepared = true;
+      preparedPipelineKey = key;
     }
 
     // Get or create a PBR pipeline for the given blend mode.
@@ -15646,7 +15767,8 @@
     }
 
     function webGPUElioSkinRecord(obj) {
-      if (!webGPUObjectIsSkinned(obj) || !elioSkinPipeline || !elioSkinBindGroupLayout) return null;
+      if (!webGPUObjectIsSkinned(obj)) return null;
+      ensureElioSkinPipeline();
       var count = webGPUObjectVertexCount(obj);
       var skin = obj.skin;
       var jointCount = Math.floor(sceneNumber(skin && skin.jointMatrices && skin.jointMatrices.length, 0) / 16);
@@ -15762,7 +15884,7 @@
 
     function webGPUComputedMorphData(obj) {
       var morph = obj && obj.computedMorph;
-      if (!morph || !computedMorphPipeline || !computedMorphBindGroupLayout) return null;
+      if (!morph || !computedMorphBindGroupLayout) return null;
       var requested = Math.max(0, Math.floor(sceneNumber(morph.count, sceneNumber(obj && obj.vertexCount, 0))));
       var objCount = Math.max(0, Math.floor(sceneNumber(obj && obj.vertexCount, requested)));
       var count = Math.min(requested, objCount);
@@ -15880,6 +16002,7 @@
     function webGPUComputedMorphRecord(obj) {
       var data = webGPUComputedMorphData(obj);
       if (!data) return null;
+      ensureComputedMorphPipeline();
       var morph = data.morph;
       var record = morph._gosxWGPUComputedMorphRecord;
       if (!record) {
@@ -18641,6 +18764,11 @@
       var scaledH = Math.max(1, Math.floor(height * postfxFactor));
       var sampleCount = resolveWebGPUSampleCount(bundle);
       activeSampleCount = sampleCount;
+      detailResources = sceneWebGPUEnsureDetailResources(device, detailResources, bundle.materials, frameBindGroupLayout, materialBindGroupLayout, WGSL_PBR_FRAGMENT);
+      prepareBundlePipelines(bundle, preparedScene, postEffects, usePostProcessing);
+      if (pipelineGuard.coreError) return "failed";
+      if (pipelineGuard.pending) return "pending";
+
 
       // Upload per-frame uniforms (use scaled dims so point sprites and
       // projection aspect match the actual render target, not the canvas).
@@ -18670,7 +18798,6 @@
       var scopedFrameErrors = beginWebGPUErrorScope();
       detailEnabled = !frameMeta || frameMeta.detailEnabled !== false;
       // Retain ownership before an atlas bake can suspend this frame for pipeline validation.
-      detailResources = sceneWebGPUEnsureDetailResources(device, detailResources, bundle.materials, frameBindGroupLayout, materialBindGroupLayout, WGSL_PBR_FRAGMENT);
       detailResources = sceneWebGPUPrepareDetailFrame(device, detailResources, bundle.materials, textureCache, {
         placeholderView: placeholderView, enabled: detailEnabled,
       });
@@ -18836,8 +18963,7 @@
           mainDepthTargetView = postTarget.depthView;
         }
       } else {
-        var currentTexture = gpuCtx.getCurrentTexture();
-        var currentView = currentTexture.createView();
+        var currentView = wgpuDeferredCanvasView(pipelineGuard, gpuCtx);
         if (sampleCount > 1) {
           mainColorView = ensureMSAAColor(width, height, sampleCount);
           mainResolveView = currentView;
@@ -19254,7 +19380,7 @@
 
       // Post-processing.
       if (usePostProcessing && postProcessor) {
-        var screenView = gpuCtx.getCurrentTexture().createView();
+        var screenView = wgpuDeferredCanvasView(pipelineGuard, gpuCtx);
         Object.assign(frameStats, postProcessor.apply(encoder, postEffects, scaledW, scaledH, width, height, screenView, bundle.camera, { lights: bundle.lights, environment: bundle.environment, camera: cam, viewProj: scratchSelenaViewProjection, depthView: mainDepthTargetView, samples: sampleCount, meta: frameMeta }));
       }
 
@@ -19596,7 +19722,7 @@
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.waterDroppedTicks = lastWebGPUFrameStats && lastWebGPUFrameStats.waterDroppedTicks || 0;
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.waterNormalDispatchSeq = lastWebGPUFrameStats && lastWebGPUFrameStats.waterNormalDispatchSeq || 0;
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.waterSampledStateSyncSeq = lastWebGPUFrameStats && lastWebGPUFrameStats.waterSampledStateSyncSeq || 0;
-      out.postProcessing = !!postProcessor; pipelineGuard.snapshot(out);
+      out.postProcessing = !!postProcessor; pipelineGuard.snapshot(out); Object.assign(out, { initialPipelinesReady: initialPipelinesPrepared && !pipelineGuard.pending && !pipelineGuard.coreError });
       // Frame-error resilience state (see reportWebGPUFrameError /
       // disablePostProcessing / enablePostProcessing above and
       // 20-scene-mount.js's checkSceneWebGPUFrameErrorWatchdog, the poller

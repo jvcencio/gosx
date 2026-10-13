@@ -1696,20 +1696,8 @@
     return promise;
   }
 
-  function sceneNextFrame() {
-    return new Promise(function(resolve) {
-      const frameRequest = typeof window !== "undefined" && window.__gosx && window.__gosx.motion && window.__gosx.motion.scheduler && typeof window.__gosx.motion.scheduler.request === "function" ? window.__gosx.motion.scheduler.request.bind(window.__gosx.motion.scheduler) : typeof window !== "undefined" && typeof window.requestAnimationFrame === "function" ? window.requestAnimationFrame.bind(window) : null;
-      /* @ts-expect-error TS2794 -- Promise<T> is inferred from the bare resolve() call inside; T is really void */
-      if (frameRequest) { frameRequest(function() { resolve(); }); return; }
-      setTimeout(resolve, 0);
-    });
-  }
-
   async function settlePreferredWebGPUBackend(props, capability) {
     await ensurePreferredWebGPUBackend(props, capability);
-    if (typeof sceneWebGPUAvailable === "function" && sceneWebGPUAvailable()) {
-      await sceneNextFrame();
-    }
   }
 
   async function ensurePreferredWebGPUBackend(props, capability) {
@@ -4498,7 +4486,14 @@
     const requestedTier = normalizeSceneCapabilityTier(props && props.capabilityTier);
     const environment = sceneEnvironmentState();
     const navigatorRef = window && window.navigator ? window.navigator : {};
-    const webglProbe = sceneBool(props && props.preferWebGL, true) ? sceneProbeWebGLRenderer() : null;
+    // Explicit WebGPU preference overrides software-WebGL classification. Keep
+    // the probe for defaults and fallback, where it can change backend choice.
+    const gpuPreferred = scenePrefersWebGPU(props) && !sceneRequiresWebGL(props) && !sceneForcesWebGL(props)
+      && !sceneBool(props && props.preferCanvas, false) && !sceneNeedsWebGLForWebGPUCoverage(props)
+      && typeof sceneWebGPUAvailable === "function" && sceneWebGPUAvailable();
+    const verdict = gpuPreferred ? chooseSceneBackend(sceneBackendCapsOf(props), { preferWebGPU: true }, { webgpu: true, webgl: true }) : null;
+    const gpuSelected = gpuPreferred && (!verdict || verdict.backend === "webgpu");
+    const webglProbe = !gpuSelected && sceneBool(props && props.preferWebGL, true) ? sceneProbeWebGLRenderer() : null;
     const softwareWebGL = Boolean(webglProbe && webglProbe.available && webglProbe.software);
     const coarsePointer = environment ? Boolean(environment.coarsePointer) : (sceneMediaQueryMatches("(pointer: coarse)") || sceneMediaQueryMatches("(any-pointer: coarse)"));
     const hover = environment ? Boolean(environment.hover) : (sceneMediaQueryMatches("(hover: hover)") || sceneMediaQueryMatches("(any-hover: hover)"));

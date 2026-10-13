@@ -186,3 +186,38 @@ test("WebGL particle attributes publish again when the mount changes", () => {
   api.publishWebGLComputeParticleStatAttr(mount(), "draws", "1");
   assert.equal(writes.length, 3);
 });
+
+test("explicit ready WebGPU skips software-WebGL classification while fallback retains it", () => {
+  const api = sceneCore();
+  sourceSection("../runtime/scene3d/mount-webgl.ts", "  function sceneCapabilityProfile(props)", "  function sceneCapabilityWebGLPreference", api);
+  let probes = 0;
+  Object.assign(api, {
+    window: { navigator: {} }, normalizeSceneCapabilityTier: value => value || "", gosxLowEndHardware: () => false,
+    sceneEnvironmentState: () => ({ coarsePointer: false, hover: true, lowPower: false }),
+    sceneProbeWebGLRenderer: () => { probes++; return { available: true, software: true }; },
+    sceneWebGPUAvailable: () => true, scenePrefersWebGPU: props => props.preferWebGPU === true,
+    sceneRequiresWebGL: props => props.requireWebGL === true, sceneForcesWebGL: props => props.forceWebGL === true,
+    sceneNeedsWebGLForWebGPUCoverage: () => false,
+    sceneBackendCapsOf: () => null, chooseSceneBackend: () => null,
+  });
+  assert.equal(api.sceneCapabilityProfile({ preferWebGPU: true }).softwareWebGL, false);
+  assert.equal(probes, 0);
+  api.sceneWebGPUAvailable = () => false;
+  assert.equal(api.sceneCapabilityProfile({ preferWebGPU: true }).softwareWebGL, true);
+  assert.equal(probes, 1);
+  api.sceneWebGPUAvailable = () => true;
+  api.sceneCapabilityProfile({ forceWebGL: true, preferWebGPU: true });
+  api.sceneCapabilityProfile({});
+  assert.equal(probes, 3, "forced WebGL and default backend classification stay unchanged");
+});
+
+test("settling WebGPU has no extra animation-frame boundary", async () => {
+  let frames = 0, prepared = 0;
+  const api = sourceSection("../runtime/scene3d/mount-webgl.ts", "  async function settlePreferredWebGPUBackend", "  async function ensurePreferredWebGPUBackend", vm.createContext({
+    ensurePreferredWebGPUBackend: async () => { prepared++; },
+    sceneWebGPUAvailable: () => true, sceneNextFrame: async () => { frames++; },
+  }));
+  await api.settlePreferredWebGPUBackend({}, {});
+  assert.equal(prepared, 1);
+  assert.equal(frames, 0);
+});
