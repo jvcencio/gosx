@@ -7130,11 +7130,14 @@
       if (!webGPUAttributeFormatting) scheduleWebGPUAttributeMirror();
     }
 
-    function webGPUVerboseTelemetry() {
+    function webGPUPerformanceTelemetry() {
       var config = typeof window !== "undefined" && window.__gosx_telemetry_config;
       return typeof window !== "undefined" && (window.__gosx_scene3d_webgpu_telemetry === true ||
-        window.__gosx_scene3d_cull_telemetry === true ||
         (config && (config.scene3dDiagnostics === true || config.scene3dPerfTelemetry === true)));
+    }
+
+    function webGPUVerboseTelemetry() {
+      return webGPUPerformanceTelemetry() || (typeof window !== "undefined" && window.__gosx_scene3d_cull_telemetry === true);
     }
 
     function scheduleWebGPUAttributeMirror() {
@@ -7398,10 +7401,7 @@
     var lastGPUPassSample = null;
 
     function ensureGPUPassTiming() {
-      var config = typeof window !== "undefined" && window.__gosx_telemetry_config;
-      if (!(typeof window !== "undefined" && (window.__gosx_scene3d_webgpu_pass_timing === true ||
-          window.__gosx_scene3d_webgpu_telemetry === true ||
-          (config && (config.scene3dDiagnostics === true || config.scene3dPerfTelemetry === true))))) return false;
+      if (!((typeof window !== "undefined" && window.__gosx_scene3d_webgpu_pass_timing === true) || webGPUPerformanceTelemetry())) return false;
       if (gpuPassTiming !== null) return gpuPassTiming;
       gpuPassTiming = false;
       var querySet = null;
@@ -17673,11 +17673,7 @@
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-passes", String(published.postDOMRegionBoundedPasses || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-skips", String(published.postDOMRegionBoundedSkips || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-pixels", String(published.postDOMRegionBoundedPixels || 0));
-      if (published.lastError) {
-        queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", String(published.lastError));
-      } else if (webGPUEssentialAttributeCache["data-gosx-scene3d-webgpu-last-error"] !== null) {
-        queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", null);
-      }
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", published.lastError ? String(published.lastError) : null);
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-entries", String(published.pointEntries || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-instances", String(published.pointInstances || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-draw-entries", String(published.pointDrawEntries || 0));
@@ -17701,10 +17697,8 @@
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-failed-entries", String(published.computeParticleAuthoredFailedEntries || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-skipped-empty", String(published.computeParticleSkippedEmpty || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-skipped-not-ready", String(published.computeParticleSkippedNotReady || 0));
-      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-systems", String(published.waterSystems || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-cells", String(published.waterCells || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-vertices", String(published.waterVertices || 0));
-      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-compute-dispatches", String(published.waterComputeDispatches || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-compute-systems", String(published.waterAuthoredComputeSystems || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-compute-dispatches", String(published.waterAuthoredComputeDispatches || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-compute-fallbacks", String(published.waterAuthoredComputeFallbacks || 0));
@@ -17804,7 +17798,6 @@
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-draw-entries", String(published.waterDrawEntries || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-draw-vertices", String(published.waterDrawVertices || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-surface-mesh-resolution", String(published.waterSurfaceMeshResolution || 0));
-      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-draw-calls", String(published.waterDrawCalls || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-surface-above-draw-calls", String(published.waterSurfaceAboveDrawCalls || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-surface-above-draw-vertices", String(published.waterSurfaceAboveDrawVertices || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-surface-below-draw-calls", String(published.waterSurfaceBelowDrawCalls || 0));
@@ -17843,11 +17836,6 @@
         queueWebGPUAttribute("data-gosx-scene3d-webgpu-custom-material-fallback-reason", "custom-wgsl-hooks-unsupported");
       } else {
         queueWebGPUAttribute("data-gosx-scene3d-webgpu-custom-material-fallback-reason", null);
-      }
-      if (published.lastError) {
-        queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", String(published.lastError));
-      } else {
-        queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", null);
       }
       // Render-truth surface: backend-neutral attribute names both renderers
       // write, so probes and deploy gates never branch on which backend won.
