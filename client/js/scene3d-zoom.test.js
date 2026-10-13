@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('../runtime/node_modules/typescript');
-const source = ts.transpileModule(fs.readFileSync(require.resolve('../runtime/scene3d/mount-zoom.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+const source = ts.transpileModule(['mount-pan.ts', 'mount-zoom.ts'].map(name => fs.readFileSync(require.resolve('../runtime/scene3d/'+name), 'utf8')).join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 class Target {
   constructor() { this.listeners = []; this.style = {}; this.attrs = {}; }
   addEventListener(name, fn, options) { this.listeners.push({ name, fn, options }); }
