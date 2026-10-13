@@ -45,12 +45,12 @@
       text('[data-coast-distance]',d.distance<1000?Math.round(d.distance)+' m':(d.distance/1000).toFixed(2)+' km');
       const active=d.mode==='sailing',held=d.course!==null;
       helm.disabled=false;hold.disabled=!active;sail.disabled=!active;
-      helm.textContent=active?'Leave helm':'Pilot ship';hold.textContent=held?'Release course':'Hold course';
+      helm.textContent=active?'Leave helm':'Pilot ship';sail.textContent=d.trim>.95?'Lower sail':'Full sail';hold.textContent=held?'Release course':'Hold course';
       hold.setAttribute('aria-pressed',String(held));
       text('[data-coast-chart-status]',d.grounded?'Grounded · steer toward deeper water':held?'Holding '+degrees(d.course)+' · manual steering takes over':active?'At the helm · set a course or steer freely':'Board the ship to start your voyage.');
     });
     helm.addEventListener('click',()=>command('helm'));
-    sail.addEventListener('click',()=>command('trim',{trim:1}));
+    sail.addEventListener('click',()=>command('trim',{trim:state.trim>.95?0:1}));
     hold.addEventListener('click',()=>{
       if(state.course!==null) {command('release-course');return;}
       const bearing=input.valueAsNumber;
