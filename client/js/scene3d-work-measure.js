@@ -17,7 +17,7 @@ const scenes = {
   post: { ...base, scene: { objects: [box], lights: [{ id: "sun", kind: "directional", directionX: 0.3, directionY: -1, directionZ: -0.5, intensity: 1.2, castShadow: true }], postEffects: [{ kind: "bloom", threshold: 0.8, strength: 0.6 }, { kind: "toneMapping", mode: "aces" }] } },
   dense: { ...base, scene: {
     materials: [{ id: "named-gold", name: "named-gold", kind: "standard", color: "#d4af37", roughness: 0.3, metalness: 0.8 }],
-    objects: Array.from({ length: 200 }, (_, i) => ({ ...box, id: `box-${i}`, x: (i % 20 - 10) * 0.2, y: (Math.floor(i / 20) - 5) * 0.2, z: -i * 0.01,
+    objects: Array.from({ length: 200 }, (_, i) => ({ ...box, kind: "pyramid", id: `mesh-${i}`, x: (i % 20 - 10) * 0.2, y: (Math.floor(i / 20) - 5) * 0.2, z: -i * 0.01,
       ...(i % 3 === 0 ? { material: "named-gold" } : { color: i % 3 === 1 ? "#eeeeee" : "#333333", roughness: i % 3 === 1 ? 0.1 : 0.8 }) })),
   } },
 };
@@ -244,7 +244,7 @@ async function mountScene(props, profileName, backend) {
     };
     return renderer;
   };
-  for (let i = 0; i < 5; i++) await H.flushAsyncWork();
+  await H.flushAsyncWork();
   async function step(ms, force = false) {
     now += ms;
     if (force) mount.__gosxScene3DHandle.updateSceneProps({});
@@ -255,7 +255,10 @@ async function mountScene(props, profileName, backend) {
     for (const key of ["renderPasses", "computePasses", "writeBufferCalls", "writeTextureCalls", "copyExternalCalls", "copyBufferToTextureCalls"]) fake.state[key].length = 0;
   }
   // Include lazy initialization, shader readiness and the first-frame boundary.
-  for (let i = 0; i < 8; i++) { await step(1000 / 30); await H.flushAsyncWork(); }
+  for (let i = 0; i < 8; i++) {
+    await step(1000 / 30);
+    if (i === 0 || i === 7) await H.flushAsyncWork();
+  }
   assert.ok(mount.__gosxScene3DHandle, `bootstrap must mount Scene3D (${profileName}/${backend}): ${JSON.stringify(env.consoleLogs)}`);
   const canvas = mount.children.find(child => child.tagName === "CANVAS");
   assert.ok(canvas);
