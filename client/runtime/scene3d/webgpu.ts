@@ -4374,7 +4374,7 @@
   // never reached the uniform upload on the frame after its pipeline resolved.
   function sceneWebGPUPostFrameContext(frame) { return Array.isArray(frame) ? { lights: frame } : frame || {}; }
   // Preserve the HDR attachment rounding and the removed present sampler.
-  function wgpuCanvasPostShader(name, fragmentSource, outputFormat, targetFormat) {
+  function wgpuCanvasPostShader(name: string, fragmentSource: string, outputFormat: string, targetFormat: string) {
     if (name === "present" || outputFormat === targetFormat) return fragmentSource;
     fragmentSource = fragmentSource.replace(
       "@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f",
@@ -4405,7 +4405,7 @@
     return fragmentSource;
   }
 
-  function wgpuPostCanPresent(kind, width, height, canvasWidth, canvasHeight, format, last) {
+  function wgpuPostCanPresent(kind: string, width: number, height: number, canvasWidth: number, canvasHeight: number, format: string, last: boolean) {
     if (!last) return false;
     if (width !== canvasWidth || height !== canvasHeight) return false;
     if (format !== "rgba8unorm" && format !== "bgra8unorm" && format !== "rgba16float") return false;
@@ -4415,7 +4415,7 @@
       (width & (width - 1)) === 0 && (height & (height - 1)) === 0;
   }
 
-  function wgpuPostOutput(direct, canvasOutput, intermediateOutput) { return direct ? canvasOutput : intermediateOutput; }
+  function wgpuPostOutput(direct: boolean, canvasOutput: any, intermediateOutput: any) { return direct ? canvasOutput : intermediateOutput; }
   function wgpuCreatePostProcessor(device, presentationFormat, onAllocationError, packSelenaUniforms) {
     var targetFormat = "rgba16float";
     let specularSource: any = null;
@@ -6750,7 +6750,7 @@
     return true;
   }
 
-  function wgpuUpdateFrameProof(stats, proof) {
+  function wgpuUpdateFrameProof(stats: any, proof: any) {
     proof.frameSeq = stats.frameSeq || 0;
     proof.frameAt = stats.frameAt || 0;
     proof.waterSystems = stats.waterSystems || 0;
@@ -6777,7 +6777,7 @@
     proof.waterExpensivePassCadence = stats.waterExpensivePassCadence || 1;
   }
 
-  function wgpuResetFrameStats(stats, proof) {
+  function wgpuResetFrameStats(stats: any, proof: any) {
     for (var key in stats) stats[key] = undefined;
     // Pending pipelines retain the last submitted frame's progress.
     stats.frameSeq = proof.frameSeq || 0;
