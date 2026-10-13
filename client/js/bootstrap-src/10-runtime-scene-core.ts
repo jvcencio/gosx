@@ -3439,6 +3439,7 @@
 
   function sceneApplyNamedMaterialToObject(object, material) {
     const resolved = Object.assign({}, object, {
+      resourceOwner: object.resourceOwner || object,
       // Named materials are public live state. A derived wrapper cannot keep
       // the engine-owned immutable material promise used by rigid batching.
       _rigidMaterialProfileStable: false,
@@ -5540,7 +5541,7 @@
           vertices: candidate.vertices,
           directVertices: true,
           retainedGeometry: true,
-          resourceOwner: object,
+          resourceOwner: object.resourceOwner || object,
           geometryRevision: candidate.revision,
           modelMatrix: group.matrices[0],
           instanceMatrices: group.matrices,
@@ -6477,7 +6478,7 @@
         depthWrite: object.depthWrite, bounds, depthNear: depth.near, depthFar: depth.far, depthCenter: depth.center,
         viewCulled: false, doubleSided: Boolean(object.doubleSided), skin: null, _crowdSkin: object._crowdSkin,
         _crowdMotion: motion || null,
-        vertices, directVertices: true, retainedGeometry: true, resourceOwner: object, geometryRevision: 0,
+        vertices, directVertices: true, retainedGeometry: true, resourceOwner: object.resourceOwner || object, geometryRevision: 0,
         modelMatrix, vertexOffset: 0, vertexCount: vertices.count };
       sceneStampRetainedMeshCSSInput(meshRecord, object);
       bundle.meshObjects.push(meshRecord);
@@ -6518,7 +6519,7 @@
         vertices: vertices,
         directVertices: true,
         retainedGeometry: retained,
-        resourceOwner: retained ? object : undefined,
+        resourceOwner: retained ? (object.resourceOwner || object) : undefined,
         geometryRevision: retained ? geometryRevision : undefined,
         modelMatrix: sceneObjectModelMatrix(object, timeSeconds),
         vertexOffset: 0,
@@ -6562,7 +6563,7 @@
           vertices,
           directVertices: true,
           retainedGeometry: true,
-          resourceOwner: object,
+          resourceOwner: object.resourceOwner || object,
           geometryRevision,
           modelMatrix,
           vertexOffset: 0,

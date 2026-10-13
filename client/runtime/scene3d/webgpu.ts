@@ -7930,6 +7930,7 @@
     // again for a brand new one.
     var pbrSceneAttributeCache = {};
     var retainedMaterialOwners = new WeakMap();
+    var retainedMaterialFrameSources = new WeakSet();
 
     // 1x1 white placeholder texture (for unbound material maps).
     var placeholderTex = null;
@@ -9324,7 +9325,10 @@
     function createSelenaBindGroup(material, resource, cacheOwner, renderContext) {
       var uniformData = sceneSelenaUniformData(material, cacheOwner, renderContext, selenaFrame);
       if (!uniformData || !resource) return null;
-      var owner = (cacheOwner && typeof cacheOwner === "object") ? cacheOwner : material;
+      // Pack from the current draw record, but cache on a persistent owner.
+      var owner = cacheOwner && cacheOwner.id
+        ? webGPUInstancedCacheOwner("selena:" + cacheOwner.id)
+        : (cacheOwner && cacheOwner.resourceOwner || cacheOwner || material);
       var uniformSlot = sceneSelenaUniformBufferSlot(renderContext);
       var uniformBuffer = wgpuCachedTrackedBuffer(
         owner,
@@ -15490,6 +15494,10 @@
         webGPURetireRetainedMeshEntry(vertices, entry);
       }
       var source = webGPURetainedMaterialSource(obj);
+      if (entry && entry.materialSource && entry.materialSource !== source &&
+          !retainedMaterialFrameSources.has(entry.materialSource)) {
+        webGPURetireRetainedMaterialOwner(entry);
+      }
       if (!source || typeof source !== "object") return defaultMaterialOwner;
       var owner = retainedMaterialOwners.get(source);
       if (!owner) {
@@ -15523,6 +15531,7 @@
 
     function webGPUBeginRetainedMeshFrame(bundle) {
       retainedMeshAttributeEpoch += 1;
+      retainedMaterialFrameSources = new WeakSet();
       var objects = Array.isArray(bundle && bundle.meshObjects) ? bundle.meshObjects : [];
       for (var i = 0; i < objects.length; i++) {
         var obj = objects[i];
@@ -15530,6 +15539,8 @@
         // authored index stream) are marked so their cached GPU buffers survive
         // the sweep exactly like fully retained ones.
         if (!obj || !obj.vertices) continue;
+        var source = webGPURetainedMaterialSource(obj);
+        if (source && typeof source === "object") retainedMaterialFrameSources.add(source);
         if (!obj.retainedGeometry && !obj.directVertices) continue;
         var entry = retainedMeshAttributeCache.get(obj.vertices);
         if (entry) entry.lastSeenEpoch = retainedMeshAttributeEpoch;
@@ -16826,7 +16837,7 @@
     function webGPUSweepInstancedCacheOwners() {
       instancedCacheOwners.forEach(function(owner, meshId) {
         if (instancedCacheOwnerEpoch - owner.seenEpoch <= 120) return;
-        var slots = ["_gosxWGPUInstanceTransformBuffer", "_gosxWGPUInstanceColorBuffer", "_gosxWGPUMaterialUniform", "_gosxWGPUMaterialShadowUniform"];
+        var slots = Object.keys(owner).filter(function(slot) { return pointsEntryGPUBuffers.has(owner[slot]); });
         for (var i = 0; i < slots.length; i++) {
           var buffer = owner[slots[i]];
           if (!buffer) continue;
