@@ -1,0 +1,77 @@
+"use strict";
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const H = require("./runtime-test-harness.js");
+
+async function mountScene(extra = {}) {
+  let now = 1000;
+  const mount = new H.FakeElement("div", null);
+  mount.id = "default-budgets";
+  const env = H.createContext({ elements: [mount], enableWebGL2: true,
+    disableCanvas2D: true, devicePixelRatio: 2, performanceNow: () => now,
+    manifest: { engines: [{ id: "budget-engine", component: "GoSXScene3D", kind: "surface", mountId: mount.id,
+      props: { width: 1440, height: 900, adaptiveQuality: false,
+        scene: { objects: [{ kind: "box", spinY: 0.2 }] }, ...extra } }] } });
+  const raf = H.installManualRAF(env.context);
+  H.runScript(H.bootstrapSource, env.context, "bootstrap.js");
+  for (let i = 0; i < 12; i++) await H.flushAsyncWork();
+  raf.flush(now);
+  await H.flushAsyncWork();
+  const canvas = mount.children[0];
+  const renders = () => canvas._webglContext.ops.filter(op => op[0] === "clear").length;
+  const tick = time => { now = time; raf.flush(now); };
+  return { mount, canvas, tick, renders };
+}
+
+test("main canvas defaults to at most 2073600 backing pixels at DPR 2", async () => {
+  const { canvas } = await mountScene();
+  console.log(`default backing pixels: ${canvas.width * canvas.height}`);
+  assert.ok(canvas.width * canvas.height <= 2073600);
+});
+
+test("pixel budget permits explicit caps and the unbounded sentinel", async () => {
+  const { canvas } = await mountScene({ maxPixels: -1 });
+  assert.equal(canvas.width * canvas.height, 5184000);
+  const capped = await mountScene({ maxPixels: 720000 });
+  assert.ok(capped.canvas.width * capped.canvas.height <= 720000);
+  const large = await mountScene({ width: 3840, height: 2160 });
+  assert.ok(large.canvas.width * large.canvas.height <= 2073600);
+});
+
+for (const [name, extra, expected, input] of [
+  ["ambient spin", {}, 60],
+  ["explicit 120 FPS", { maxFrameRate: 120 }, 120],
+  ["active input with ambient spin", { controls: "orbit" }, 120, true],
+]) {
+  test(`${name} render cadence on 120 Hz rAF`, async () => {
+    const s = await mountScene(extra);
+    // Settle startup, then count a full second of manual 8.33 ms ticks.
+    for (let i = 1; i <= 120; i++) s.tick(1000 + i * 1000 / 120);
+    if (input) s.canvas.dispatchEvent({ type: "wheel", deltaY: 10, preventDefault() {} });
+    const before = s.renders();
+    for (let i = 1; i <= 120; i++) {
+      if (input && i % 12 === 0) s.canvas.dispatchEvent({ type: "wheel", deltaY: 10, preventDefault() {} });
+      s.tick(2000 + i * 1000 / 120);
+    }
+    const count = s.renders() - before;
+    console.log(`${name} renders/s: ${count}`);
+    assert.equal(count, expected);
+    if (input) {
+      for (let i = 1; i <= 120; i++) s.tick(3000 + i * 1000 / 120);
+      const settled = s.renders();
+      for (let i = 1; i <= 120; i++) s.tick(4000 + i * 1000 / 120);
+      assert.equal(s.renders() - settled, 60, "input window returns to ambient cap");
+    }
+  });
+}
+
+
+test("transitions retain display cadence alongside ambient spin", async () => {
+  const s = await mountScene({ autoRotate: true });
+  s.mount.__gosxScene3DState._transitions.push({ startTime: 1000, duration: 10000,
+    entry: {}, delta: {}, target: {} });
+  for (let i = 1; i <= 120; i++) s.tick(1000 + i * 1000 / 120);
+  const before = s.renders();
+  for (let i = 1; i <= 120; i++) s.tick(2000 + i * 1000 / 120);
+  assert.equal(s.renders() - before, 120);
+});
