@@ -1,6 +1,7 @@
 package route
 
 import (
+	"m31labs.dev/gosx/internal/filepolicy"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -84,7 +85,23 @@ func addFileCSSHead(ctx *RouteContext, files ...string) {
 }
 
 // statCSSFile returns the stylesheet at candidate when it exists.
+var productionCSSFiles sync.Map
+
 func statCSSFile(candidate string) (cssFile, bool) {
+	if !filepolicy.Immutable() {
+		return statCSSFileFresh(candidate)
+	}
+	if entry, ok := productionCSSFiles.Load(candidate); ok {
+		file := entry.(cssFile)
+		return file, !file.empty()
+	}
+	file, _ := statCSSFileFresh(candidate)
+	entry, _ := productionCSSFiles.LoadOrStore(candidate, file)
+	file = entry.(cssFile)
+	return file, !file.empty()
+}
+
+func statCSSFileFresh(candidate string) (cssFile, bool) {
 	if candidate == "" {
 		return cssFile{}, false
 	}

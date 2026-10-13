@@ -174,6 +174,9 @@ func Props(pairs ...any) AttrList {
 // is to eliminate the 3-5 doublings a typical page would otherwise trigger
 // during renderNodeHTML.
 func RenderHTML(n Node) string {
+	if n.kind == kindRawHTML {
+		return n.text
+	}
 	var b strings.Builder
 	b.Grow(estimateRenderSize(n))
 	renderNodeHTML(&b, n)

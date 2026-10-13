@@ -174,6 +174,21 @@ func (c *CacheState) SetRepresentation(body []byte) {
 	c.bodyDigest = hex.EncodeToString(sum[:16])
 }
 
+func (c *CacheState) setRepresentationString(body string) {
+	if c == nil {
+		return
+	}
+	h := sha256.New()
+	var block [4096]byte
+	for len(body) > 0 {
+		n := copy(block[:], body)
+		_, _ = h.Write(block[:n])
+		body = body[n:]
+	}
+	sum := h.Sum(nil)
+	c.bodyDigest = hex.EncodeToString(sum[:16])
+}
+
 // HasRepresentation reports whether the state carries a body digest.
 func (c *CacheState) HasRepresentation() bool {
 	return c != nil && c.bodyDigest != ""
