@@ -4763,10 +4763,7 @@ func (r *fileProgramRenderer) applyScene3DComposableValues(props map[string]any,
 		}
 	}
 	if sceneValue, ok := childProps["scene"].(map[string]any); ok {
-		sceneMap := mapStringAnyValue(props["scene"])
-		if raw, ok := props["scene"].(json.RawMessage); ok {
-			_ = json.Unmarshal(raw, &sceneMap)
-		}
+		sceneMap := scene3DMergeMapValue(props["scene"])
 		if sceneMap == nil {
 			sceneMap = map[string]any{}
 		}
@@ -5442,17 +5439,7 @@ func appendScene3DSceneRecord(sceneMap map[string]any, key string, record map[st
 	if sceneMap == nil || record == nil {
 		return
 	}
-	current, _ := sceneMap[key].([]map[string]any)
-	if current == nil {
-		if values, ok := sceneMap[key].([]any); ok {
-			current = make([]map[string]any, 0, len(values)+1)
-			for _, value := range values {
-				if mapped := mapStringAnyValue(value); mapped != nil {
-					current = append(current, mapped)
-				}
-			}
-		}
-	}
+	current := scene3DRecordList(sceneMap[key])
 	sceneMap[key] = append(current, cloneStringAnyMap(record))
 }
 
@@ -5474,24 +5461,73 @@ func mergeScene3DSceneMap(dst, src map[string]any) {
 }
 
 func scene3DRecordList(value any) []map[string]any {
+	if value == nil {
+		return nil
+	}
 	switch items := value.(type) {
 	case []map[string]any:
 		return items
 	case []any:
 		out := make([]map[string]any, 0, len(items))
 		for _, item := range items {
-			if mapped := mapStringAnyValue(item); mapped != nil {
+			if mapped := scene3DMergeMapValue(item); mapped != nil {
 				out = append(out, mapped)
 			}
 		}
 		return out
 	default:
-		return nil
+		rv := reflect.ValueOf(value)
+		for rv.Kind() == reflect.Pointer {
+			if rv.IsNil() {
+				return nil
+			}
+			rv = rv.Elem()
+		}
+		if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+			return nil
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil
+		}
+		var out []map[string]any
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return nil
+		}
+		for i, record := range out {
+			out[i] = canonicalizeEnginePropsMap(record)
+		}
+		return out
 	}
 }
 
+// Materialize typed JSON objects only when a child must merge into them.
+// This preserves their JSON field names and custom marshalers without putting
+// the full props tree back through JSON on every request.
+func scene3DMergeMapValue(value any) map[string]any {
+	if mapped := mapStringAnyValue(value); mapped != nil {
+		return mapped
+	}
+	if value == nil {
+		return nil
+	}
+	raw, ok := value.(json.RawMessage)
+	if !ok {
+		var err error
+		raw, err = json.Marshal(value)
+		if err != nil {
+			return nil
+		}
+	}
+	var mapped map[string]any
+	if err := json.Unmarshal(raw, &mapped); err != nil {
+		return nil
+	}
+	return canonicalizeEnginePropsMap(mapped)
+}
+
 func mergeStringAnyMapValue(target map[string]any, key string, values map[string]any) {
-	current := mapStringAnyValue(target[key])
+	current := scene3DMergeMapValue(target[key])
 	if current == nil {
 		current = map[string]any{}
 	}
@@ -5616,8 +5652,9 @@ func validateScene3DProbeCapabilities(probe *sceneprobe.Probe, capabilities []en
 			appendNode(record, "water-system", "webgpu")
 		}
 		for _, record := range p.Nodes {
-			if record.Kind == "compute-particles" {
-				appendNode(record, record.Kind, "compute")
+			kind := strings.TrimSpace(record.Kind)
+			if kind == "compute-particles" {
+				appendNode(record, kind, "compute")
 			}
 		}
 	}

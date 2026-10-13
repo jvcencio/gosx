@@ -41,3 +41,32 @@ func TestMalformedOptionalFieldKeepsIndependentReaders(t *testing.T) {
 		t.Fatalf("fallback changed decisions: %+v", p)
 	}
 }
+
+func TestProbePreservesLegacyNormalization(t *testing.T) {
+	for _, tc := range []struct {
+		raw     string
+		gpu, gl bool
+	}{
+		{`{}`, true, true},
+		{`{"preferWebGL":false}`, true, false},
+		{`{"preferCanvas":true}`, false, false},
+		{`{"forceWebGL":true,"preferCanvas":true}`, false, true},
+		{`{"requireWebGL":true,"preferWebGL":false}`, false, true},
+		{`{"backendCaps":{"capable":["WeBgPu","WEBGL2"]}}`, true, true},
+		{`{"backendCaps":{"capable":[]}}`, false, false},
+		{`{"backendCaps":{"capable":["webgl2"]},"scene":{"backendCaps":{"capable":["WEBGPU"]}}}`, true, false},
+	} {
+		p := Decode(json.RawMessage(tc.raw))
+		if p.Err != nil || p.WebGPU != tc.gpu || p.WebGL != tc.gl {
+			t.Errorf("%s: backends = (%v, %v), error = %v", tc.raw, p.WebGPU, p.WebGL, p.Err)
+		}
+	}
+	p := Decode(json.RawMessage(`{"poster":" /poster.png ","posterAlt":" padded alt ","scene":{"objects":[{"texture":"/fallback.png","normalMap":"/normal.png","textureDescriptors":{"BASECOLOR":{"URI":" /base.ktx2 "},"NoRmAl":{"uri":" \t "}}}]}}`))
+	if p.Err != nil || p.Poster != "/poster.png" || p.PosterAlt != " padded alt " {
+		t.Fatalf("poster normalization changed: %+v", p)
+	}
+	textures := p.Scene.Objects[0].Textures()
+	if textures[0] != " /base.ktx2 " || textures[1] != "/normal.png" {
+		t.Fatalf("texture descriptor case/empty fallback changed: %q", textures)
+	}
+}
