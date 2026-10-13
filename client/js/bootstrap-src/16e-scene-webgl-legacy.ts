@@ -44,26 +44,28 @@
     return {
       kind: "webgl",
       supportsRetainedGeometry: false,
-      render(bundle) {
-        if (typeof scenePBRProgramsPending === "function" && scenePBRProgramsPending(gl)) return;
-        if (typeof scenePBRProgramReady === "function" && !scenePBRProgramReady(gl, program)) return;
+      render(bundle, viewport, frameMeta) {
+        resources.frameRequest = frameMeta && frameMeta.frameRequest;
+        if (typeof scenePBRProgramsPending === "function" && scenePBRProgramsPending(gl)) return "pending";
+        if (typeof scenePBRProgramReady === "function" && !scenePBRProgramReady(gl, program)) return "pending";
         const geometry = sceneWebGLBundleGeometry(bundle);
         prepareSceneWebGLFrame(gl, canvas, bundle, geometry.usePerspective, resources);
         if (!bundle) {
-          return;
+          return "empty";
         }
         const worldRendered = geometry.usePerspective && renderSceneWebGLWorldBundle(gl, bundle, canvas, resources);
         if (worldRendered) {
           applySceneWebGLBlend(gl, "opaque", resources.stateCache);
           applySceneWebGLDepth(gl, "opaque", resources.stateCache);
-          return;
+          return "submitted";
         }
         if (geometry.vertexCount === 0 || !geometry.positions || !geometry.colors) {
-          return;
+          return "empty";
         }
         gl.useProgram(program);
         applySceneWebGLUniforms(gl, bundle, canvas, geometry.usePerspective, resources);
         renderSceneWebGLFallbackBundle(gl, geometry, resources);
+        return "submitted";
       },
       dispose() {
         if (typeof scenePBRDisposeProgramQueue === "function") scenePBRDisposeProgramQueue(gl);
@@ -376,7 +378,9 @@
     applySceneWebGLBlend(gl, blendMode, resources.stateCache);
     let drew = false;
     for (const entry of entries) {
-      drew = renderSceneWebGLMeshObject(gl, bundle, canvas, resources, entry.object, entry.material) || drew;
+      const submitted = renderSceneWebGLMeshObject(gl, bundle, canvas, resources, entry.object, entry.material);
+      if (submitted && resources.frameRequest) resources.frameRequest.record(entry.object.id);
+      drew = submitted || drew;
     }
     return drew;
   }

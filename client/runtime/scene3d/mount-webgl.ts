@@ -221,19 +221,23 @@
       // @ts-ignore TS7006 -- bundles and frame metadata follow the runtime ABI.
       render: function(bundle, viewport, frameMeta) {
         if (bundle.environment && (bundle.environment.sky || bundle.environment.ocean)) ensureWorld();
-        if (!worldRenderer) { if (!worldFailed) waterRenderer.render(bundle, viewport, frameMeta); return; }
+        if (!worldRenderer) return worldFailed ? "failed" : waterRenderer.render(bundle, viewport, frameMeta);
         var started = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
-        worldRenderer.render(bundle, viewport, Object.assign({}, frameMeta, {
+        var waterOutcome = "pending";
+        var worldOutcome = worldRenderer.render(bundle, viewport, Object.assign({}, frameMeta, {
           compositeOverWater: false,
           // @ts-ignore TS7006 -- the shared target follows the renderer ABI.
           compositeBeforePost: function(target) {
-            waterRenderer.render(bundle, viewport, Object.assign({}, frameMeta, {
+            waterOutcome = waterRenderer.render(bundle, viewport, Object.assign({}, frameMeta, {
               compositeWorld: true, clearComposite: false, background: bundle.background, renderTarget: target,
             }));
             worldRenderer.renderSurfaces(bundle, target);
           },
         }));
         compositeMS = Math.max(0.01, (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now()) - started);
+        // The outer renderer owns the complete composition. A submitted world
+        // pass cannot acknowledge a missing/pending water pass, nor vice versa.
+        return worldOutcome === "submitted" ? waterOutcome : worldOutcome;
       },
       diagnostics: function() {
         var world = worldRenderer?.diagnostics?.() || {};

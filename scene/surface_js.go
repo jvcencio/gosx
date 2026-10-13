@@ -3,6 +3,7 @@
 package scene
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -12,10 +13,12 @@ import (
 // Surface is a typed client for an existing Scene3D mount. It does not own the
 // renderer. Dispose releases its references without destroying that renderer.
 type Surface struct {
-	target   string
-	mount    js.Value
-	disposed bool
-	closed   chan struct{}
+	target             string
+	mount              js.Value
+	disposed           bool
+	closed             chan struct{}
+	frameSubscriptions []func()
+	frameRequestID     string
 }
 
 func NewSurface(target string) *Surface { return &Surface{target: target, closed: make(chan struct{})} }
@@ -66,6 +69,67 @@ func (s *Surface) DispatchCommands(batch MountCommandBatch) (err error) {
 	detail := js.Global().Get("JSON").Call("parse", string(data))
 	event := js.Global().Get("CustomEvent").New(MountCommandsEvent, map[string]any{"detail": detail})
 	mount.Call("dispatchEvent", event)
+	if batch.FrameRequest != nil {
+		s.frameRequestID = batch.FrameRequest.ID
+	}
+	return nil
+}
+
+// OnFrameSubmitted subscribes to requested renderer submissions on this exact
+// mount. Cancel releases the JS callback; Dispose cancels every subscription.
+// The callback does not run for attempted, skipped, or partial frames.
+func (s *Surface) OnFrameSubmitted(handler func(MountFrameSubmission)) (cancel func(), err error) {
+	defer surfaceRecover(&err)
+	if handler == nil {
+		return nil, errors.New("scene: frame submission handler is nil")
+	}
+	mount, err := s.element()
+	if err != nil {
+		return nil, err
+	}
+	active := true
+	callback := js.FuncOf(func(_ js.Value, args []js.Value) any {
+		if !active || s.disposed || len(args) == 0 || !args[0].Get("target").Equal(mount) || !s.mount.Equal(mount) {
+			return nil
+		}
+		var receipt MountFrameSubmission
+		raw := js.Global().Get("JSON").Call("stringify", args[0].Get("detail")).String()
+		if json.Unmarshal([]byte(raw), &receipt) == nil && receipt.RequestID != "" && receipt.Revision > 0 &&
+			receipt.CommandRevision >= receipt.Revision && receipt.HydrationGeneration > 0 && receipt.FrameSerial > 0 {
+			if s.frameRequestID == receipt.RequestID {
+				s.frameRequestID = ""
+			}
+			handler(receipt)
+		}
+		return nil
+	})
+	mount.Call("addEventListener", MountFrameSubmittedEvent, callback)
+	cancel = func() {
+		if active {
+			active = false
+			mount.Call("removeEventListener", MountFrameSubmittedEvent, callback)
+			callback.Release()
+		}
+	}
+	s.frameSubscriptions = append(s.frameSubscriptions, cancel)
+	return cancel, nil
+}
+
+// CancelFrameRequest cancels only the matching pending request on this mount.
+func (s *Surface) CancelFrameRequest(id string) (err error) {
+	defer surfaceRecover(&err)
+	if id == "" {
+		return errors.New("scene: frame request cancellation ID is empty")
+	}
+	mount, err := s.element()
+	if err != nil {
+		return err
+	}
+	event := js.Global().Get("CustomEvent").New(MountFrameCancelEvent, map[string]any{"detail": map[string]any{"id": id}})
+	mount.Call("dispatchEvent", event)
+	if s.frameRequestID == id {
+		s.frameRequestID = ""
+	}
 	return nil
 }
 
@@ -124,6 +188,13 @@ func (s *Surface) Resize(width, height int) (changed bool, err error) {
 
 func (s *Surface) Dispose() {
 	if s != nil && !s.disposed {
+		if s.frameRequestID != "" {
+			_ = s.CancelFrameRequest(s.frameRequestID)
+		}
+		for _, cancel := range s.frameSubscriptions {
+			cancel()
+		}
+		s.frameSubscriptions = nil
 		if s.closed != nil {
 			close(s.closed)
 		}

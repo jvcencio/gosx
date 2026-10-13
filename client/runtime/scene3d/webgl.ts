@@ -3880,7 +3880,7 @@
     }
 
     function drawFrame(frameMeta) {
-      if (scenePBRWaterDrawUnavailable(gl, disposed, poolProgram, surfaceProgram)) return;
+      if (scenePBRWaterDrawUnavailable(gl, disposed, poolProgram, surfaceProgram)) return "pending";
       var target = sceneWebGLRenderTarget(canvas, frameMeta);
       var width = target.width, height = target.height;
       var aspect = canvas.width / Math.max(1, canvas.height);
@@ -4297,17 +4297,18 @@
       gl.disable(gl.BLEND);
       gl.bindVertexArray(null);
       frameCount++;
+      return "submitted";
     }
 
     function render(bundle, viewport, frameMeta) {
-      if (disposed) return;
+      if (disposed) return "failed";
       if (bundle) lastBundle = bundle;
       // drawFrame advances the water clock using frameMeta.
       // Timing measures submitted GPU work independently of that clock.
 
       var timerRecord = frameTimer.begin();
       try {
-        drawFrame(frameMeta);
+        return drawFrame(frameMeta);
       } finally {
         frameTimer.end(timerRecord);
       }
@@ -8728,7 +8729,7 @@
 
     function render(bundle, viewport, frameMeta) {
       if (!bundle) {
-        return;
+        return "empty";
       }
 
       const preparedScene = typeof prepareScene === "function"
@@ -8751,7 +8752,7 @@
       programPreparation.textureCache = textureCache; programPreparation.placeholder = selenaPlaceholderTexture;
       scenePBRPrepareBundlePrograms(gl, scenePBRPreparationBundle(bundle, frameMeta, canvas.parentNode), programPreparation);
       postProcessor = programPreparation.postProcessor;
-      if (!scenePBRFrameProgramsReady(gl, program)) return;
+      if (!scenePBRFrameProgramsReady(gl, program)) return "pending";
 
       return renderFrame(bundle, viewport, frameMeta, preparedScene);
     }
@@ -8782,7 +8783,7 @@
       beginWebGLDirectMeshBufferFrame(bundle);
       if (!scenePBRHasFrameData(hasPBRData, hasPointsData, hasInstancedData, hasLineData, frameMeta, oceanResources) && !(bundle.environment && (bundle.environment.sky || bundle.environment.ocean)) && !skyResources.renderer) {
         sweepWebGLDirectMeshBuffers();
-        return;
+        return "empty";
       }
 
       // --- Camera Matrices ---
@@ -8802,7 +8803,7 @@
         prepareCrowdMotionShaders, ensureInstancedProgram });
       crowdProgram = batchPrograms.crowdProgram; crowdShadowProgram = batchPrograms.crowdShadowProgram;
       rigidShadowProgram = batchPrograms.rigidShadowProgram;
-      if (scenePBRProgramsPending(gl)) return;
+      if (scenePBRProgramsPending(gl)) return "pending";
       // GPU-motion crowd instances interpolate/animate from this SAME clock
       // (see SCENE_CROWD_MOTION_ATTRIBUTES_GLSL's doc comment): one uniform
       // write per render(), never per instance.
@@ -9041,7 +9042,7 @@
       // Draw opaque pass.
       applyBlendMode(gl, "opaque");
       applyDepthMode(gl, "opaque");
-      drawPBRObjectList(gl, drawList.opaque, bundle, materials);
+      drawPBRObjectList(gl, drawList.opaque, bundle, materials, frameMeta && frameMeta.frameRequest);
       } // end if (hasPBRData)
       drawInstancedMeshes(gl, bundle, viewMatrix, projMatrix, "opaque");
       const oceanReflection = sceneReflectWebGL(oceanResources, gl, { environment: bundle.environment, meta: frameMeta, width: renderW, height: renderH, view: viewMatrix, proj: projMatrix, linear: usePostProcessing, draw: (v = viewMatrix,p = projMatrix) => sceneReflectWebGLDrawOpaque(gl, { program, uniforms, bundle, materials, camera: cam, view: viewMatrix, proj: projMatrix, list: drawList || {opaque: []}, visibility: meshColorVisibility, batches: rigidObjectBatches, draw: (list = []) => drawPBRObjectList(gl, list, bundle, materials) }, v, p) });
@@ -9061,7 +9062,7 @@
       if (drawList && drawList.alpha.length > 0) {
         applyBlendMode(gl, "alpha");
         applyDepthMode(gl, "alpha");
-        drawPBRObjectList(gl, drawList.alpha, bundle, materials);
+        drawPBRObjectList(gl, drawList.alpha, bundle, materials, frameMeta && frameMeta.frameRequest);
       }
       drawInstancedMeshes(gl, bundle, viewMatrix, projMatrix, "alpha");
 
@@ -9069,7 +9070,7 @@
       if (drawList && drawList.additive.length > 0) {
         applyBlendMode(gl, "additive");
         applyDepthMode(gl, "additive");
-        drawPBRObjectList(gl, drawList.additive, bundle, materials);
+        drawPBRObjectList(gl, drawList.additive, bundle, materials, frameMeta && frameMeta.frameRequest);
       }
       drawInstancedMeshes(gl, bundle, viewMatrix, projMatrix, "additive");
 
@@ -9131,6 +9132,7 @@
         performance.clearMarks("scene3d-render-start");
         performance.clearMarks("scene3d-render-end");
       }
+      return "submitted";
     }
 
 	    // Ensure the skinned PBR program is compiled (lazy init).
@@ -9787,7 +9789,7 @@
       return true;
     }
 
-    function drawRigidPBRBatch(batch, bundle, mat, uploadFrameUniforms) {
+    function drawRigidPBRBatch(batch, bundle, mat, uploadFrameUniforms, frameRequest) {
       if (batch.motion) prepareCrowdMotionShaders();
       const ip = mat && mat.detail
         ? sceneWebGLDetailProgram(gl, detailResources, batch.motion ? "motion" : batch.atlas ? "crowd" : "instanced")
@@ -9827,6 +9829,7 @@
       sceneDisableUnownedVertexAttribArrays(allowed);
       if (!batch.motion) bindRigidBatchMatrices(batch, ip.attributes);
       drawRigidBatchGeometry(batch);
+      if (frameRequest) for (const object of batch.objects) frameRequest.record(object.id);
       rigidFrameDraws++;
       rigidFrameInstances += batch.count;
       webglRenderTruthStats.meshDrawn += batch.count;
@@ -9850,7 +9853,7 @@
       return true;
     }
 
-    function drawPBRObjectList(gl, objectList, bundle, materials) {
+    function drawPBRObjectList(gl, objectList, bundle, materials, frameRequest = null) {
 
       gl.useProgram(program);
       var lastMaterialIndex = -1;
@@ -9884,7 +9887,7 @@
         const rigidProgram = rigidBatch ? (rigidBatch.motion ? crowdMotionProgram : rigidBatch.atlas ? crowdProgram : rigidBatch.count > 1 ? ensureInstancedProgram() : null) : null;
         if (rigidProgram && (rigidBatch.motion || rigidProgram.attributes.instanceMatrix >= 0)) {
           if (obj !== rigidBatch.objects[0]) continue;
-          if (drawRigidPBRBatch(rigidBatch, bundle, mat, uploadFrameUniformsForProgram)) {
+          if (drawRigidPBRBatch(rigidBatch, bundle, mat, uploadFrameUniformsForProgram, frameRequest)) {
             currentProgram = program;
             currentAttribs = attribs;
             currentUniforms = uniforms;
@@ -9954,6 +9957,7 @@
           }
           sceneWebGLEndReflectedFrontFace(gl, selenaReflected);
           webglRenderTruthStats.meshDrawn += 1;
+          if (frameRequest) frameRequest.record(obj.id);
 
           if (selenaDepthWriteOverride) {
             var selenaPass = scenePBRObjectRenderPass(obj, mat);
@@ -10117,6 +10121,7 @@
         }
         sceneWebGLEndReflectedFrontFace(gl, reflectedDirect);
         webglRenderTruthStats.meshDrawn += 1;
+          if (frameRequest) frameRequest.record(obj.id);
 
         // Restore depth mask if overridden by per-object control.
         if (objDepthWriteOverride) {
