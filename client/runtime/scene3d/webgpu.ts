@@ -6671,14 +6671,14 @@
     };
   }
 
-  function wgpuArrayContentsMatch(a, b) {
-    if (a === b) return true;
-    if (!a || !b || a.length !== b.length) return false;
+  function wgpuArrayContentsMatch(a: ArrayLike<unknown> | null | undefined, b: ArrayLike<unknown> | null | undefined): boolean {
+    if (!a || !b) return !a && !b;
+    if (a.length !== b.length) return false;
     for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
     return true;
   }
 
-  function wgpuShadowFrameBindGroup(device, groups, lightSlot, layout, buffer) {
+  function wgpuShadowFrameBindGroup(device: any, groups: any[], lightSlot: number, layout: any, buffer: any) {
     var slot = Math.max(0, Math.floor(sceneNumber(lightSlot, 0)));
     var cached = groups[slot];
     if (!cached || cached.buffer !== buffer) {
@@ -6689,13 +6689,13 @@
     return cached.group;
   }
 
-  function wgpuBindWorldMeshBuffers(pass, buffers) {
+  function wgpuBindWorldMeshBuffers(pass: any, buffers: any): boolean {
     if (!buffers) return false;
     var attributes = [buffers.positions, buffers.normals, buffers.uvs, buffers.tangents];
-    for (var slot = 0; slot < attributes.length; slot++) {
+    for (var slot = 0; slot < 4; slot++) {
       var record = attributes[slot];
       if (!record || !record.buffer) return false;
-      pass.setVertexBuffer(slot, record.buffer, 0, Math.max(4, buffers.vertexCount * record.components * 4));
+      pass.setVertexBuffer(slot, record.buffer, 0);
     }
     return true;
   }
@@ -16332,7 +16332,7 @@
         }
         if (!worldBuffersBound) worldBuffersBound = wgpuBindWorldMeshBuffers(pass, pbrBuffers);
         if (!worldBuffersBound) continue;
-        pass.draw(count, 1, offset, 0);
+        pass.draw(count, 1, offset);
         if (frameRequest) frameRequest.record(obj.id);
         if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
       }
