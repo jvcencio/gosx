@@ -4731,6 +4731,15 @@
         geometry: current.kind,
         props: patch || {},
       }, current);
+      if (next.vertices === current.vertices) {
+        // Normalization produces a new record even for a label/turn change.
+        // Carry geometry-only caches forward; their own revision/matrix
+        // checks still invalidate changed poses, topology and source buffers.
+        for (const cache of [_sceneObjectModelMatrixCache, _sceneObjectMeshBakeLinearStateCache, _sceneWorldBakedGeometryCache]) {
+          const record = cache.get(current);
+          if (record) cache.set(next, record);
+        }
+      }
       if (next) {
         // A direct object/material command replaces an imported wrapper with
         // a public mutable record. Never carry the internal rigid snapshot
@@ -4780,6 +4789,10 @@
     const props = payload && payload.props && typeof payload.props === "object" ? payload.props : {};
     const geometry = payload && typeof payload.geometry === "string" && payload.geometry ? payload.geometry : current.kind;
     const merged = Object.assign({}, current, props);
+    // The fallback already owns normalized streams. Passing those back as
+    // authored input creates another snapshot (and another GPU buffer set) on
+    // every transform/state patch. Geometry changes still normalize explicitly.
+    if (!Object.prototype.hasOwnProperty.call(props, "vertices")) delete merged.vertices;
     merged.id = current.id || merged.id || ("scene-object-" + objectID);
     merged.kind = normalizeSceneKind(merged.kind || geometry);
     // Route provenance: a route value authored in the incoming props must
@@ -5132,10 +5145,14 @@
 
   function sceneFinishFloat32Builder(builder) {
     if (!builder || builder.length <= 0 || !builder.buffer) return new Float32Array(0);
-    // Consumers may retain a completed bundle, so expose only its exact owned
-    // payload rather than a view backed by spare builder capacity.
-    if (builder.length === builder.buffer.length) return builder.buffer;
-    return builder.buffer.slice(0, builder.length);
+    // Transfer this build's storage to the completed bundle. Its exact-length
+    // view avoids copying large attribute streams at every animation frame.
+    // Detach the builder so a later reserve/append cannot mutate that bundle.
+    const buffer = builder.buffer;
+    const length = builder.length;
+    builder.buffer = null;
+    builder.length = 0;
+    return length === buffer.length ? buffer : buffer.subarray(0, length);
   }
 
   function sceneReserveWorldMeshAttributes(bundle, vertexCount) {

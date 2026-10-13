@@ -174,3 +174,22 @@ timer, and resource controllers retain their existing load path.
 The `controllers` runtime exclusion role excludes both controller chunks.
 Dev servers, static exports, and production builds all ship the input chunk;
 the document contract supplies its URL.
+
+
+## Navigate a fixed Scene3D camera
+
+`scene.Props{Controls: scene.ControlNone, ControlZoom: scene.Bool(true)}`
+keeps the authored camera angle and enables wheel, pinch and focused `+`/`-`
+zoom. `ControlZoomMinFOV` and `ControlZoomMaxFOV` set optical limits; defaults
+remain 30 and 90 degrees. `ControlPan: scene.Bool(true)` adds two-finger pan.
+`ControlPanHandle: "#pan"` binds an existing button to captured pointer drag and
+arrow-key pan. The framework disposes these listeners with the scene. Single
+pointer interactions remain available for picking and object dragging.
+A `gosx:scene3d:navigation` event bubbles from the canvas at the start of navigation,
+so an engine can cancel an in-progress object gesture or camera transition.
+
+For changing turns or selection, `DiffOptions{PatchObjectState: true}` patches
+object transforms, interaction, visibility and selection while preserving mesh
+buffers. It uses the existing transform command. Geometry/material edits and
+unauthored picking resets that cannot be merged still replace the whole record;
+the default diff behavior is unchanged.

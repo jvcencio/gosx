@@ -125,6 +125,12 @@ type DiffOptions struct {
 	// light keep the pair, because their records carry no scale or rotation and
 	// a position-only patch would save little.
 	PatchTransforms bool
+	// PatchObjectState also patches interaction, selection and visibility along
+	// with the transform. Geometry and materials must remain unchanged. Explicit
+	// defaults clear old state, and ambiguous picking resets fall back to a
+	// complete replacement. This preserves mesh buffers across turn/selection
+	// changes. The existing CommandSetTransform bridge accepts these object keys.
+	PatchObjectState bool
 }
 
 // Diff is the full result of DiffScene: the commands that carry the change, plus
@@ -162,7 +168,9 @@ func DiffCommands(previous, next SceneIR) []Command {
 func DiffScene(previous, next SceneIR, options DiffOptions) Diff {
 	var commands []Command
 	var objectPatch func(previous, next *ObjectIR) (Command, bool)
-	if options.PatchTransforms {
+	if options.PatchObjectState {
+		objectPatch = objectStatePatch
+	} else if options.PatchTransforms {
 		objectPatch = objectTransformPatch
 	}
 	diffSceneRecords(&commands, previous.Objects, next.Objects, func(record *ObjectIR) string {
@@ -726,6 +734,43 @@ func objectTransformPatch(previous, next *ObjectIR) (Command, bool) {
 		ScaleZ:       resolveIRScale(next.ScaleZ),
 		ParentMatrix: parentMatrix,
 	}), true
+}
+
+// ObjectStatePatch extends the transform patch with explicit interaction and
+// presentation state. Pickable remains optional because nil means an unauthored
+// picking policy, rather than false. DiffScene declines a patch that cannot
+// safely restore that policy through the existing shallow-merge bridge.
+type ObjectStatePatch struct {
+	TransformPatch
+	Interactive      bool   `json:"interactive"`
+	Label            string `json:"label"`
+	InteractiveOrder int    `json:"interactiveOrder"`
+	Pickable         *bool  `json:"pickable,omitempty"`
+	Visible          bool   `json:"visible"`
+	Selected         bool   `json:"selected"`
+}
+
+func objectStatePatch(previous, next *ObjectIR) (Command, bool) {
+	// Fresh noninteractive records with no pickable property normalize to an
+	// unspecified policy. A merge cannot remove a prior explicit/interactive
+	// policy, so replace the record in that case.
+	if next.Pickable == nil && !next.Interactive && (previous.Pickable != nil || previous.Interactive) {
+		return Command{}, false
+	}
+	probe := *previous
+	probe.Interactive, probe.Label, probe.InteractiveOrder = next.Interactive, next.Label, next.InteractiveOrder
+	probe.Pickable, probe.Visible, probe.Selected = next.Pickable, next.Visible, next.Selected
+	command, ok := objectTransformPatch(&probe, next)
+	if !ok {
+		return Command{}, false
+	}
+	visible := next.Visible == nil || *next.Visible
+	command.Data = ObjectStatePatch{
+		TransformPatch: command.Data.(TransformPatch),
+		Interactive:    next.Interactive, Label: next.Label, InteractiveOrder: next.InteractiveOrder,
+		Pickable: next.Pickable, Visible: visible, Selected: next.Selected,
+	}
+	return command, true
 }
 
 func transformPatchParentMatrix(values []float64) (*[16]float64, bool) {

@@ -45,7 +45,9 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 const budgets = [
   // Finite choreography remains demand-loaded; existing route limits are unchanged.
   { file: "bootstrap-feature-scene3d-timeline.js", raw: 5_400, gzip: 2_400, brotli: 2_200 },
-  { file: "bootstrap-feature-scene3d-zoom.js", raw: 3_900, gzip: 1_650, brotli: 1_450 },
+  // The opt-in chunk now includes fixed-camera pan, touch centroid tracking and
+  // accessible captured handles. Its reviewed raw target grows by 400 bytes.
+  { file: "bootstrap-feature-scene3d-zoom.js", raw: 4_300, gzip: 1_650, brotli: 1_450 },
   { file: "bootstrap-feature-scene3d-particle-burst.js", raw: 5_600, gzip: 2_400, brotli: 2_200 },
   // Ocean-driven heel, cloth normals, rig sway, impact spray and reduced-motion
   // deck bob remain lazy. Dormant-wake guards avoid unnecessary ocean queries.
@@ -772,7 +774,9 @@ const budgets = [
     // retain the 65536 allowance and unchanged gzip/Brotli targets.
     // Float32 views with current main measure 1,934,729 raw bytes. Use the
     // minimum reviewed target under the unchanged 65,536-byte allowance.
-    file: "bootstrap.js", raw: 1_869_518, gzip: 524100,
+    // Retained scene caches and transferred frame buffers add 737 raw bytes
+    // beyond the previous allowance; compressed targets remain unchanged.
+    file: "bootstrap.js", raw: 1870336, gzip: 524100,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->
