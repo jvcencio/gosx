@@ -987,7 +987,8 @@ test("Scene3D fake WebGPU ignores supplied quality profiles when adaptive qualit
 });
 
 test("Scene3D fake WebGPU timestamp ring is supported and nonblocking", async () => {
-  const harness = await createBoardWebGPUHarness({ fresh: true, verboseTelemetry: false, fakeDeviceOptions: { timestampQuery: true } });
+  let nowMS = 0;
+  const harness = await createBoardWebGPUHarness({ fresh: true, verboseTelemetry: false, performanceNow: () => nowMS, fakeDeviceOptions: { timestampQuery: true } });
   const api = harness.env.context.__gosx_scene3d_api;
   const { state, objects } = waterPerfShapeScene(api, false, 192);
   state.waterSystems[0].seedDrops = 0;
@@ -1008,6 +1009,11 @@ test("Scene3D fake WebGPU timestamp ring is supported and nonblocking", async ()
   const sample = harness.renderer.pollPerformanceSample();
   assert.equal(sample.source, "gpu-timestamp");
   assert.equal(sample.gpuMS, 4);
+  nowMS = 300;
+  harness.renderer.render(api.createSceneRenderBundle(
+    64, 64, "#000000", { x: 0, y: 0, z: 4, fov: 60, near: 0.05, far: 128 },
+    objects, [], [], [], [], {}, 0.3, [], [], [], state.waterSystems, [], 0, false,
+  ), { width: 64, height: 64 }, { nowMS, active: true });
   assert.equal(harness.mount.getAttribute("data-gosx-scene3d-webgpu-gpu-timing"), "measured");
   assert.equal(harness.mount.getAttribute("data-gosx-scene3d-webgpu-gpu-ms"), "4.000");
 });
@@ -1459,13 +1465,13 @@ test("[perf-shape] Scene3D WebGPU keeps exact frame proof while throttling broad
   assert.ok(thirdFrameWrites <= 12, "third frame should only publish essential proof attrs, got " + thirdFrameWrites);
   assert.equal(harness.mount.__gosxScene3DWebGPUStats.frameSeq, 3, "in-memory stats must advance exactly every frame");
   assert.equal(harness.mount.__gosxScene3DWebGPUProof.frameSeq, 3, "essential proof must advance exactly every frame");
-  assert.equal(Number(harness.mount.getAttribute("data-gosx-scene3d-webgpu-frame-seq")), 3, "essential DOM frame sequence must stay prompt");
+  assert.equal(Number(harness.mount.getAttribute("data-gosx-scene3d-webgpu-frame-seq")), 1, "DOM frame sequence remains at the last diagnostic mirror");
 
   harness.env.context.__gosx_scene3d_webgpu_telemetry = true;
   const beforeVerbose = attributeWrites;
   nowMS = 48;
   renderFrame(0.048);
-  assert.ok(attributeWrites - beforeVerbose > 50, "explicit diagnostics should publish the broad attribute surface immediately");
+  assert.ok(attributeWrites - beforeVerbose < 50, "explicit diagnostics should write only changed attributes");
   assert.equal(harness.mount.__gosxScene3DWebGPUStats.frameSeq, 4);
 });
 

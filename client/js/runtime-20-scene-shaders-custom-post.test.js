@@ -2220,10 +2220,13 @@ test("Scene3D WebGPU post-FX demotes at the trip threshold, restores after a sca
               canvas.__webgpuClaimed = true;
               return {
                 kind: "webgpu",
+                getFrameProgress: function() {
+                  return { frameSeq: window.__testWebGPUFrameSeq || 0, frameAt: window.__testWebGPUFrameSeq || 0 };
+                },
                 diagnostics: function() {
-                  // Advance the mount's frame-seq/frame-at progress markers
+                  // Advance the fake renderer's progress markers
                   // on every diagnostics() poll -- readSceneWebGPUProgress()
-                  // reads them from the DOM, and this fake never runs a real
+                  // reads them from JS, and this fake never runs a real
                   // render loop (no raf.flush between polls in this test),
                   // so without this the UNRELATED render-STALL watchdog
                   // (checkSceneRenderWatchdog's own progress-staleness check,

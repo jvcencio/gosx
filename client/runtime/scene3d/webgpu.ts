@@ -4591,12 +4591,22 @@
       return ssaoLayout;
     }
 
-    function getPipeline(name, fragmentSource, layout) {
-      if (pipelines[name]) return pipelines[name];
+    function getPipeline(name, fragmentSource, layout, outputFormat: string = targetFormat) {
+      if (name === "present") outputFormat = presentationFormat;
+      var cacheKey = name + ":" + outputFormat;
+      if (pipelines[cacheKey]) return pipelines[cacheKey];
+      // Preserve the removed rgba16float attachment's rounding before the
+      // canvas conversion, including values near an 8-bit rounding boundary.
+      if (name !== "present" && outputFormat !== targetFormat) {
+        fragmentSource = fragmentSource.replace(
+          "@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f",
+          "fn postEffect(uv: vec2f) -> vec4f") +
+          "\n@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f { return quantizeToF16(postEffect(uv)); }";
+      }
       var fragModule = device.createShaderModule({ label: "post-" + name, code: fragmentSource });
       var pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [layout] });
-      var pipeline = wgpuCreatePostPipeline(device, pipelineLayout, fragModule, name === "present" ? presentationFormat : targetFormat, name);
-      pipelines[name] = pipeline;
+      var pipeline = wgpuCreatePostPipeline(device, pipelineLayout, fragModule, outputFormat, name);
+      pipelines[cacheKey] = pipeline;
       return pipeline;
     }
 
@@ -4766,7 +4776,6 @@
 
         var currentTexView = sceneTexView;
         var blitPipeline = getPipeline("blit", WGSL_POST_BLIT_FRAGMENT, getPostBlitLayout());
-        var presentPipeline = getPipeline("present", WGSL_POST_BLIT_FRAGMENT, getPostBlitLayout());
         // postChain is the per-effect render-truth record. Built ONLY when the
         // diagnostics tier is on, so production pays one boolean read.
         //
@@ -4796,6 +4805,11 @@
         for (var i = 0; i < effects.length; i++) {
           var effect = effects[i];
           var outputView = currentTexView === sceneTexView ? auxTexView : sceneTexView;
+          var directPresent = i === effects.length - 1 && scaledW === canvasW && scaledH === canvasH &&
+            (effect.kind === SCENE_POST_TONE_MAPPING || effect.kind === SCENE_POST_FXAA || effect.kind === "taa" ||
+             effect.kind === SCENE_POST_VIGNETTE || effect.kind === SCENE_POST_COLOR_GRADE);
+          if (directPresent) outputView = finalView;
+          var outputFormat = directPresent ? presentationFormat : targetFormat;
           var passW = scaledW;
           var passH = scaledH;
           activePostIndex = i;
@@ -4803,7 +4817,7 @@
           switch (effect.kind) {
             case "atmosphere": currentTexView = atmospherePost.apply({encoder, input: currentTexView, effect, output: outputView, width: scaledW, height: scaledH, context: atmosphereContext}); break;
             case SCENE_POST_TONE_MAPPING: {
-              var pipeline = getPipeline("toneMapping", WGSL_POST_TONEMAPPING_FRAGMENT, getPostParamsLayout());
+              var pipeline = getPipeline("toneMapping", WGSL_POST_TONEMAPPING_FRAGMENT, getPostParamsLayout(), outputFormat);
               var buf = getParamBuffer("toneMapping", 16);
               device.queue.writeBuffer(buf, 0, new Float32Array([sceneNumber(effect.exposure, 1.0), sceneWebGPUToneMapMode(effect.mode), 0, 0]));
               var bg = device.createBindGroup({
@@ -4957,7 +4971,7 @@
             case SCENE_POST_FXAA: {
               // Chain-end edge AA. Reuses the blit bind group layout
               // (texture + sampler, no uniforms) since FXAA has no params.
-              var fxaaPipeline = getPipeline("fxaa", postUsesF16 ? WGSL_POST_FXAA_FRAGMENT_F16 : WGSL_POST_FXAA_FRAGMENT, getPostBlitLayout());
+              var fxaaPipeline = getPipeline("fxaa", postUsesF16 ? WGSL_POST_FXAA_FRAGMENT_F16 : WGSL_POST_FXAA_FRAGMENT, getPostBlitLayout(), outputFormat);
               var fxaaBG = device.createBindGroup({
                 layout: getPostBlitLayout(),
                 entries: [
@@ -4970,7 +4984,7 @@
               break;
             }
             case SCENE_POST_VIGNETTE: {
-              var vigPipeline = getPipeline("vignette", WGSL_POST_VIGNETTE_FRAGMENT, getPostParamsLayout());
+              var vigPipeline = getPipeline("vignette", WGSL_POST_VIGNETTE_FRAGMENT, getPostParamsLayout(), outputFormat);
               var vigBuf = getParamBuffer("vignette", 16);
               device.queue.writeBuffer(vigBuf, 0, new Float32Array([sceneNumber(effect.intensity, 1.0), 0, 0, 0]));
               var vigBG = device.createBindGroup({
@@ -4986,7 +5000,7 @@
               break;
             }
             case SCENE_POST_COLOR_GRADE: {
-              var cgPipeline = getPipeline("colorGrade", WGSL_POST_COLORGRADE_FRAGMENT, getPostParamsLayout());
+              var cgPipeline = getPipeline("colorGrade", WGSL_POST_COLORGRADE_FRAGMENT, getPostParamsLayout(), outputFormat);
               var cgBuf = getParamBuffer("colorGrade", 16);
               device.queue.writeBuffer(cgBuf, 0, new Float32Array([
                 sceneNumber(effect.exposure, 1.0),
@@ -5078,7 +5092,7 @@
             { binding: 0, resource: currentTexView },
             { binding: 1, resource: linearSampler },
           /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ ]);
-          fullscreenPass(encoder, presentPipeline, blitBG, finalView);
+          fullscreenPass(encoder, getPipeline("present", WGSL_POST_BLIT_FRAGMENT, getPostBlitLayout()), blitBG, finalView);
         }
         activePostChain = null;
         return stats;
@@ -7056,6 +7070,8 @@
       ? window.__gosx_scene3d_api : null;
     var lastPreparedScene = null;
     var lastWebGPUFrameStats = null;
+    var frameStats: any = {};
+    var webGPUFrameProof: any = {};
     var webGPUFrameSeq = 0;
     var gpuTiming = null;
     var gpuTimingFailed = false;
@@ -7070,12 +7086,30 @@
     var deferredWaterTextureRetirements = [];
     var deferredWaterSystemRetirements = [];
     var webGPUEssentialAttributeCache = Object.create(null);
-    // Full DOM telemetry is useful for interactive probes, but mirroring the
-    // entire diagnostic surface every animation frame creates substantial
-    // style/MutationObserver churn. Keep exact stats in memory every frame and
-    // limit the broad attribute mirror to 4 Hz unless explicitly requested.
+    var webGPUPendingAttributes = Object.create(null);
+    var webGPUAttributeMount = null;
+    // Helper renderers publish through the same queue as the main renderer.
+    var webGPUAttributeSink = { setAttribute: queueWebGPUAttribute };
     var WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS = 250;
     var lastWebGPUDiagnosticAttributeAt = null;
+
+    function queueWebGPUAttribute(name, value) {
+      webGPUPendingAttributes[name] = value;
+    }
+
+    function mirrorWebGPUAttributes(mount) {
+      if (webGPUAttributeMount !== mount) {
+        webGPUAttributeMount = mount;
+        webGPUEssentialAttributeCache = Object.create(null);
+      }
+      for (var name in webGPUPendingAttributes) {
+        var value = webGPUPendingAttributes[name];
+        if (webGPUEssentialAttributeCache[name] === value) continue;
+        webGPUEssentialAttributeCache[name] = value;
+        if (value === null) mount.removeAttribute(name);
+        else mount.setAttribute(name, value);
+      }
+    }
     // Cull telemetry: frame counter for throttling readback (~every 30 frames)
     // and the last aggregated survivor snapshot written to the mount attribute.
     var cullTelemetryFrameCount = 0;
@@ -7121,7 +7155,7 @@
           // it even while the renderer is submitting healthy GPU work. Keep
           // the timing capability distinct from renderer activity so a
           // missing hardware timer is never reported as "GPU unsupported".
-          if (telemetryMount) telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-timing", "timer-unavailable");
+          if (telemetryMount) queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-timing", "timer-unavailable");
           return gpuTiming;
         }
         candidateQuerySet = device.createQuerySet({ type: "timestamp", count: 6 });
@@ -7145,7 +7179,7 @@
         };
         gpuTimingEncodingAvailable = null;
         gpuTimingFailed = false;
-        if (telemetryMount) telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-timing", "pending");
+        if (telemetryMount) queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-timing", "pending");
       } catch (error) {
         if (candidateQuerySet && typeof candidateQuerySet.destroy === "function") candidateQuerySet.destroy();
         for (var candidateIndex = 0; candidateIndex < candidateBuffers.length; candidateIndex++) {
@@ -7155,7 +7189,7 @@
         gpuTiming = false;
         gpuTimingFailed = true;
         lastGPUPerformanceSample = null;
-        if (telemetryMount) telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-timing", "failed");
+        if (telemetryMount) queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-timing", "failed");
       }
       return gpuTiming;
     }
@@ -7184,7 +7218,7 @@
       lastGPUCompletionSample = null;
       failedGPUTimings.push({ timing: timing, retireAfterFrame: gpuTimingFrameSeq + 3 });
       lastGPUPerformanceSample = null;
-      if (telemetryMount) telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-timing", "failed");
+      if (telemetryMount) queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-timing", "failed");
     }
 
     function drainDeferredGPUResources(force) {
@@ -7234,8 +7268,8 @@
               // @ts-ignore TS7005 -- readback initializes the frame sample asynchronously.
               lastGPUCompletionSample = sceneLatestGPUCompletion(lastGPUCompletionSample, lastGPUPerformanceSample);
               if (telemetryMount) {
-                telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-ms", lastGPUPerformanceSample.gpuMS.toFixed(3));
-                telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-timing", "measured");
+                queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-ms", lastGPUPerformanceSample.gpuMS.toFixed(3));
+                queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-timing", "measured");
               }
             }
             activeSlot.readback.unmap();
@@ -7257,7 +7291,7 @@
       if (!timing || !encoder) return null;
       if (typeof encoder.beginComputePass !== "function" || typeof encoder.resolveQuerySet !== "function" || typeof encoder.copyBufferToBuffer !== "function") {
         gpuTimingEncodingAvailable = false;
-        if (telemetryMount) telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-timing", "timer-unavailable");
+        if (telemetryMount) queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-timing", "timer-unavailable");
         return null;
       }
       var startIndex = gpuTimingFrameSeq % timing.slots.length;
@@ -7309,6 +7343,10 @@
     var lastGPUPassSample = null;
 
     function ensureGPUPassTiming() {
+      var config = typeof window !== "undefined" && window.__gosx_telemetry_config;
+      if (!(typeof window !== "undefined" && (window.__gosx_scene3d_webgpu_pass_timing === true ||
+          window.__gosx_scene3d_webgpu_telemetry === true ||
+          (config && (config.scene3dDiagnostics === true || config.scene3dPerfTelemetry === true))))) return false;
       if (gpuPassTiming !== null) return gpuPassTiming;
       gpuPassTiming = false;
       var querySet = null;
@@ -7316,7 +7354,7 @@
       try {
         var supported = device && device.features && typeof device.features.has === "function" && device.features.has("timestamp-query");
         if (!supported || typeof device.createQuerySet !== "function") {
-          if (telemetryMount) telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-pass-timing", "timer-unavailable");
+          if (telemetryMount) queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-pass-timing", "timer-unavailable");
           return gpuPassTiming;
         }
         querySet = device.createQuerySet({
@@ -7342,14 +7380,14 @@
           querySet: querySet,
           slots: slots,
         };
-        if (telemetryMount) telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-pass-timing", "pending");
+        if (telemetryMount) queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-pass-timing", "pending");
       } catch (_passTimingError) {
         if (querySet && typeof querySet.destroy === "function") querySet.destroy();
         for (var b = 0; b < buffers.length; b++) {
           if (buffers[b] && typeof buffers[b].destroy === "function") buffers[b].destroy();
         }
         gpuPassTiming = false;
-        if (telemetryMount) telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-pass-timing", "failed");
+        if (telemetryMount) queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-pass-timing", "failed");
       }
       return gpuPassTiming;
     }
@@ -7473,10 +7511,10 @@
         atMS: (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now(),
       };
       if (telemetryMount) {
-        telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-pass-shadow-ms", lastGPUPassSample.shadowMS.toFixed(3));
-        telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-pass-main-ms", lastGPUPassSample.mainMS.toFixed(3));
-        telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-pass-scene-ms", lastGPUPassSample.sceneMS.toFixed(3));
-        telemetryMount.setAttribute("data-gosx-scene3d-webgpu-gpu-pass-timing", "measured");
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-pass-shadow-ms", lastGPUPassSample.shadowMS.toFixed(3));
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-pass-main-ms", lastGPUPassSample.mainMS.toFixed(3));
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-pass-scene-ms", lastGPUPassSample.sceneMS.toFixed(3));
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-pass-timing", "measured");
       }
 
     }
@@ -17481,102 +17519,92 @@
       var mount = canvas && canvas.parentNode;
       if (!mount) return;
       webGPUFrameSeq += 1;
-      var published = Object.assign({}, stats || {}, {
-        frameSeq: webGPUFrameSeq,
-        frameAt: (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now(),
-      });
+      var published = stats;
+      published.frameSeq = webGPUFrameSeq;
+      published.frameAt = (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now();
       lastWebGPUFrameStats = published;
       mount.__gosxScene3DWebGPUStats = published;
-      mount.__gosxScene3DWebGPUProof = {
-        frameSeq: published.frameSeq || 0,
-        frameAt: published.frameAt || 0,
-        waterSystems: published.waterSystems || 0,
-        waterComputeDispatches: published.waterComputeDispatches || 0,
-        waterDrawCalls: published.waterDrawCalls || 0,
-        waterSimulationTickSeq: published.waterSimulationTickSeq || 0,
-        waterSolverSubstepSeq: published.waterSolverSubstepSeq || 0,
-        waterDroppedTicks: published.waterDroppedTicks || 0,
-        waterNormalDispatchSeq: published.waterNormalDispatchSeq || 0,
-        waterSampledStateSyncSeq: published.waterSampledStateSyncSeq || 0,
-        waterAtRestSystems: published.waterAtRestSystems || 0,
-        waterQualityTier: published.waterQualityTier || "full",
-        waterQualityRevision: published.waterQualityRevision || 0,
-        waterSurfaceResolution: published.waterSurfaceResolution || 0,
-        waterCausticsResolution: published.waterActiveCausticsResolution || 0,
-        waterObjectShadowResolution: published.waterActiveObjectShadowResolution || 0,
-        waterObjectTextureWidth: published.waterActiveObjectTextureWidth || 0,
-        waterObjectTextureHeight: published.waterActiveObjectTextureHeight || 0,
-        waterObjectTexturePixelBudget: published.waterActiveObjectTexturePixelBudget || 0,
-        waterQualityAllocationPending: published.waterQualityAllocationPending || 0,
-        waterQualityAllocationFailures: published.waterQualityAllocationFailures || 0,
-        waterQualityAllocationRetryFrame: published.waterQualityAllocationRetryFrame || 0,
-        waterDPRCap: published.waterQualityDPRCap || 1,
-        waterExpensivePassCadence: published.waterExpensivePassCadence || 1,
-      };
+
+      webGPUFrameProof.frameSeq = published.frameSeq || 0;
+      webGPUFrameProof.frameAt = published.frameAt || 0;
+      webGPUFrameProof.waterSystems = published.waterSystems || 0;
+      webGPUFrameProof.waterComputeDispatches = published.waterComputeDispatches || 0;
+      webGPUFrameProof.waterDrawCalls = published.waterDrawCalls || 0;
+      webGPUFrameProof.waterSimulationTickSeq = published.waterSimulationTickSeq || 0;
+      webGPUFrameProof.waterSolverSubstepSeq = published.waterSolverSubstepSeq || 0;
+      webGPUFrameProof.waterDroppedTicks = published.waterDroppedTicks || 0;
+      webGPUFrameProof.waterNormalDispatchSeq = published.waterNormalDispatchSeq || 0;
+      webGPUFrameProof.waterSampledStateSyncSeq = published.waterSampledStateSyncSeq || 0;
+      webGPUFrameProof.waterAtRestSystems = published.waterAtRestSystems || 0;
+      webGPUFrameProof.waterQualityTier = published.waterQualityTier || "full";
+      webGPUFrameProof.waterQualityRevision = published.waterQualityRevision || 0;
+      webGPUFrameProof.waterSurfaceResolution = published.waterSurfaceResolution || 0;
+      webGPUFrameProof.waterCausticsResolution = published.waterActiveCausticsResolution || 0;
+      webGPUFrameProof.waterObjectShadowResolution = published.waterActiveObjectShadowResolution || 0;
+      webGPUFrameProof.waterObjectTextureWidth = published.waterActiveObjectTextureWidth || 0;
+      webGPUFrameProof.waterObjectTextureHeight = published.waterActiveObjectTextureHeight || 0;
+      webGPUFrameProof.waterObjectTexturePixelBudget = published.waterActiveObjectTexturePixelBudget || 0;
+      webGPUFrameProof.waterQualityAllocationPending = published.waterQualityAllocationPending || 0;
+      webGPUFrameProof.waterQualityAllocationFailures = published.waterQualityAllocationFailures || 0;
+      webGPUFrameProof.waterQualityAllocationRetryFrame = published.waterQualityAllocationRetryFrame || 0;
+      webGPUFrameProof.waterDPRCap = published.waterQualityDPRCap || 1;
+      webGPUFrameProof.waterExpensivePassCadence = published.waterExpensivePassCadence || 1;
+      mount.__gosxScene3DWebGPUProof = webGPUFrameProof;
       if (typeof mount.setAttribute !== "function") return;
-      // Lifecycle and simulation proof must remain prompt for health checks and
-      // E2E. This is a bounded attribute surface instead of ~150 writes.
-      function setEssentialAttribute(name, value) {
-        if (webGPUEssentialAttributeCache[name] === value) return;
-        webGPUEssentialAttributeCache[name] = value;
-        mount.setAttribute(name, value);
-      }
-      setEssentialAttribute("data-gosx-scene3d-webgpu-frame-seq", String(published.frameSeq || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-frame-at", String(published.frameAt || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-water-systems", String(published.waterSystems || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-water-compute-dispatches", String(published.waterComputeDispatches || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-water-draw-calls", String(published.waterDrawCalls || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-water-tick-seq", String(published.waterSimulationTickSeq || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-water-substep-seq", String(published.waterSolverSubstepSeq || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-water-dropped-ticks", String(published.waterDroppedTicks || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-water-normal-seq", String(published.waterNormalDispatchSeq || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-water-state-sync-seq", String(published.waterSampledStateSyncSeq || 0));
+      // Exact progress and simulation proof live in JS. Mirror existing
+      // attributes at the diagnostic cadence for probes and E2E checks.
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-frame-seq", String(published.frameSeq || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-frame-at", String(published.frameAt || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-systems", String(published.waterSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-compute-dispatches", String(published.waterComputeDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-draw-calls", String(published.waterDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-tick-seq", String(published.waterSimulationTickSeq || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-substep-seq", String(published.waterSolverSubstepSeq || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-dropped-ticks", String(published.waterDroppedTicks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-normal-seq", String(published.waterNormalDispatchSeq || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-state-sync-seq", String(published.waterSampledStateSyncSeq || 0));
       // M5 at-rest gating (water-parity-campaign): a per-frame count of water
       // systems currently parked (skipping sim substeps/normal/state-copy/
-      // caustics, retaining last-rendered textures). Essential-tier (not
-      // throttled behind the diagnostic interval) so diag overlays and e2e
-      // waitFor() polls observe a rest/wake transition promptly -- see
+      // caustics, retaining last-rendered textures). Exact values stay in JS;
+      // the DOM mirror follows the same cadence as other diagnostics. See
       // WATER_REST_ENERGY_EPSILON's comment above updateWaterSystems.
-      setEssentialAttribute("data-gosx-scene3d-webgpu-water-at-rest-systems", String(published.waterAtRestSystems || 0));
-      // Render-bundle state is essential tier: a tool that measures the saving
-      // must be able to prove a replay happened on the frame it timed, and a
-      // stale image is diagnosed by reading the reason.
-      setEssentialAttribute("data-gosx-scene3d-webgpu-bundle-state", String(published.bundleState || "direct"));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-bundle-reason", String(published.bundleReason || ""));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-bundle-encodes", String(published.bundleEncodes || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-bundle-replays", String(published.bundleReplays || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-bundle-draws", String(published.bundleDraws || 0));
-      setEssentialAttribute("data-gosx-scene3d-retained-mesh-objects", String(published.retainedMeshObjects || 0));
-      setEssentialAttribute("data-gosx-scene3d-retained-mesh-vertices", String(published.retainedMeshVertices || 0));
-      setEssentialAttribute("data-gosx-scene3d-world-baked-mesh-objects", String(published.worldBakedMeshObjects || 0));
-      setEssentialAttribute("data-gosx-scene3d-world-baked-mesh-vertices", String(published.worldBakedMeshVertices || 0));
-      setEssentialAttribute("data-gosx-scene3d-retained-cache-entries", String(published.retainedCacheEntries || 0));
-      setEssentialAttribute("data-gosx-scene3d-retained-cache-hits", String(published.retainedCacheHits || 0));
-      setEssentialAttribute("data-gosx-scene3d-retained-cache-misses", String(published.retainedCacheMisses || 0));
-      setEssentialAttribute("data-gosx-scene3d-retained-upload-bytes", String(published.retainedUploadBytes || 0));
-      setEssentialAttribute("data-gosx-scene3d-retained-allocations", String(published.retainedAllocations || 0));
-      setEssentialAttribute("data-gosx-scene3d-retained-rebuilds", String(published.retainedRebuilds || 0));
-      setEssentialAttribute("data-gosx-scene3d-retained-retirements", String(published.retainedRetirements || 0));
-      setEssentialAttribute("data-gosx-scene3d-retained-live-bytes", String(published.retainedLiveBytes || 0));
-      setEssentialAttribute("data-gosx-scene3d-bundle-build-cpu-ms", String(published.bundleBuildCPUms || 0));
-      setEssentialAttribute("data-gosx-scene3d-planner-cpu-ms", String(published.plannerCPUms || 0));
-      setEssentialAttribute("data-gosx-scene3d-planner-full-vertex-hash-scans", String(published.plannerFullVertexHashScans || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-at-rest-systems", String(published.waterAtRestSystems || 0));
+      // Preserve the render-bundle counters used by performance probes.
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-bundle-state", String(published.bundleState || "direct"));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-bundle-reason", String(published.bundleReason || ""));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-bundle-encodes", String(published.bundleEncodes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-bundle-replays", String(published.bundleReplays || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-bundle-draws", String(published.bundleDraws || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-retained-mesh-objects", String(published.retainedMeshObjects || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-retained-mesh-vertices", String(published.retainedMeshVertices || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-world-baked-mesh-objects", String(published.worldBakedMeshObjects || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-world-baked-mesh-vertices", String(published.worldBakedMeshVertices || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-retained-cache-entries", String(published.retainedCacheEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-retained-cache-hits", String(published.retainedCacheHits || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-retained-cache-misses", String(published.retainedCacheMisses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-retained-upload-bytes", String(published.retainedUploadBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-retained-allocations", String(published.retainedAllocations || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-retained-rebuilds", String(published.retainedRebuilds || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-retained-retirements", String(published.retainedRetirements || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-retained-live-bytes", String(published.retainedLiveBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-bundle-build-cpu-ms", String(published.bundleBuildCPUms || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-planner-cpu-ms", String(published.plannerCPUms || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-planner-full-vertex-hash-scans", String(published.plannerFullVertexHashScans || 0));
       // GPU cull dispatch counters. skipped-dispatches proves the static-scene
       // fingerprint skip fired.
-      setEssentialAttribute("data-gosx-scene3d-webgpu-cull-dispatches", String(published.cullDispatches || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-cull-skipped-dispatches", String(published.cullSkippedDispatches || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-cull-builtin-systems", String(published.cullBuiltinSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-cull-dispatches", String(published.cullDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-cull-skipped-dispatches", String(published.cullSkippedDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-cull-builtin-systems", String(published.cullBuiltinSystems || 0));
       // Which precision the post chain compiled with. "f16" means the device
       // negotiated shader-f16 and the blur and FXAA stages run half precision.
-      setEssentialAttribute("data-gosx-scene3d-webgpu-post-precision", String(published.postPrecision || "none"));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-passes", String(published.postDOMRegionBoundedPasses || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-skips", String(published.postDOMRegionBoundedSkips || 0));
-      setEssentialAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-pixels", String(published.postDOMRegionBoundedPixels || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-precision", String(published.postPrecision || "none"));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-passes", String(published.postDOMRegionBoundedPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-skips", String(published.postDOMRegionBoundedSkips || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-pixels", String(published.postDOMRegionBoundedPixels || 0));
       if (published.lastError) {
-        setEssentialAttribute("data-gosx-scene3d-webgpu-last-error", String(published.lastError));
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", String(published.lastError));
       } else if (webGPUEssentialAttributeCache["data-gosx-scene3d-webgpu-last-error"] !== null) {
-        webGPUEssentialAttributeCache["data-gosx-scene3d-webgpu-last-error"] = null;
-        mount.removeAttribute("data-gosx-scene3d-webgpu-last-error");
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", null);
       }
       var telemetryConfig = typeof window !== "undefined" && window.__gosx_telemetry_config && typeof window.__gosx_telemetry_config === "object"
         ? window.__gosx_telemetry_config : null;
@@ -17587,179 +17615,179 @@
       );
       var diagnosticElapsed = lastWebGPUDiagnosticAttributeAt == null
         ? Infinity : published.frameAt - lastWebGPUDiagnosticAttributeAt;
-      var mirrorDiagnostics = verboseTelemetry || diagnosticElapsed < 0 || diagnosticElapsed >= WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS;
+      var mirrorDiagnostics = verboseTelemetry || webGPUAttributeMount !== mount || diagnosticElapsed < 0 || diagnosticElapsed >= WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS;
       if (!mirrorDiagnostics) return;
       lastWebGPUDiagnosticAttributeAt = published.frameAt;
-      mount.setAttribute("data-gosx-scene3d-webgpu-point-entries", String(published.pointEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-point-instances", String(published.pointInstances || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-point-draw-entries", String(published.pointDrawEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-point-draw-instances", String(published.pointDrawInstances || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-point-draw-calls", String(published.pointDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-point-authored-draw-entries", String(published.pointAuthoredDrawEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-point-authored-draw-instances", String(published.pointAuthoredDrawInstances || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-point-authored-draw-calls", String(published.pointAuthoredDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-point-skipped-empty", String(published.pointSkippedEmpty || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-point-skipped-no-positions", String(published.pointSkippedNoPositions || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-entries", String(published.computeParticleEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-instances", String(published.computeParticleInstances || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-draw-entries", String(published.computeParticleDrawEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-draw-instances", String(published.computeParticleDrawInstances || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-draw-calls", String(published.computeParticleDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-draw-entries", String(published.computeParticleAuthoredDrawEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-draw-instances", String(published.computeParticleAuthoredDrawInstances || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-draw-calls", String(published.computeParticleAuthoredDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-candidate-entries", String(published.computeParticleAuthoredCandidateEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-pending-entries", String(published.computeParticleAuthoredPendingEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-failed-entries", String(published.computeParticleAuthoredFailedEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-skipped-empty", String(published.computeParticleSkippedEmpty || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-compute-particle-skipped-not-ready", String(published.computeParticleSkippedNotReady || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-systems", String(published.waterSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-cells", String(published.waterCells || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-vertices", String(published.waterVertices || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-compute-dispatches", String(published.waterComputeDispatches || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-compute-systems", String(published.waterAuthoredComputeSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-compute-dispatches", String(published.waterAuthoredComputeDispatches || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-compute-fallbacks", String(published.waterAuthoredComputeFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-compute-systems", String(published.waterSelenaComputeSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-compute-dispatches", String(published.waterSelenaComputeDispatches || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-compute-fallbacks", String(published.waterSelenaComputeFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-drop-dispatches", String(published.waterDropDispatches || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-drop-dispatch-total", String(published.waterDropDispatchTotal || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-drop-event", String(published.waterLastDropEventID || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-systems", String(published.waterObjectSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-dispatches", String(published.waterObjectDispatches || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-event-dispatches", String(published.waterObjectEventDispatches || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-event", String(published.waterLastObjectDisplacementEventID || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-spheres", String(published.waterObjectSpheres || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-rounded-systems", String(published.waterRoundedSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-corner-radius", String(published.waterCornerRadius || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-light-dir-x", String(published.waterLightDirX || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-light-dir-y", String(published.waterLightDirY || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-light-dir-z", String(published.waterLightDirZ || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-rest-substeps-skipped", String(published.waterRestSubstepsSkipped || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-uniform-uploads", String(published.waterUniformUploads || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-uniform-uploads-skipped", String(published.waterUniformUploadsSkipped || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-caustic-systems", String(published.waterCausticSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-caustic-passes", String(published.waterCausticPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-caustic-texture-pixels", String(published.waterCausticTexturePixels || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-caustic-systems", String(published.waterAuthoredCausticSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-caustic-passes", String(published.waterAuthoredCausticPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-caustic-fallbacks", String(published.waterAuthoredCausticFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-caustic-fallback-reason", String(published.waterAuthoredCausticFallbackReason || ""));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-caustic-source-bytes", String(published.waterAuthoredCausticSourceBytes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-entry-caustic-source-bytes", String(published.waterEntryCausticSourceBytes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-resolved-caustic-source-bytes", String(published.waterResolvedCausticSourceBytes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-surface-source-bytes", String(published.waterAuthoredSurfaceSourceBytes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-entry-surface-source-bytes", String(published.waterEntrySurfaceSourceBytes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-resolved-surface-source-bytes", String(published.waterResolvedSurfaceSourceBytes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-manifest-shader-systems", String(published.waterManifestShaderSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-manifest-shader-fields", String(published.waterManifestShaderFields || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-manifest-caustic-source-bytes", String(published.waterManifestCausticSourceBytes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-manifest-surface-source-bytes", String(published.waterManifestSurfaceSourceBytes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-bundle-shader-systems", String(published.waterBundleShaderSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-bundle-caustic-source-bytes", String(published.waterBundleCausticSourceBytes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-bundle-surface-source-bytes", String(published.waterBundleSurfaceSourceBytes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-passes", String(published.waterObjectTexturePasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-targets", String(published.waterObjectTextureTargets || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-pixels", String(published.waterObjectTexturePixels || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-width", String(published.waterObjectTextureWidth || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-height", String(published.waterObjectTextureHeight || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-pixel-budget", String(published.waterObjectTexturePixelBudget || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-expensive-pass-cadence", String(published.waterExpensivePassCadence || 1));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-quality-allocation-pending", String(published.waterQualityAllocationPending || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-quality-allocation-failures", String(published.waterQualityAllocationFailures || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-quality-allocation-retry-frame", String(published.waterQualityAllocationRetryFrame || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-mesh-passes", String(published.waterObjectTextureMeshPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-mesh-draw-calls", String(published.waterObjectTextureMeshDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-selena-draw-calls", String(published.waterObjectTextureSelenaDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-fallback-passes", String(published.waterObjectTextureFallbackPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-candidate-objects", String(published.waterObjectTextureCandidateObjects || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-selected-objects", String(published.waterObjectTextureSelectedObjects || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-fallback-missing-objects", String(published.waterObjectTextureFallbackMissingObjects || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-fallback-missing-resources", String(published.waterObjectTextureFallbackMissingResources || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-texture-candidate-profile", String(published.waterObjectTextureCandidateProfile || ""));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-shadow-passes", String(published.waterObjectShadowPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-shadow-texture-pixels", String(published.waterObjectShadowTexturePixels || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-shadow-mesh-passes", String(published.waterObjectShadowMeshPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-shadow-mesh-draw-calls", String(published.waterObjectShadowMeshDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-object-shadow-passes", String(published.waterAuthoredObjectShadowPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-object-shadow-fallbacks", String(published.waterAuthoredObjectShadowFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-object-mesh-shadow-passes", String(published.waterAuthoredObjectMeshShadowPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-object-mesh-shadow-fallbacks", String(published.waterAuthoredObjectMeshShadowFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-shadow-fallback-passes", String(published.waterObjectShadowFallbackPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-shadow-fallback-missing-objects", String(published.waterObjectShadowFallbackMissingObjects || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-shadow-fallback-missing-resources", String(published.waterObjectShadowFallbackMissingResources || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-reflection-systems", String(published.waterReflectionSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-refraction-systems", String(published.waterRefractionSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-object-optics-systems", String(published.waterObjectOpticsSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-pool-passes", String(published.waterPoolPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-pool-draw-calls", String(published.waterPoolDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-pool-draw-vertices", String(published.waterPoolDrawVertices || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-pool-tile-texture-loaded", String(published.waterPoolTileTextureLoaded || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-pool-tile-texture-fallbacks", String(published.waterPoolTileTextureFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-pool-tile-texture-pending", String(published.waterPoolTileTexturePending || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-pool-tile-texture-failed", String(published.waterPoolTileTextureFailed || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-pool-passes", String(published.waterAuthoredPoolPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-pool-vertex-passes", String(published.waterAuthoredPoolVertexPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-pool-fragment-passes", String(published.waterAuthoredPoolFragmentPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-pool-fallbacks", String(published.waterAuthoredPoolFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-pool-passes", String(published.waterSelenaPoolPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-pool-fallbacks", String(published.waterSelenaPoolFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-surface-passes", String(published.waterSelenaSurfacePasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-surface-fallbacks", String(published.waterSelenaSurfaceFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-caustic-passes", String(published.waterSelenaCausticPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-caustic-fallbacks", String(published.waterSelenaCausticFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-object-shadow-passes", String(published.waterSelenaObjectShadowPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-object-shadow-fallbacks", String(published.waterSelenaObjectShadowFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-object-mesh-shadow-passes", String(published.waterSelenaObjectMeshShadowPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-selena-object-mesh-shadow-fallbacks", String(published.waterSelenaObjectMeshShadowFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-draw-entries", String(published.waterDrawEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-draw-vertices", String(published.waterDrawVertices || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-surface-mesh-resolution", String(published.waterSurfaceMeshResolution || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-draw-calls", String(published.waterDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-surface-above-draw-calls", String(published.waterSurfaceAboveDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-surface-above-draw-vertices", String(published.waterSurfaceAboveDrawVertices || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-surface-below-draw-calls", String(published.waterSurfaceBelowDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-surface-below-draw-vertices", String(published.waterSurfaceBelowDrawVertices || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-surface-systems", String(published.waterAuthoredSurfaceSystems || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-surface-draw-calls", String(published.waterAuthoredSurfaceDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-surface-vertex-draw-calls", String(published.waterAuthoredSurfaceVertexDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-surface-pending-draw-calls", String(published.waterAuthoredSurfacePendingDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-surface-fallbacks", String(published.waterAuthoredSurfaceFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-authored-surface-fallback-reason", String(published.waterAuthoredSurfaceFallbackReason || ""));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-sky-cube-texture-loaded", String(published.waterSkyCubeTextureLoaded || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-sky-cube-texture-fallbacks", String(published.waterSkyCubeTextureFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-sky-cube-texture-pending", String(published.waterSkyCubeTexturePending || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-water-sky-cube-texture-failed", String(published.waterSkyCubeTextureFailed || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-mesh-objects", String(published.meshObjects || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-mesh-draw-calls", String(published.meshDrawCalls || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-mesh-view-culled", String(published.meshViewCulled || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-skinned-mesh-objects", String(published.skinnedMeshObjects || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-computed-morph-dispatches", String(published.computedMorphDispatches || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-computed-morph-vertices", String(published.computedMorphVertices || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-computed-morph-kernel", String(published.computedMorphKernel || ""));
-      mount.setAttribute("data-gosx-scene3d-webgpu-elio-skinning-dispatches", String(published.elioSkinningDispatches || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-elio-skinning-vertices", String(published.elioSkinningVertices || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-elio-skinning-kernel", String(published.elioSkinningKernel || ""));
-      mount.setAttribute("data-gosx-scene3d-webgpu-instanced-meshes", String(published.instancedMeshes || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-instanced-instances", String(published.instancedInstances || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-line-entries", String(published.lineEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-surface-entries", String(published.surfaceEntries || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-post-effects", String(published.postEffects || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-post-ssao-passes", String(published.postSSAOPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-post-dof-passes", String(published.postDOFPasses || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-custom-material-fallbacks", String(published.customMaterialFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-custom-wgsl-fallbacks", String(published.customWGSLFallbacks || 0));
-      mount.setAttribute("data-gosx-scene3d-webgpu-custom-uniform-fallbacks", String(published.customUniformFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-entries", String(published.pointEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-instances", String(published.pointInstances || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-draw-entries", String(published.pointDrawEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-draw-instances", String(published.pointDrawInstances || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-draw-calls", String(published.pointDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-authored-draw-entries", String(published.pointAuthoredDrawEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-authored-draw-instances", String(published.pointAuthoredDrawInstances || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-authored-draw-calls", String(published.pointAuthoredDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-skipped-empty", String(published.pointSkippedEmpty || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-skipped-no-positions", String(published.pointSkippedNoPositions || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-entries", String(published.computeParticleEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-instances", String(published.computeParticleInstances || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-draw-entries", String(published.computeParticleDrawEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-draw-instances", String(published.computeParticleDrawInstances || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-draw-calls", String(published.computeParticleDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-draw-entries", String(published.computeParticleAuthoredDrawEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-draw-instances", String(published.computeParticleAuthoredDrawInstances || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-draw-calls", String(published.computeParticleAuthoredDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-candidate-entries", String(published.computeParticleAuthoredCandidateEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-pending-entries", String(published.computeParticleAuthoredPendingEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-authored-failed-entries", String(published.computeParticleAuthoredFailedEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-skipped-empty", String(published.computeParticleSkippedEmpty || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-compute-particle-skipped-not-ready", String(published.computeParticleSkippedNotReady || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-systems", String(published.waterSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-cells", String(published.waterCells || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-vertices", String(published.waterVertices || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-compute-dispatches", String(published.waterComputeDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-compute-systems", String(published.waterAuthoredComputeSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-compute-dispatches", String(published.waterAuthoredComputeDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-compute-fallbacks", String(published.waterAuthoredComputeFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-compute-systems", String(published.waterSelenaComputeSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-compute-dispatches", String(published.waterSelenaComputeDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-compute-fallbacks", String(published.waterSelenaComputeFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-drop-dispatches", String(published.waterDropDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-drop-dispatch-total", String(published.waterDropDispatchTotal || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-drop-event", String(published.waterLastDropEventID || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-systems", String(published.waterObjectSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-dispatches", String(published.waterObjectDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-event-dispatches", String(published.waterObjectEventDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-event", String(published.waterLastObjectDisplacementEventID || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-spheres", String(published.waterObjectSpheres || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-rounded-systems", String(published.waterRoundedSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-corner-radius", String(published.waterCornerRadius || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-light-dir-x", String(published.waterLightDirX || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-light-dir-y", String(published.waterLightDirY || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-light-dir-z", String(published.waterLightDirZ || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-rest-substeps-skipped", String(published.waterRestSubstepsSkipped || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-uniform-uploads", String(published.waterUniformUploads || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-uniform-uploads-skipped", String(published.waterUniformUploadsSkipped || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-caustic-systems", String(published.waterCausticSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-caustic-passes", String(published.waterCausticPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-caustic-texture-pixels", String(published.waterCausticTexturePixels || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-caustic-systems", String(published.waterAuthoredCausticSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-caustic-passes", String(published.waterAuthoredCausticPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-caustic-fallbacks", String(published.waterAuthoredCausticFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-caustic-fallback-reason", String(published.waterAuthoredCausticFallbackReason || ""));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-caustic-source-bytes", String(published.waterAuthoredCausticSourceBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-entry-caustic-source-bytes", String(published.waterEntryCausticSourceBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-resolved-caustic-source-bytes", String(published.waterResolvedCausticSourceBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-surface-source-bytes", String(published.waterAuthoredSurfaceSourceBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-entry-surface-source-bytes", String(published.waterEntrySurfaceSourceBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-resolved-surface-source-bytes", String(published.waterResolvedSurfaceSourceBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-manifest-shader-systems", String(published.waterManifestShaderSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-manifest-shader-fields", String(published.waterManifestShaderFields || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-manifest-caustic-source-bytes", String(published.waterManifestCausticSourceBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-manifest-surface-source-bytes", String(published.waterManifestSurfaceSourceBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-bundle-shader-systems", String(published.waterBundleShaderSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-bundle-caustic-source-bytes", String(published.waterBundleCausticSourceBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-bundle-surface-source-bytes", String(published.waterBundleSurfaceSourceBytes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-passes", String(published.waterObjectTexturePasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-targets", String(published.waterObjectTextureTargets || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-pixels", String(published.waterObjectTexturePixels || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-width", String(published.waterObjectTextureWidth || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-height", String(published.waterObjectTextureHeight || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-pixel-budget", String(published.waterObjectTexturePixelBudget || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-expensive-pass-cadence", String(published.waterExpensivePassCadence || 1));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-quality-allocation-pending", String(published.waterQualityAllocationPending || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-quality-allocation-failures", String(published.waterQualityAllocationFailures || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-quality-allocation-retry-frame", String(published.waterQualityAllocationRetryFrame || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-mesh-passes", String(published.waterObjectTextureMeshPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-mesh-draw-calls", String(published.waterObjectTextureMeshDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-selena-draw-calls", String(published.waterObjectTextureSelenaDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-fallback-passes", String(published.waterObjectTextureFallbackPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-candidate-objects", String(published.waterObjectTextureCandidateObjects || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-selected-objects", String(published.waterObjectTextureSelectedObjects || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-fallback-missing-objects", String(published.waterObjectTextureFallbackMissingObjects || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-fallback-missing-resources", String(published.waterObjectTextureFallbackMissingResources || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-texture-candidate-profile", String(published.waterObjectTextureCandidateProfile || ""));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-shadow-passes", String(published.waterObjectShadowPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-shadow-texture-pixels", String(published.waterObjectShadowTexturePixels || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-shadow-mesh-passes", String(published.waterObjectShadowMeshPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-shadow-mesh-draw-calls", String(published.waterObjectShadowMeshDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-object-shadow-passes", String(published.waterAuthoredObjectShadowPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-object-shadow-fallbacks", String(published.waterAuthoredObjectShadowFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-object-mesh-shadow-passes", String(published.waterAuthoredObjectMeshShadowPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-object-mesh-shadow-fallbacks", String(published.waterAuthoredObjectMeshShadowFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-shadow-fallback-passes", String(published.waterObjectShadowFallbackPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-shadow-fallback-missing-objects", String(published.waterObjectShadowFallbackMissingObjects || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-shadow-fallback-missing-resources", String(published.waterObjectShadowFallbackMissingResources || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-reflection-systems", String(published.waterReflectionSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-refraction-systems", String(published.waterRefractionSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-object-optics-systems", String(published.waterObjectOpticsSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-pool-passes", String(published.waterPoolPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-pool-draw-calls", String(published.waterPoolDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-pool-draw-vertices", String(published.waterPoolDrawVertices || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-pool-tile-texture-loaded", String(published.waterPoolTileTextureLoaded || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-pool-tile-texture-fallbacks", String(published.waterPoolTileTextureFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-pool-tile-texture-pending", String(published.waterPoolTileTexturePending || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-pool-tile-texture-failed", String(published.waterPoolTileTextureFailed || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-pool-passes", String(published.waterAuthoredPoolPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-pool-vertex-passes", String(published.waterAuthoredPoolVertexPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-pool-fragment-passes", String(published.waterAuthoredPoolFragmentPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-pool-fallbacks", String(published.waterAuthoredPoolFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-pool-passes", String(published.waterSelenaPoolPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-pool-fallbacks", String(published.waterSelenaPoolFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-surface-passes", String(published.waterSelenaSurfacePasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-surface-fallbacks", String(published.waterSelenaSurfaceFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-caustic-passes", String(published.waterSelenaCausticPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-caustic-fallbacks", String(published.waterSelenaCausticFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-object-shadow-passes", String(published.waterSelenaObjectShadowPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-object-shadow-fallbacks", String(published.waterSelenaObjectShadowFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-object-mesh-shadow-passes", String(published.waterSelenaObjectMeshShadowPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-selena-object-mesh-shadow-fallbacks", String(published.waterSelenaObjectMeshShadowFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-draw-entries", String(published.waterDrawEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-draw-vertices", String(published.waterDrawVertices || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-surface-mesh-resolution", String(published.waterSurfaceMeshResolution || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-draw-calls", String(published.waterDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-surface-above-draw-calls", String(published.waterSurfaceAboveDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-surface-above-draw-vertices", String(published.waterSurfaceAboveDrawVertices || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-surface-below-draw-calls", String(published.waterSurfaceBelowDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-surface-below-draw-vertices", String(published.waterSurfaceBelowDrawVertices || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-surface-systems", String(published.waterAuthoredSurfaceSystems || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-surface-draw-calls", String(published.waterAuthoredSurfaceDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-surface-vertex-draw-calls", String(published.waterAuthoredSurfaceVertexDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-surface-pending-draw-calls", String(published.waterAuthoredSurfacePendingDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-surface-fallbacks", String(published.waterAuthoredSurfaceFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-authored-surface-fallback-reason", String(published.waterAuthoredSurfaceFallbackReason || ""));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-sky-cube-texture-loaded", String(published.waterSkyCubeTextureLoaded || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-sky-cube-texture-fallbacks", String(published.waterSkyCubeTextureFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-sky-cube-texture-pending", String(published.waterSkyCubeTexturePending || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-sky-cube-texture-failed", String(published.waterSkyCubeTextureFailed || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-mesh-objects", String(published.meshObjects || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-mesh-draw-calls", String(published.meshDrawCalls || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-mesh-view-culled", String(published.meshViewCulled || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-skinned-mesh-objects", String(published.skinnedMeshObjects || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-computed-morph-dispatches", String(published.computedMorphDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-computed-morph-vertices", String(published.computedMorphVertices || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-computed-morph-kernel", String(published.computedMorphKernel || ""));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-elio-skinning-dispatches", String(published.elioSkinningDispatches || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-elio-skinning-vertices", String(published.elioSkinningVertices || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-elio-skinning-kernel", String(published.elioSkinningKernel || ""));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-instanced-meshes", String(published.instancedMeshes || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-instanced-instances", String(published.instancedInstances || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-line-entries", String(published.lineEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-surface-entries", String(published.surfaceEntries || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-effects", String(published.postEffects || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-ssao-passes", String(published.postSSAOPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-dof-passes", String(published.postDOFPasses || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-custom-material-fallbacks", String(published.customMaterialFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-custom-wgsl-fallbacks", String(published.customWGSLFallbacks || 0));
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-custom-uniform-fallbacks", String(published.customUniformFallbacks || 0));
       if (published.customMaterialFallbacks > 0) {
-        mount.setAttribute("data-gosx-scene3d-webgpu-custom-material-fallback-reason", "custom-wgsl-hooks-unsupported");
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-custom-material-fallback-reason", "custom-wgsl-hooks-unsupported");
       } else {
-        mount.removeAttribute("data-gosx-scene3d-webgpu-custom-material-fallback-reason");
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-custom-material-fallback-reason", null);
       }
       if (published.lastError) {
-        mount.setAttribute("data-gosx-scene3d-webgpu-last-error", String(published.lastError));
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", String(published.lastError));
       } else {
-        mount.removeAttribute("data-gosx-scene3d-webgpu-last-error");
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", null);
       }
       // Render-truth surface: backend-neutral attribute names both renderers
       // write, so probes and deploy gates never branch on which backend won.
@@ -17785,10 +17813,11 @@
       // Cull survivor telemetry: written when __gosx_scene3d_cull_telemetry is
       // enabled; removed otherwise so the attribute is absent in production.
       if (lastCullSurvivors !== null) {
-        mount.setAttribute("data-gosx-scene3d-cull-survivors", lastCullSurvivors);
+        queueWebGPUAttribute("data-gosx-scene3d-cull-survivors", lastCullSurvivors);
       } else {
-        mount.removeAttribute("data-gosx-scene3d-cull-survivors");
+        queueWebGPUAttribute("data-gosx-scene3d-cull-survivors", null);
       }
+      mirrorWebGPUAttributes(mount);
     }
 
     function isWebGPUErrorScopeLifecycleMessage(message) {
@@ -17810,7 +17839,10 @@
       // Any error frame breaks a clean streak, however long — the mount
       // must not restore post-FX on a scene that is still failing.
       webGPUConsecutiveCleanFrames = 0;
-      var stats = Object.assign({}, lastWebGPUFrameStats || {}, { renderer: "webgpu", lastError: text, frameErrorStreak: webGPUConsecutiveFrameErrors });
+      var stats = frameStats;
+      stats.renderer = "webgpu";
+      stats.lastError = text;
+      stats.frameErrorStreak = webGPUConsecutiveFrameErrors;
       publishWebGPUFrameStats(stats);
       if (webGPUErrorReportCount >= 3) return;
       webGPUErrorReportCount += 1;
@@ -17851,10 +17883,9 @@
             webGPUConsecutiveFrameErrors = 0;
             webGPUConsecutiveCleanFrames += 1;
             if (lastWebGPUFrameStats && lastWebGPUFrameStats.lastError) {
-              var clean = Object.assign({}, lastWebGPUFrameStats);
-              delete clean.lastError;
-              delete clean.frameErrorStreak;
-              publishWebGPUFrameStats(clean);
+              frameStats.lastError = undefined;
+              frameStats.frameErrorStreak = undefined;
+              publishWebGPUFrameStats(frameStats);
             }
           }
         }).catch(function(error) {
@@ -18423,8 +18454,8 @@
           incomingWaterEntryCausticBytes = Math.max(incomingWaterEntryCausticBytes, iweEntry && typeof iweEntry.causticsWGSL === "string" ? iweEntry.causticsWGSL.trim().length : 0);
         }
         var incomingSourceKeys = incomingWaterShaderSourcesByID && typeof incomingWaterShaderSourcesByID === "object" ? Object.keys(incomingWaterShaderSourcesByID) : [];
-        canvas.parentNode.setAttribute("data-gosx-scene3d-webgpu-water-incoming-entry-caustic-source-bytes", String(incomingWaterEntryCausticBytes));
-        canvas.parentNode.setAttribute("data-gosx-scene3d-webgpu-water-incoming-shader-systems", String(incomingSourceKeys.length));
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-incoming-entry-caustic-source-bytes", String(incomingWaterEntryCausticBytes));
+        queueWebGPUAttribute("data-gosx-scene3d-webgpu-water-incoming-shader-systems", String(incomingSourceKeys.length));
       }
       if (bundle && Array.isArray(bundle.waterSystems)) {
         bundle.waterSystems = sceneHydrateWaterEntriesFromSources(bundle.waterSystems, incomingWaterShaderSourcesByID);
@@ -18762,7 +18793,7 @@
         skyState = skyResources.renderer.draw(mainPass, { environment: bundle.environment, view: scratchViewMatrix, camera: cam, aspect: scaledW / scaledH, linear: usePostProcessing, format: targetFormat, samples: sampleCount, specular: selectiveBloom });
       }
       sceneCloudWebGPUDraw(skyResources, device, mainPass, { environment: bundle.environment, meta: frameMeta, view: scratchViewMatrix, camera: cam, aspect: scaledW/scaledH, linear: usePostProcessing, format: targetFormat, samples: sampleCount, timeSeconds: frameTimeSeconds });
-      if (canvas.parentNode) canvas.parentNode.setAttribute("data-gosx-scene3d-sky", skyState);
+      if (canvas.parentNode) queueWebGPUAttribute("data-gosx-scene3d-sky", skyState);
 
 
       var drawList = hasPBRData
@@ -18772,20 +18803,20 @@
       var worldLineEntries = hasWorldLines && !thickLineRecord ? webGPUWorldLinePasses(bundle) : [];
       var pointStats = webGPUPlannedPointStats(bundle, computeParticleRecords);
       var customMaterialStats = webGPUCustomMaterialStats(materials);
-      var frameStats = {
-        renderer: "webgpu",
-        pointEntries: pointStats.pointEntries,
-        pointInstances: pointStats.pointInstances,
-        computeParticleEntries: pointStats.computeParticleEntries,
-        computeParticleInstances: pointStats.computeParticleInstances,
-        meshObjects: Array.isArray(bundle.meshObjects) ? bundle.meshObjects.length : 0,
-        retainedMeshObjects: sceneNumber(bundle.retainedMeshObjectCount, 0),
-        retainedMeshVertices: sceneNumber(bundle.retainedMeshVertexCount, 0),
-        worldBakedMeshObjects: sceneNumber(bundle.worldBakedMeshObjectCount, 0),
-        worldBakedMeshVertices: sceneNumber(bundle.worldBakedMeshVertexCount, 0),
-        bundleBuildCPUms: sceneNumber(bundle.bundleBuildCPUms, 0),
-        plannerCPUms: sceneNumber(bundle.plannerTelemetry && bundle.plannerTelemetry.lastPlannerCPUms, 0),
-        plannerFullVertexHashScans: sceneNumber(bundle.plannerTelemetry && bundle.plannerTelemetry.fullVertexHashScans, 0),
+      for (var statKey in frameStats) frameStats[statKey] = undefined;
+      frameStats.renderer = "webgpu";
+      frameStats.pointEntries = pointStats.pointEntries;
+      frameStats.pointInstances = pointStats.pointInstances;
+      frameStats.computeParticleEntries = pointStats.computeParticleEntries;
+      frameStats.computeParticleInstances = pointStats.computeParticleInstances;
+      frameStats.meshObjects = Array.isArray(bundle.meshObjects) ? bundle.meshObjects.length : 0;
+      frameStats.retainedMeshObjects = sceneNumber(bundle.retainedMeshObjectCount, 0);
+      frameStats.retainedMeshVertices = sceneNumber(bundle.retainedMeshVertexCount, 0);
+      frameStats.worldBakedMeshObjects = sceneNumber(bundle.worldBakedMeshObjectCount, 0);
+      frameStats.worldBakedMeshVertices = sceneNumber(bundle.worldBakedMeshVertexCount, 0);
+      frameStats.bundleBuildCPUms = sceneNumber(bundle.bundleBuildCPUms, 0);
+      frameStats.plannerCPUms = sceneNumber(bundle.plannerTelemetry && bundle.plannerTelemetry.lastPlannerCPUms, 0);
+      frameStats.plannerFullVertexHashScans = sceneNumber(bundle.plannerTelemetry && bundle.plannerTelemetry.fullVertexHashScans, 0);
         // meshDrawCalls is filled in below by drawPBRObjects (mutated in place
         // across the opaque/alpha/additive passes, mirroring how waterUpdateStats
         // accumulates across many draw functions within one frame) -- it counts
@@ -18795,38 +18826,38 @@
         // ever saw them. meshObjects (above) counts BOTH -- see the comment on
         // webGPUCountViewCulledMeshObjects for why that ambiguity is the bug this
         // pair of counters exists to close.
-        meshDrawCalls: 0,
-        meshViewCulled: webGPUCountViewCulledMeshObjects(bundle),
-        meshUndrawable: webGPUCountUndrawableMeshObjects(bundle),
-        skinnedMeshObjects: webGPUCountSkinnedMeshes(bundle),
-        computedMorphDispatches: computedMorphStats.computedMorphDispatches,
-        computedMorphVertices: computedMorphStats.computedMorphVertices,
-        computedMorphKernel: computedMorphStats.computedMorphKernel,
-        elioSkinningDispatches: elioSkinStats.elioSkinningDispatches,
-        elioSkinningVertices: elioSkinStats.elioSkinningVertices,
-        elioSkinningKernel: elioSkinStats.elioSkinningKernel,
-        instancedMeshes: Array.isArray(bundle.instancedMeshes) ? bundle.instancedMeshes.length : 0,
-        instancedInstances: webGPUPlannedInstanceCount(bundle.instancedMeshes),
-        cullDispatches: webGPUCullTotals.dispatches,
-        cullSkippedDispatches: webGPUCullTotals.skipped,
-        cullBuiltinSystems: webGPUCullTotals.builtin,
-        lineEntries: thickLineRecord ? 1 : worldLineEntries.length,
-        surfaceEntries: Array.isArray(bundle.surfaces) ? bundle.surfaces.length : 0,
-        waterSystems: waterUpdateStats.waterSystems,
-        waterCells: waterUpdateStats.waterCells,
-        waterVertices: waterUpdateStats.waterVertices,
-        waterComputeDispatches: waterUpdateStats.waterComputeDispatches,
-        waterSimulationTicks: waterUpdateStats.waterSimulationTicks,
-        waterSolverSubsteps: waterUpdateStats.waterSolverSubsteps,
-        waterDroppedTicks: waterUpdateStats.waterDroppedTicks,
-        waterDroppedTicksThisFrame: waterUpdateStats.waterDroppedTicksThisFrame,
-        waterSimulationCatchUpCap: waterUpdateStats.waterSimulationCatchUpCap,
-        waterSimulationTickSeq: waterUpdateStats.waterSimulationTickSeq,
-        waterSolverSubstepSeq: waterUpdateStats.waterSolverSubstepSeq,
-        waterNormalDispatches: waterUpdateStats.waterNormalDispatches,
-        waterNormalDispatchSeq: waterUpdateStats.waterNormalDispatchSeq,
-        waterSampledStateCopies: waterUpdateStats.waterSampledStateCopies,
-        waterSampledStateSyncSeq: waterUpdateStats.waterSampledStateSyncSeq,
+      frameStats.meshDrawCalls = 0;
+      frameStats.meshViewCulled = webGPUCountViewCulledMeshObjects(bundle);
+      frameStats.meshUndrawable = webGPUCountUndrawableMeshObjects(bundle);
+      frameStats.skinnedMeshObjects = webGPUCountSkinnedMeshes(bundle);
+      frameStats.computedMorphDispatches = computedMorphStats.computedMorphDispatches;
+      frameStats.computedMorphVertices = computedMorphStats.computedMorphVertices;
+      frameStats.computedMorphKernel = computedMorphStats.computedMorphKernel;
+      frameStats.elioSkinningDispatches = elioSkinStats.elioSkinningDispatches;
+      frameStats.elioSkinningVertices = elioSkinStats.elioSkinningVertices;
+      frameStats.elioSkinningKernel = elioSkinStats.elioSkinningKernel;
+      frameStats.instancedMeshes = Array.isArray(bundle.instancedMeshes) ? bundle.instancedMeshes.length : 0;
+      frameStats.instancedInstances = webGPUPlannedInstanceCount(bundle.instancedMeshes);
+      frameStats.cullDispatches = webGPUCullTotals.dispatches;
+      frameStats.cullSkippedDispatches = webGPUCullTotals.skipped;
+      frameStats.cullBuiltinSystems = webGPUCullTotals.builtin;
+      frameStats.lineEntries = thickLineRecord ? 1 : worldLineEntries.length;
+      frameStats.surfaceEntries = Array.isArray(bundle.surfaces) ? bundle.surfaces.length : 0;
+      frameStats.waterSystems = waterUpdateStats.waterSystems;
+      frameStats.waterCells = waterUpdateStats.waterCells;
+      frameStats.waterVertices = waterUpdateStats.waterVertices;
+      frameStats.waterComputeDispatches = waterUpdateStats.waterComputeDispatches;
+      frameStats.waterSimulationTicks = waterUpdateStats.waterSimulationTicks;
+      frameStats.waterSolverSubsteps = waterUpdateStats.waterSolverSubsteps;
+      frameStats.waterDroppedTicks = waterUpdateStats.waterDroppedTicks;
+      frameStats.waterDroppedTicksThisFrame = waterUpdateStats.waterDroppedTicksThisFrame;
+      frameStats.waterSimulationCatchUpCap = waterUpdateStats.waterSimulationCatchUpCap;
+      frameStats.waterSimulationTickSeq = waterUpdateStats.waterSimulationTickSeq;
+      frameStats.waterSolverSubstepSeq = waterUpdateStats.waterSolverSubstepSeq;
+      frameStats.waterNormalDispatches = waterUpdateStats.waterNormalDispatches;
+      frameStats.waterNormalDispatchSeq = waterUpdateStats.waterNormalDispatchSeq;
+      frameStats.waterSampledStateCopies = waterUpdateStats.waterSampledStateCopies;
+      frameStats.waterSampledStateSyncSeq = waterUpdateStats.waterSampledStateSyncSeq;
         // P4-M1 fix (water-parity-campaign): waterAtRestSystems/
         // waterRestSubstepsSkipped (M5 at-rest gating) and waterUniformUploads/
         // waterUniformUploadsSkipped (M6 uniform-upload dedup) were computed
@@ -18839,101 +18870,100 @@
         // reflected real state, regardless of whether the underlying gating
         // logic fired correctly. Wiring the four fields through here is the
         // fix; the gating logic itself was already correct.
-        waterAtRestSystems: waterUpdateStats.waterAtRestSystems,
-        waterRestSubstepsSkipped: waterUpdateStats.waterRestSubstepsSkipped,
-        waterUniformUploads: waterUpdateStats.waterUniformUploads,
-        waterUniformUploadsSkipped: waterUpdateStats.waterUniformUploadsSkipped,
-        waterQualityTier: waterUpdateStats.waterQualityTier,
-        waterQualityRevision: waterUpdateStats.waterQualityRevision,
-        waterSurfaceResolution: waterUpdateStats.waterSurfaceResolution,
-        waterActiveCausticsResolution: waterUpdateStats.waterActiveCausticsResolution,
-        waterActiveObjectShadowResolution: waterUpdateStats.waterActiveObjectShadowResolution,
-        waterActiveObjectTextureWidth: waterUpdateStats.waterActiveObjectTextureWidth,
-        waterActiveObjectTextureHeight: waterUpdateStats.waterActiveObjectTextureHeight,
-        waterActiveObjectTexturePixelBudget: waterUpdateStats.waterActiveObjectTexturePixelBudget,
-        waterQualityAllocationPending: waterUpdateStats.waterQualityAllocationPending,
-        waterQualityAllocationFailures: waterUpdateStats.waterQualityAllocationFailures,
-        waterQualityAllocationRetryFrame: waterUpdateStats.waterQualityAllocationRetryFrame,
-        waterQualityDPRCap: waterUpdateStats.waterQualityDPRCap,
-        waterExpensivePassCadence: waterUpdateStats.waterExpensivePassCadence,
-        waterAuthoredComputeSystems: waterUpdateStats.waterAuthoredComputeSystems,
-        waterAuthoredComputeDispatches: waterUpdateStats.waterAuthoredComputeDispatches,
-        waterAuthoredComputeFallbacks: waterUpdateStats.waterAuthoredComputeFallbacks,
-        waterSelenaComputeSystems: waterUpdateStats.waterSelenaComputeSystems,
-        waterSelenaComputeDispatches: waterUpdateStats.waterSelenaComputeDispatches,
-        waterSelenaComputeFallbacks: waterUpdateStats.waterSelenaComputeFallbacks,
-        waterDropDispatches: waterUpdateStats.waterDropDispatches,
-        waterDropDispatchTotal: waterUpdateStats.waterDropDispatchTotal,
-        waterLastDropEventID: waterUpdateStats.waterLastDropEventID,
-        waterObjectSystems: waterUpdateStats.waterObjectSystems,
-        waterObjectDispatches: waterUpdateStats.waterObjectDispatches,
-        waterObjectEventDispatches: waterUpdateStats.waterObjectEventDispatches,
-        waterLastObjectDisplacementEventID: waterUpdateStats.waterLastObjectDisplacementEventID,
-        waterObjectSpheres: waterUpdateStats.waterObjectSpheres,
-        waterRoundedSystems: waterUpdateStats.waterRoundedSystems,
-        waterCornerRadius: waterUpdateStats.waterCornerRadius,
-        waterLightDirX: waterUpdateStats.waterLightDirX,
-        waterLightDirY: waterUpdateStats.waterLightDirY,
-        waterLightDirZ: waterUpdateStats.waterLightDirZ,
-        waterCausticSystems: waterUpdateStats.waterCausticSystems,
-        waterCausticPasses: waterUpdateStats.waterCausticPasses,
-        waterCausticTexturePixels: waterUpdateStats.waterCausticTexturePixels,
-        waterAuthoredCausticSystems: waterUpdateStats.waterAuthoredCausticSystems,
-        waterAuthoredCausticPasses: waterUpdateStats.waterAuthoredCausticPasses,
-        waterAuthoredCausticFallbacks: waterUpdateStats.waterAuthoredCausticFallbacks,
-        waterAuthoredCausticFallbackReason: waterUpdateStats.waterAuthoredCausticFallbackReason,
-        waterAuthoredCausticSourceBytes: waterUpdateStats.waterAuthoredCausticSourceBytes,
-        waterEntryCausticSourceBytes: waterUpdateStats.waterEntryCausticSourceBytes,
-        waterResolvedCausticSourceBytes: waterUpdateStats.waterResolvedCausticSourceBytes,
-        waterAuthoredSurfaceSourceBytes: waterUpdateStats.waterAuthoredSurfaceSourceBytes,
-        waterEntrySurfaceSourceBytes: waterUpdateStats.waterEntrySurfaceSourceBytes,
-        waterResolvedSurfaceSourceBytes: waterUpdateStats.waterResolvedSurfaceSourceBytes,
-        waterManifestShaderSystems: waterUpdateStats.waterManifestShaderSystems,
-        waterManifestShaderFields: waterUpdateStats.waterManifestShaderFields,
-        waterManifestCausticSourceBytes: waterUpdateStats.waterManifestCausticSourceBytes,
-        waterManifestSurfaceSourceBytes: waterUpdateStats.waterManifestSurfaceSourceBytes,
-        waterBundleShaderSystems: waterUpdateStats.waterBundleShaderSystems,
-        waterBundleCausticSourceBytes: waterUpdateStats.waterBundleCausticSourceBytes,
-        waterBundleSurfaceSourceBytes: waterUpdateStats.waterBundleSurfaceSourceBytes,
-        waterObjectTexturePasses: waterUpdateStats.waterObjectTexturePasses,
-        waterObjectTextureTargets: waterUpdateStats.waterObjectTextureTargets,
-        waterObjectTexturePixels: waterUpdateStats.waterObjectTexturePixels,
-        waterObjectTextureWidth: waterUpdateStats.waterObjectTextureWidth,
-        waterObjectTextureHeight: waterUpdateStats.waterObjectTextureHeight,
-        waterObjectTexturePixelBudget: waterUpdateStats.waterObjectTexturePixelBudget,
-        waterObjectTextureMeshPasses: waterUpdateStats.waterObjectTextureMeshPasses,
-        waterObjectTextureMeshDrawCalls: waterUpdateStats.waterObjectTextureMeshDrawCalls,
-        waterObjectTextureSelenaDrawCalls: waterUpdateStats.waterObjectTextureSelenaDrawCalls,
-        waterObjectTextureFallbackPasses: waterUpdateStats.waterObjectTextureFallbackPasses,
-        waterObjectTextureCandidateObjects: waterUpdateStats.waterObjectTextureCandidateObjects,
-        waterObjectTextureSelectedObjects: waterUpdateStats.waterObjectTextureSelectedObjects,
-        waterObjectTextureFallbackMissingObjects: waterUpdateStats.waterObjectTextureFallbackMissingObjects,
-        waterObjectTextureFallbackMissingResources: waterUpdateStats.waterObjectTextureFallbackMissingResources,
-        waterObjectTextureCandidateProfile: waterUpdateStats.waterObjectTextureCandidateProfile,
-        waterObjectShadowPasses: waterUpdateStats.waterObjectShadowPasses,
-        waterObjectShadowTexturePixels: waterUpdateStats.waterObjectShadowTexturePixels,
-        waterObjectShadowMeshPasses: waterUpdateStats.waterObjectShadowMeshPasses,
-        waterObjectShadowMeshDrawCalls: waterUpdateStats.waterObjectShadowMeshDrawCalls,
-        waterAuthoredObjectShadowPasses: waterUpdateStats.waterAuthoredObjectShadowPasses,
-        waterAuthoredObjectShadowFallbacks: waterUpdateStats.waterAuthoredObjectShadowFallbacks,
-        waterAuthoredObjectMeshShadowPasses: waterUpdateStats.waterAuthoredObjectMeshShadowPasses,
-        waterAuthoredObjectMeshShadowFallbacks: waterUpdateStats.waterAuthoredObjectMeshShadowFallbacks,
-        waterObjectShadowFallbackPasses: waterUpdateStats.waterObjectShadowFallbackPasses,
-        waterObjectShadowFallbackMissingObjects: waterUpdateStats.waterObjectShadowFallbackMissingObjects,
-        waterObjectShadowFallbackMissingResources: waterUpdateStats.waterObjectShadowFallbackMissingResources,
-        waterReflectionSystems: waterUpdateStats.waterReflectionSystems,
-        waterRefractionSystems: waterUpdateStats.waterRefractionSystems,
-        waterObjectOpticsSystems: waterUpdateStats.waterObjectOpticsSystems,
-        waterSelenaCausticPasses: waterUpdateStats.waterSelenaCausticPasses,
-        waterSelenaCausticFallbacks: waterUpdateStats.waterSelenaCausticFallbacks,
-        waterSelenaObjectShadowPasses: waterUpdateStats.waterSelenaObjectShadowPasses,
-        waterSelenaObjectShadowFallbacks: waterUpdateStats.waterSelenaObjectShadowFallbacks,
-        waterSelenaObjectMeshShadowPasses: waterUpdateStats.waterSelenaObjectMeshShadowPasses,
-        waterSelenaObjectMeshShadowFallbacks: waterUpdateStats.waterSelenaObjectMeshShadowFallbacks,
-        customMaterialFallbacks: customMaterialStats.customMaterialFallbacks,
-        customWGSLFallbacks: customMaterialStats.customWGSLFallbacks,
-        customUniformFallbacks: customMaterialStats.customUniformFallbacks,
-      };
+      frameStats.waterAtRestSystems = waterUpdateStats.waterAtRestSystems;
+      frameStats.waterRestSubstepsSkipped = waterUpdateStats.waterRestSubstepsSkipped;
+      frameStats.waterUniformUploads = waterUpdateStats.waterUniformUploads;
+      frameStats.waterUniformUploadsSkipped = waterUpdateStats.waterUniformUploadsSkipped;
+      frameStats.waterQualityTier = waterUpdateStats.waterQualityTier;
+      frameStats.waterQualityRevision = waterUpdateStats.waterQualityRevision;
+      frameStats.waterSurfaceResolution = waterUpdateStats.waterSurfaceResolution;
+      frameStats.waterActiveCausticsResolution = waterUpdateStats.waterActiveCausticsResolution;
+      frameStats.waterActiveObjectShadowResolution = waterUpdateStats.waterActiveObjectShadowResolution;
+      frameStats.waterActiveObjectTextureWidth = waterUpdateStats.waterActiveObjectTextureWidth;
+      frameStats.waterActiveObjectTextureHeight = waterUpdateStats.waterActiveObjectTextureHeight;
+      frameStats.waterActiveObjectTexturePixelBudget = waterUpdateStats.waterActiveObjectTexturePixelBudget;
+      frameStats.waterQualityAllocationPending = waterUpdateStats.waterQualityAllocationPending;
+      frameStats.waterQualityAllocationFailures = waterUpdateStats.waterQualityAllocationFailures;
+      frameStats.waterQualityAllocationRetryFrame = waterUpdateStats.waterQualityAllocationRetryFrame;
+      frameStats.waterQualityDPRCap = waterUpdateStats.waterQualityDPRCap;
+      frameStats.waterExpensivePassCadence = waterUpdateStats.waterExpensivePassCadence;
+      frameStats.waterAuthoredComputeSystems = waterUpdateStats.waterAuthoredComputeSystems;
+      frameStats.waterAuthoredComputeDispatches = waterUpdateStats.waterAuthoredComputeDispatches;
+      frameStats.waterAuthoredComputeFallbacks = waterUpdateStats.waterAuthoredComputeFallbacks;
+      frameStats.waterSelenaComputeSystems = waterUpdateStats.waterSelenaComputeSystems;
+      frameStats.waterSelenaComputeDispatches = waterUpdateStats.waterSelenaComputeDispatches;
+      frameStats.waterSelenaComputeFallbacks = waterUpdateStats.waterSelenaComputeFallbacks;
+      frameStats.waterDropDispatches = waterUpdateStats.waterDropDispatches;
+      frameStats.waterDropDispatchTotal = waterUpdateStats.waterDropDispatchTotal;
+      frameStats.waterLastDropEventID = waterUpdateStats.waterLastDropEventID;
+      frameStats.waterObjectSystems = waterUpdateStats.waterObjectSystems;
+      frameStats.waterObjectDispatches = waterUpdateStats.waterObjectDispatches;
+      frameStats.waterObjectEventDispatches = waterUpdateStats.waterObjectEventDispatches;
+      frameStats.waterLastObjectDisplacementEventID = waterUpdateStats.waterLastObjectDisplacementEventID;
+      frameStats.waterObjectSpheres = waterUpdateStats.waterObjectSpheres;
+      frameStats.waterRoundedSystems = waterUpdateStats.waterRoundedSystems;
+      frameStats.waterCornerRadius = waterUpdateStats.waterCornerRadius;
+      frameStats.waterLightDirX = waterUpdateStats.waterLightDirX;
+      frameStats.waterLightDirY = waterUpdateStats.waterLightDirY;
+      frameStats.waterLightDirZ = waterUpdateStats.waterLightDirZ;
+      frameStats.waterCausticSystems = waterUpdateStats.waterCausticSystems;
+      frameStats.waterCausticPasses = waterUpdateStats.waterCausticPasses;
+      frameStats.waterCausticTexturePixels = waterUpdateStats.waterCausticTexturePixels;
+      frameStats.waterAuthoredCausticSystems = waterUpdateStats.waterAuthoredCausticSystems;
+      frameStats.waterAuthoredCausticPasses = waterUpdateStats.waterAuthoredCausticPasses;
+      frameStats.waterAuthoredCausticFallbacks = waterUpdateStats.waterAuthoredCausticFallbacks;
+      frameStats.waterAuthoredCausticFallbackReason = waterUpdateStats.waterAuthoredCausticFallbackReason;
+      frameStats.waterAuthoredCausticSourceBytes = waterUpdateStats.waterAuthoredCausticSourceBytes;
+      frameStats.waterEntryCausticSourceBytes = waterUpdateStats.waterEntryCausticSourceBytes;
+      frameStats.waterResolvedCausticSourceBytes = waterUpdateStats.waterResolvedCausticSourceBytes;
+      frameStats.waterAuthoredSurfaceSourceBytes = waterUpdateStats.waterAuthoredSurfaceSourceBytes;
+      frameStats.waterEntrySurfaceSourceBytes = waterUpdateStats.waterEntrySurfaceSourceBytes;
+      frameStats.waterResolvedSurfaceSourceBytes = waterUpdateStats.waterResolvedSurfaceSourceBytes;
+      frameStats.waterManifestShaderSystems = waterUpdateStats.waterManifestShaderSystems;
+      frameStats.waterManifestShaderFields = waterUpdateStats.waterManifestShaderFields;
+      frameStats.waterManifestCausticSourceBytes = waterUpdateStats.waterManifestCausticSourceBytes;
+      frameStats.waterManifestSurfaceSourceBytes = waterUpdateStats.waterManifestSurfaceSourceBytes;
+      frameStats.waterBundleShaderSystems = waterUpdateStats.waterBundleShaderSystems;
+      frameStats.waterBundleCausticSourceBytes = waterUpdateStats.waterBundleCausticSourceBytes;
+      frameStats.waterBundleSurfaceSourceBytes = waterUpdateStats.waterBundleSurfaceSourceBytes;
+      frameStats.waterObjectTexturePasses = waterUpdateStats.waterObjectTexturePasses;
+      frameStats.waterObjectTextureTargets = waterUpdateStats.waterObjectTextureTargets;
+      frameStats.waterObjectTexturePixels = waterUpdateStats.waterObjectTexturePixels;
+      frameStats.waterObjectTextureWidth = waterUpdateStats.waterObjectTextureWidth;
+      frameStats.waterObjectTextureHeight = waterUpdateStats.waterObjectTextureHeight;
+      frameStats.waterObjectTexturePixelBudget = waterUpdateStats.waterObjectTexturePixelBudget;
+      frameStats.waterObjectTextureMeshPasses = waterUpdateStats.waterObjectTextureMeshPasses;
+      frameStats.waterObjectTextureMeshDrawCalls = waterUpdateStats.waterObjectTextureMeshDrawCalls;
+      frameStats.waterObjectTextureSelenaDrawCalls = waterUpdateStats.waterObjectTextureSelenaDrawCalls;
+      frameStats.waterObjectTextureFallbackPasses = waterUpdateStats.waterObjectTextureFallbackPasses;
+      frameStats.waterObjectTextureCandidateObjects = waterUpdateStats.waterObjectTextureCandidateObjects;
+      frameStats.waterObjectTextureSelectedObjects = waterUpdateStats.waterObjectTextureSelectedObjects;
+      frameStats.waterObjectTextureFallbackMissingObjects = waterUpdateStats.waterObjectTextureFallbackMissingObjects;
+      frameStats.waterObjectTextureFallbackMissingResources = waterUpdateStats.waterObjectTextureFallbackMissingResources;
+      frameStats.waterObjectTextureCandidateProfile = waterUpdateStats.waterObjectTextureCandidateProfile;
+      frameStats.waterObjectShadowPasses = waterUpdateStats.waterObjectShadowPasses;
+      frameStats.waterObjectShadowTexturePixels = waterUpdateStats.waterObjectShadowTexturePixels;
+      frameStats.waterObjectShadowMeshPasses = waterUpdateStats.waterObjectShadowMeshPasses;
+      frameStats.waterObjectShadowMeshDrawCalls = waterUpdateStats.waterObjectShadowMeshDrawCalls;
+      frameStats.waterAuthoredObjectShadowPasses = waterUpdateStats.waterAuthoredObjectShadowPasses;
+      frameStats.waterAuthoredObjectShadowFallbacks = waterUpdateStats.waterAuthoredObjectShadowFallbacks;
+      frameStats.waterAuthoredObjectMeshShadowPasses = waterUpdateStats.waterAuthoredObjectMeshShadowPasses;
+      frameStats.waterAuthoredObjectMeshShadowFallbacks = waterUpdateStats.waterAuthoredObjectMeshShadowFallbacks;
+      frameStats.waterObjectShadowFallbackPasses = waterUpdateStats.waterObjectShadowFallbackPasses;
+      frameStats.waterObjectShadowFallbackMissingObjects = waterUpdateStats.waterObjectShadowFallbackMissingObjects;
+      frameStats.waterObjectShadowFallbackMissingResources = waterUpdateStats.waterObjectShadowFallbackMissingResources;
+      frameStats.waterReflectionSystems = waterUpdateStats.waterReflectionSystems;
+      frameStats.waterRefractionSystems = waterUpdateStats.waterRefractionSystems;
+      frameStats.waterObjectOpticsSystems = waterUpdateStats.waterObjectOpticsSystems;
+      frameStats.waterSelenaCausticPasses = waterUpdateStats.waterSelenaCausticPasses;
+      frameStats.waterSelenaCausticFallbacks = waterUpdateStats.waterSelenaCausticFallbacks;
+      frameStats.waterSelenaObjectShadowPasses = waterUpdateStats.waterSelenaObjectShadowPasses;
+      frameStats.waterSelenaObjectShadowFallbacks = waterUpdateStats.waterSelenaObjectShadowFallbacks;
+      frameStats.waterSelenaObjectMeshShadowPasses = waterUpdateStats.waterSelenaObjectMeshShadowPasses;
+      frameStats.waterSelenaObjectMeshShadowFallbacks = waterUpdateStats.waterSelenaObjectMeshShadowFallbacks;
+      frameStats.customMaterialFallbacks = customMaterialStats.customMaterialFallbacks;
+      frameStats.customWGSLFallbacks = customMaterialStats.customWGSLFallbacks;
+      frameStats.customUniformFallbacks = customMaterialStats.customUniformFallbacks;
 
       // --- Render bundle decision ---
       //
@@ -18959,11 +18989,11 @@
           return webGPUObjectBlocksBundle(obj, materials);
         }),
         hasBundleableDraws: bundleableDraws,
-      /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ });
-      /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ frameStats.bundleState = "direct";
-      /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ frameStats.bundleReason = bundleReason;
-      /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ frameStats.bundleEncodes = 0;
-      /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ frameStats.bundleReplays = 0;
+      });
+      frameStats.bundleState = "direct";
+      frameStats.bundleReason = bundleReason;
+      frameStats.bundleEncodes = 0;
+      frameStats.bundleReplays = 0;
       frameStats.bundleDraws = 0;
 
       if (bundleReason === "") {
@@ -18981,11 +19011,11 @@
           encodeBundleableSceneDraws(recorder, bundleContext);
         });
         if (!verdict.eligible) {
-          /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ bundleReason = verdict.reason;
+          bundleReason = verdict.reason;
           frameStats.bundleReason = bundleReason;
         } else if (verdict.reusable) {
           mainPass.executeBundles([webGPUBundleCache.bundle()]);
-          /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ webGPUBundleCache.markReplayed();
+          webGPUBundleCache.markReplayed();
           frameStats.bundleState = "replayed";
         } else {
           var bundleEncoder = device.createRenderBundleEncoder({
@@ -18997,22 +19027,21 @@
           encodeBundleableSceneDraws(bundleEncoder, bundleContext);
           var finishedBundle = bundleEncoder.finish({ label: "gosx-scene-bundle" });
           webGPUBundleCache.adopt(bundleLayoutKey, finishedBundle);
-          /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ mainPass.executeBundles([finishedBundle]);
+          mainPass.executeBundles([finishedBundle]);
           frameStats.bundleState = "encoded";
-        /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ }
+        }
         if (frameStats.bundleState !== "direct") {
-          /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ var bundleStats = webGPUBundleCache.stats();
-          /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ frameStats.bundleEncodes = bundleStats.encodes;
-          /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ frameStats.bundleReplays = bundleStats.replays;
+          var bundleStats = webGPUBundleCache.stats();
+          frameStats.bundleEncodes = bundleStats.encodes;
+          frameStats.bundleReplays = bundleStats.replays;
           frameStats.bundleDraws = bundleStats.draws;
         }
       }
 
       // Draw PBR meshes, WebGPU-native instanced meshes, world lines, and textured surfaces.
-      var waterDrawnBeforeAlpha = false, oceanOpts = { device: device, environment: bundle.environment, camera: cam, meta: frameMeta, view: scratchViewMatrix, aspect: scaledW/scaledH, viewProj: scratchSelenaViewProjection, timeSeconds: frameTimeSeconds, linear: usePostProcessing, format: targetFormat, samples: sampleCount, textureCache: textureCache, frameBindGroup: frameBindGroup, mount: canvas.parentNode, drawn: false, reflection: {} };
+      var waterDrawnBeforeAlpha = false, oceanOpts = { publishAttribute: queueWebGPUAttribute, device: device, environment: bundle.environment, camera: cam, meta: frameMeta, view: scratchViewMatrix, aspect: scaledW/scaledH, viewProj: scratchSelenaViewProjection, timeSeconds: frameTimeSeconds, linear: usePostProcessing, format: targetFormat, samples: sampleCount, textureCache: textureCache, frameBindGroup: frameBindGroup, mount: canvas.parentNode, drawn: false, reflection: {} };
       // @ts-ignore TS7005 -- plain-JS reflection callback captures optional GPU target handles; bridge types govern its interface.
       const prepareOceanReflection = () => { if (pipelineGuard.disabled.has("reflections")) return; const r = sceneReflectWebGPU(oceanResources, device, { environment: bundle.environment, meta: frameMeta, pass: mainPass, encoder, descriptor: mainPassDescriptor, width: scaledW, height: scaledH, view: scratchViewMatrix, proj: scratchProjMatrix, camera: cam, linear: usePostProcessing, format: targetFormat, samples: sampleCount, colorView: mainResolveView || mainColorView, depthView: mainDepthTargetView, frameData: _frameUniformF, frameGroup: (buffer = false) => _createFrameBindGroupUncached(shadowView0, shadowView1, iblResources.active && iblResources.irradiance && iblResources.irradiance.view, iblResources.active && iblResources.radiance && iblResources.radiance.view, iblResources.active && iblResources.brdfLUT && iblResources.brdfLUT.view, envMapResources.active && envMapResources.record && envMapResources.record.view, buffer), draw: (pass = mainPass,group = frameBindGroup) => { pass.setPipeline(wgpuRequirePipeline(getPBRPipeline("opaque", true, "cw"))); pass.setBindGroup(0,group); drawPBRObjects(pass, sceneReflectOpaqueList(drawList.opaque, materials), bundle, materials, group, "opaque", true, pbrSceneBuffers, null); } }); mainPass = r.pass; oceanOpts.reflection = r.record; };
-      // @ts-expect-error TS2339 -- bundleState is added to the frame record during render.
       if (frameStats.bundleState === "direct" && (hasPBRData || hasInstancedData || hasWorldLines || hasSurfaces)) {
         // Opaque pass.
         /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ if (drawList.opaque.length > 0) {
@@ -19154,7 +19183,7 @@
       endGPUPassTimingFrame(encoder);
       gpuDriven.finishEncoding(encoder);
       device.queue.submit([encoder.finish()]);
-      Object.assign(frameStats, gpuDriven.endFrame(canvas && canvas.parentNode));
+      Object.assign(frameStats, gpuDriven.endFrame(webGPUAttributeSink));
       pollGPUTimingReadback();
       // Pick readback starts after submit and does not wait in this frame.
       if (scenePicker) scenePicker.finishReadback();
@@ -19541,6 +19570,7 @@
       getPerformanceTimingStatus: getPerformanceTimingStatus,
       getFrameTiming: getFrameTiming,
       diagnostics: diagnostics,
+      getFrameProgress: function() { return webGPUFrameProof; },
       render: pipelineGuard.wrapFrame(render, endWebGPUErrorScope),
       getFailureReason: function() { return pipelineGuard.coreError ? "webgpu-pipeline-failed" : ""; },
       dispose: dispose,
