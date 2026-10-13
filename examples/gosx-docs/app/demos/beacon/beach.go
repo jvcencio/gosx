@@ -145,6 +145,7 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 		PreferWebGPU: scene.Bool(true), CanvasAlpha: scene.Bool(false), Stats: scene.Bool(false),
 		UnsupportedMessage: "Interactive 3D is unavailable in this browser.",
 		MaxFPS:             120, MaxDevicePixelRatio: 2, MaxPixels: scene.PostFXMaxPixels1440p,
+		FramePacing:        "vsync-divisor",
 		RenderBeforeModels: scene.Bool(true),
 		AdaptiveQuality:    scene.Bool(true), AdaptiveTargetFrameMS: 16.7, AdaptiveWarmupFrames: 24, AdaptivePostFX: scene.Bool(true),
 		Camera: scene.PerspectiveCamera{Position: view.Position, Rotation: blackglassBeachLookRotation(view.Position, view.Target), FOV: 50, PortraitFOV: 70, Near: 0.1, Far: 900},
@@ -154,9 +155,9 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 			FogColor: horizon, FogDensity: 0.0008,
 			Haze: &scene.Haze{Density: 0.0011, HeightFalloff: 0.07, SunScatter: 0.32},
 			Ocean: &scene.Ocean{
-				WindDirection: -28, WaveHeight: 1.15, WaveLength: 30, Choppiness: 0.42, Speed: 0.85,
+				WindDirection: -28, WaveHeight: 0.95, WaveLength: 38, Choppiness: 0.32, Speed: 0.85,
 				DeepColor: "#03121b", ShallowColor: "#123b43", ScatterColor: "#16695e", FoamColor: "#dde9e5",
-				Clarity: 2.8, Roughness: 0.095, Foam: 0.55, Surf: 0.65, Extent: 4000,
+				Clarity: 2.8, Roughness: 0.13, Foam: 0.48, Surf: 0.65, Extent: 4000,
 				Reflections: &scene.OceanReflections{Mode: "ssr+planar", Resolution: 0.5, Strength: 1},
 				Bathymetry: &scene.OceanBathymetry{
 					Src:  blackglassOffshoreHeightSrc,

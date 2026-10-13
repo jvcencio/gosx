@@ -63,7 +63,9 @@ const budgets = [
   // Free look, bounded foam patches and change-only helm updates measure 27,370 raw,
   // 10,642 gzip and 9,762 Brotli bytes. Only this optional chunk's exhausted
   // targets move to the minimum required under the unchanged allowances.
-  { file: "bootstrap-feature-scene3d-vessel.js", raw: 25_322, gzip: 9_618, brotli: 8_738 },
+  // Feathered age cells and retained low-detail wake history measure 27,512 raw,
+  // 10,713 gzip and 9,814 Brotli bytes; only the exhausted targets move.
+  { file: "bootstrap-feature-scene3d-vessel.js", raw: 25_464, gzip: 9_689, brotli: 8_790 },
   // bootstrap.js raw bumped 806_000 -> 812_000 for 28-video-sync-fallback.ts
   // (parity-locked JS drift engine on the brain-absent video path). gzip/brotli
   // headroom unchanged.

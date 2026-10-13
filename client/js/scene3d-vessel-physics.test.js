@@ -185,7 +185,7 @@ test('wake is bounded, follows wave height, uses alpha without depth writes and 
   const [a,b,c]=Array.from(indices.slice(i,i+3),n=>n*3);
   assert.ok((p[b+2]-p[a+2])*(p[c]-p[a])-(p[b]-p[a])*(p[c+2]-p[a+2])>0,'bow foam faces upward on both sides');
  }
- wake.update(s,8,wave,.4);assert.ok(wake.trail.length<10);wake.reset();assert.equal(wake.trail.length,0);assert.equal(object.visible,false);
+ wake.update(s,8,wave,.4);assert.ok(wake.trail.length<20);wake.reset();assert.equal(wake.trail.length,0);assert.equal(object.visible,false);
  wake.update(s,0,wave,1);assert.equal(wake.trail.length,1);wake.dispose();assert.equal(scene.objects.size,0);
 });
 
@@ -223,7 +223,7 @@ test('wake ages in world space through turns; deterministic spray is bounded and
  const create=()=>{const scene={objects:new Map()},wake=context.window.__gosx_scene3d_vessel_wake.create(scene,{addObject:(s,id,p)=>s.objects.set(id,p)},{nodeId:'ship'});return {scene,wake};};
  const a=create(),b=create(),s=ship();s.mode='sailing';s.speed=6;s.bowImpact=2;
  for(let i=0;i<40;i++) {s.z=-i*.4;s.heading=i*.025;for(const effect of [a,b])effect.wake.update(s,i*.1,flat,.4,{rotationY:.5});}
- assert.ok(a.wake.trail.length<10);assert.ok(a.wake.spray.particles.length<=10);assert.ok(a.wake.spray.particles.length>0);
+ assert.ok(a.wake.trail.length<20);assert.ok(a.wake.spray.particles.length<=10);assert.ok(a.wake.spray.particles.length>0);
  assert.deepEqual(Array.from(a.wake.spray.vertices.positions),Array.from(b.wake.spray.vertices.positions));
  const point={...a.wake.trail[4]};s.heading=2;s.speed=0;s.bowImpact=0;
  a.wake.update(s,4,flat,1);near(a.wake.trail[4].x,point.x);near(a.wake.trail[4].z,point.z);
@@ -265,6 +265,28 @@ test('foam remains attached between stamps and fans along the traveled path when
  assert.ok(right.x-left.x>center(8).x-center(0).x+3,'the older wake spreads away from the stern');
  const stamp={...wake.trail[4]};s.speed=0;s.heading=-2;queries=0;wake.update(s,8.5,water,1);
  assert.equal(wake.trail[4].x,stamp.x);assert.equal(wake.trail[4].z,stamp.z);assert.ok(queries<=60,'stopped bow foam needs no water queries');
+ wake.dispose();
+});
+
+test('wake detail changes retain the full track while drawing fewer feathered age cells',()=>{
+ const scene={objects:new Map()},s=ship(),wake=context.window.__gosx_scene3d_vessel_wake.create(scene,{addObject:(s,id,p)=>s.objects.set(id,p)},{nodeId:'ship'});
+ s.mode='sailing';s.speed=5;let queries=0;
+ const water=()=>{queries++;return {y:0,normal:{x:0,y:1,z:0}};};
+ // A reduced-detail frame with just one stamp must also remain valid.
+ wake.update(s,0,water,.4);
+ for(let i=1;i<=25;i++){s.z=-i*1.55;wake.update(s,i*.31,water,1);}
+ const snapshot=()=>Array.from(wake.trail,p=>({...p})),retained=snapshot();
+ queries=0;wake.update(s,7.75,water,.4);
+ assert.deepEqual(snapshot(),retained,'reducing work cannot truncate the visible wake history');
+ assert.ok(7.75-wake.trail.at(-1).time>5,'the retained track spans the older dissolving tail');
+ assert.ok(queries<=50,'reduced detail keeps its ocean-query budget');
+ const uv=wake.vertices.uvs;
+ for(let row=0;row<10;row++)for(let patch=0;patch<3;patch++){
+  const a=(row*12+patch*4)*2;
+  assert.ok((uv[a]===0&&uv[a+2]===1)||(uv[a]===1&&uv[a+2]===0),'each patch samples both transparent side edges');
+  near(uv[a+5]-uv[a+1],1/8,1e-6,'one complete feathered age cell per patch');
+ }
+ queries=0;wake.update(s,7.75,water,1);assert.ok(queries<=80);assert.deepEqual(snapshot(),retained);
  wake.dispose();
 });
 

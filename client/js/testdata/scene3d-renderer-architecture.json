@@ -748,7 +748,7 @@
     "../runtime/scene3d/vessel-physics.ts": 175,
     "../runtime/scene3d/vessel-input.ts": 131,
     "../runtime/scene3d/vessel-model.ts": 103,
-    "../runtime/scene3d/vessel-wake.ts": 124,
+    "../runtime/scene3d/vessel-wake.ts": 127,
     "../runtime/scene3d/mount-vessel.ts": 106,
     "../runtime/scene3d/webgpu-transmission.ts": 111,
     "../runtime/scene3d/webgl-transmission.ts": 98,
@@ -857,12 +857,12 @@
     {
       "source": "../runtime/scene3d/vessel-wake.ts",
       "name": "anonymous@2:2",
-      "lines": 123,
-      "cyclomatic": 64,
-      "cognitive": 101,
+      "lines": 126,
+      "cyclomatic": 65,
+      "cognitive": 102,
       "maxNesting": 4,
       "parameters": 0,
-      "reason": "Measured cumulative bounded foam and impact spray helpers. Sixty small foam patches follow local water tangents and fan along a continuous world-space track; a separate helper draws curved bow strips. The effect uses at most 260 vertices, two effect objects and 80 high-detail / 50 reduced-detail water queries. Inactive patches collapse to zero area, avoiding duplicate transparency draws. Tests cover water following, turns, lifetime, capacity and disposal. Effects explicitly use standard alpha materials and uint32 indices so foam coverage reaches the textured mesh pipeline."
+      "reason": "Measured cumulative bounded foam and impact spray helpers. Sixty small foam patches follow local water tangents and fan along a continuous world-space track; a separate helper draws curved bow strips. The effect uses at most 260 vertices, two effect objects and 80 high-detail / 50 reduced-detail water queries. Inactive patches collapse to zero area, avoiding duplicate transparency draws. Tests cover water following, turns, lifetime, capacity and disposal. Eight feathered texture cells dissolve the bounded patches; reduced detail samples alternating rows while retaining the full six-second track. Effects explicitly use standard alpha materials and uint32 indices so foam coverage reaches the textured mesh pipeline."
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
