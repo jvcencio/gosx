@@ -3,6 +3,7 @@ package scene
 import (
 	"reflect"
 	"slices"
+	"unicode/utf8"
 )
 
 // Only built-in scalars have the direct JSON semantics this rejection models.
@@ -55,7 +56,9 @@ func objectRecordJSONDifferent(a, b *ObjectIR) bool {
 				return true
 			}
 		case reflect.String:
-			if x.String() != y.String() {
+			// JSON replaces malformed UTF-8. Different invalid byte strings
+			// can therefore encode identically and need the reference fallback.
+			if x.String() != y.String() && utf8.ValidString(x.String()) && utf8.ValidString(y.String()) {
 				return true
 			}
 		case reflect.Int, reflect.Int64:

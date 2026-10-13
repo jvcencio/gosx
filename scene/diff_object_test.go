@@ -60,6 +60,15 @@ func TestMeshRejectionKeepsJSONSemantics(t *testing.T) {
 	}
 }
 
+func TestObjectStringRejectionKeepsUTF8ReplacementSemantics(t *testing.T) {
+	for _, pair := range [][2]string{{"bad\xff", "bad\xfe"}, {"bad\xff", "bad\ufffd"}, {"bad\xff", "different"}} {
+		a, b := ObjectIR{ID: "mesh", Label: pair[0]}, ObjectIR{ID: "mesh", Label: pair[1]}
+		if got, want := sceneRecordPointerJSONEqual(&a, &b), referenceMarshalEqual(a, b); got != want {
+			t.Fatalf("labels %q and %q: equal=%v, JSON equal=%v", pair[0], pair[1], got, want)
+		}
+	}
+}
+
 func BenchmarkDiffSceneInteractionMeshEdits(b *testing.B) {
 	previous, next := SceneIR{}, SceneIR{}
 	for i := 0; i < 28; i++ {
