@@ -1851,7 +1851,8 @@ test("Scene3D WebGPU quality allocation retries with bounded backoff and publish
   assert.match(applyQuality[0], /system\.qualityAllocationPending && webGPUFrameSeq < system\.qualityAllocationNextFrame/);
   assert.match(applyQuality[0], /system\.qualityAllocationFailures \+= 1;[\s\S]*system\.qualityAllocationConsecutiveFailures \+= 1;/);
   assert.match(applyQuality[0], /system\.qualityAllocationNextFrame = webGPUFrameSeq \+ Math\.min\(60,\s*Math\.pow\(2, Math\.min\(6, system\.qualityAllocationConsecutiveFailures - 1\)\)\)/);
-  assert.match(webgpu, /webGPUFrameProof\.waterQualityAllocationPending = published\.waterQualityAllocationPending \|\| 0;[\s\S]*webGPUFrameProof\.waterQualityAllocationFailures = published\.waterQualityAllocationFailures \|\| 0;[\s\S]*webGPUFrameProof\.waterQualityAllocationRetryFrame = published\.waterQualityAllocationRetryFrame \|\| 0;/);
+  assert.match(webgpu, /proof\.waterQualityAllocationPending = stats\.waterQualityAllocationPending \|\| 0;[\s\S]*proof\.waterQualityAllocationFailures = stats\.waterQualityAllocationFailures \|\| 0;[\s\S]*proof\.waterQualityAllocationRetryFrame = stats\.waterQualityAllocationRetryFrame \|\| 0;/);
+  assert.match(webgpu, /wgpuUpdateFrameProof\(published, webGPUFrameProof\)/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-quality-allocation-pending/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-quality-allocation-failures/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-quality-allocation-retry-frame/);
