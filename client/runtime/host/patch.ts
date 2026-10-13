@@ -9,6 +9,7 @@
 //   2 = RemoveAttr     7 = Reorder
 //   3 = CreateElement  8 = SetValue
 //   4 = CreateText     9 = SetHTML
+//  10 = SetDispatch   11 = RemoveDispatch (framework event bindings only)
 
 (function () {
   "use strict";
@@ -28,6 +29,8 @@
   var PATCH_REORDER         = 7;
   var PATCH_SET_VALUE       = 8;
   var PATCH_SET_HTML        = 9;
+  var PATCH_SET_DISPATCH    = 10;
+  var PATCH_REMOVE_DISPATCH = 11;
 
   // Elements that browsers may insert implicitly (e.g. <tbody> inside <table>).
   // When walking a path we need to skip through these so that the path indices
@@ -610,6 +613,14 @@
         applySetValue(target, op);
         break;
 
+      case PATCH_SET_DISPATCH:
+        if (gosxHost.attributes.isReservedDispatchName(op.attrName)) target.setAttribute(op.attrName, op.text);
+        break;
+
+      case PATCH_REMOVE_DISPATCH:
+        if (gosxHost.attributes.isReservedDispatchName(op.attrName)) target.removeAttribute(op.attrName);
+        break;
+
       case PATCH_SET_HTML:
         applySetHTML(target, op);
         dropChildState(entry);
@@ -667,6 +678,7 @@
    */
   function applyRemoveAttr(target, op) {
     var name = op.attrName;
+    if (gosxHost.attributes.isReservedDispatchName(name)) return;
 
     target.removeAttribute(name);
 
@@ -827,6 +839,7 @@
    * @param {string}  value - Attribute value as a string.
    */
   function setAttr(el, name, value) {
+    if (gosxHost.attributes.isReservedDispatchName(name)) return;
     var normalized = String(name).toLowerCase();
     value = publicAttribute(normalized, value);
     if (normalized === "hidden" && String(value).toLowerCase() === "until-found") {

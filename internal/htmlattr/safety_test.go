@@ -44,3 +44,16 @@ func TestSafeNamesAndURLs(t *testing.T) {
 		t.Fatal("changed non-URL data")
 	}
 }
+
+func TestReservedDispatchName(t *testing.T) {
+	for _, name := range []string{"data-gosx-handler", "DATA-GOSX-PATH", "data-gosx-on-click", "Data-Gosx-On-Input", "data-gosx-on-"} {
+		if !ReservedDispatchName(name) || SafeAuthoredName(name) || SafeSpreadName(name) {
+			t.Errorf("dispatch name allowed: %q", name)
+		}
+	}
+	for _, name := range []string{"data-gosx-link", "data-gosx-region", "data-gosx-handlers", "data-gosx-pathology", "data-gosx-on"} {
+		if ReservedDispatchName(name) || !SafeAuthoredName(name) || !SafeSpreadName(name) {
+			t.Errorf("ordinary name refused: %q", name)
+		}
+	}
+}

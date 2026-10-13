@@ -1,6 +1,10 @@
 package vm
 
-import "strings"
+import (
+	"strings"
+
+	"m31labs.dev/gosx/internal/htmlattr"
+)
 
 // ResolvedTree is the fully evaluated DOM tree produced by the VM after
 // evaluating all expressions and resolving dynamic content.
@@ -74,15 +78,26 @@ func (node *ResolvedNode) effectiveDOMAttrs() []ResolvedAttr {
 }
 
 func materializeDOMAttrs(attrs []ResolvedAttr, events []ResolvedEvent) []ResolvedAttr {
-	// Fast path: no events → alias the attrs slice directly instead of
+	// Fast path: no events or reserved names → alias the attrs slice instead of
 	// allocating a copy. The returned slice is treated as read-only by
 	// the reconcile walker (it only indexes DOMAttrs, never appends),
 	// so aliasing is safe.
-	if len(events) == 0 {
+	reserved := false
+	for _, attr := range attrs {
+		if htmlattr.ReservedDispatchName(attr.Name) {
+			reserved = true
+			break
+		}
+	}
+	if len(events) == 0 && !reserved {
 		return attrs
 	}
 	out := make([]ResolvedAttr, 0, len(attrs)+(len(events)*2))
-	out = append(out, attrs...)
+	for _, attr := range attrs {
+		if !htmlattr.ReservedDispatchName(attr.Name) {
+			out = append(out, attr)
+		}
+	}
 	for _, event := range events {
 		eventType := eventAttrType(event.Name)
 		out = append(out, ResolvedAttr{

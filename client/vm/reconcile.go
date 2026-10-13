@@ -3,6 +3,8 @@ package vm
 import (
 	"strconv"
 	"strings"
+
+	"m31labs.dev/gosx/internal/htmlattr"
 )
 
 // isValueElement reports whether the tag is an element whose "value" attribute
@@ -887,8 +889,12 @@ func appendValueAttrSetOp(ops *[]PatchOp, attr ResolvedAttr, valueElem bool, pat
 }
 
 func appendAttrSetOp(ops *[]PatchOp, attr ResolvedAttr, path *patchPath) {
+	kind := PatchSetAttr
+	if htmlattr.ReservedDispatchName(attr.Name) {
+		kind = PatchSetDispatch
+	}
 	*ops = append(*ops, PatchOp{
-		Kind:     PatchSetAttr,
+		Kind:     kind,
 		Path:     path.String(),
 		AttrName: attr.Name,
 		Text:     attr.Value,
@@ -900,8 +906,12 @@ func appendAttrRemoveOps(ops *[]PatchOp, prevAttrs []ResolvedAttr, nextAttrs att
 		if nextAttrs.has(attr.Name) {
 			continue
 		}
+		kind := PatchRemoveAttr
+		if htmlattr.ReservedDispatchName(attr.Name) {
+			kind = PatchRemoveDispatch
+		}
 		*ops = append(*ops, PatchOp{
-			Kind:     PatchRemoveAttr,
+			Kind:     kind,
 			Path:     path.String(),
 			AttrName: attr.Name,
 		})

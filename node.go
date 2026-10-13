@@ -325,7 +325,7 @@ func managedFormShorthandTruthy(attr nodeAttr) bool {
 }
 
 func renderAttrHTML(b *strings.Builder, attr nodeAttr) {
-	if !htmlattr.ValidName(attr.name) {
+	if !htmlattr.SafeAuthoredName(attr.name) {
 		return
 	}
 	switch v := attr.value.(type) {

@@ -33,3 +33,16 @@ func TestNodeRenderFiltersURLValuesAndNames(t *testing.T) {
 		t.Fatal("authored style dropped")
 	}
 }
+
+func TestNodeRenderDropsReservedDispatchAttrs(t *testing.T) {
+	for _, name := range []string{"data-gosx-handler", "data-gosx-path", "data-gosx-on-click", "DATA-GOSX-ON-INPUT", "data-gosx-on-"} {
+		for _, node := range []Node{
+			El("button", Attrs(Attr(name, "evil"), Attr("data-gosx-link", "true"))),
+			El("button", Spread(map[string]any{name: "evil", "data-gosx-link": "true"})),
+		} {
+			if got := RenderHTML(node); got != `<button data-gosx-link="true"></button>` {
+				t.Fatalf("%s: %s", name, got)
+			}
+		}
+	}
+}

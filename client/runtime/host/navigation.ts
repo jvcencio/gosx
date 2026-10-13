@@ -1877,10 +1877,12 @@
   }
 
   function reconcileNavigationAttributes(current, incoming, baseURL) {
-    const incomingEntries = attributeEntries(incoming);
+    const incomingEntries = attributeEntries(incoming).filter(function(entry) {
+      return !gosxHost.attributes.isReservedDispatchName(entry.name);
+    });
     const incomingNames = new Set(incomingEntries.map(function(entry) { return entry.name; }));
     for (const entry of attributeEntries(current)) {
-      if (!incomingNames.has(entry.name)) current.removeAttribute(entry.name);
+      if (!gosxHost.attributes.isReservedDispatchName(entry.name) && !incomingNames.has(entry.name)) current.removeAttribute(entry.name);
     }
     for (const entry of incomingEntries) {
       const value = navigationAttributeValue(entry.name, entry.value, baseURL);

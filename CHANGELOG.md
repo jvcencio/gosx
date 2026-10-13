@@ -24,6 +24,21 @@
   RemoteAddr or origin policies. Nested handlers and completion observers share
   the result; malformed or repeated headers fall back to the peer.
 
+- Reject authored `data-gosx-on-*`, `data-gosx-handler` and `data-gosx-path`
+  attributes (any letter case) on HTML elements inside a `//gosx:island`
+  component: `gosx check` and the build now report the attribute as reserved
+  and suggest a `data-app-*` name. The island renderer also drops any such
+  attribute from a resolved node before it appends its own dispatch markers.
+  Before this, HTML kept the first duplicate, so an authored
+  `data-gosx-on-click={expr}` beat the real marker and a runtime value could
+  choose which handler fired. Other `data-gosx-*` names (`data-gosx-link`,
+  `data-gosx-region`) are unchanged. A `{...spread}` is not checked at compile
+  time; the renderer drop covers it. Server component renderers and the WASM
+  VM also discard these names. Browser attribute patches, navigation and
+  declarative bindings cannot change dispatch markers; generated event
+  bindings use dedicated dispatch patch operations. Regenerate the browser
+  runtime and WASM together when updating.
+
 ## v0.57.15
 
 - Add opt-in Scene3D frame requests to atomic command batches and typed

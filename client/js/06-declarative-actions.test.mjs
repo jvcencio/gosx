@@ -799,3 +799,32 @@ test("isolated sign-in actions refresh the token before the next mutation", asyn
  assert.equal(fetches[0].opts.headers["X-CSRF-Token"], "before-login");
  assert.equal(fetches[1].opts.headers["X-CSRF-Token"], "after-login");
 });
+
+test("declarative attribute bindings cannot overwrite or remove dispatch markers", () => {
+  for (const name of ["data-gosx-handler", "data-gosx-path", "data-gosx-on-click", "DATA-GOSX-ON-INPUT", "data-gosx-on-"]) {
+    for (const value of ["evil", ""]) {
+      const source = makeEl({ "data-value": value });
+      const root = makeEl({
+        "data-gosx-bind-source": ".active",
+        "data-gosx-bind-attr": `${name}:data-value;data-gosx-link:data-value`,
+        [name]: "real",
+      });
+      const { ctx } = runModule({ queryMap: { ".active": source }, queryAll: { "[data-gosx-bind-source]": [root] } });
+      ctx.window.__gosx.actions.refreshBindings();
+      assert.equal(root.getAttribute(name), "real", name);
+      assert.equal(root.getAttribute("data-gosx-link"), value || null);
+    }
+  }
+});
+
+test("declarative toggles cannot inject or remove reserved dispatch markers", () => {
+  for (const name of ["data-gosx-handler", "data-gosx-path", "DATA-GOSX-ON-CLICK", "data-gosx-on-"]) {
+    for (const existing of [null, "real"]) {
+      const target = makeEl(existing == null ? {} : { [name]: existing });
+      const trigger = makeEl({ "data-gosx-toggle-target": "#target", "data-gosx-toggle-attribute": name });
+      const { listeners } = runModule({ queryMap: { "#target": target } });
+      fire(listeners.click, trigger);
+      assert.equal(target.getAttribute(name), existing, name);
+    }
+  }
+});

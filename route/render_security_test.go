@@ -155,3 +155,29 @@ func TestEqualityPreservesIdentifiersAndRequiresExactNumericStrings(t *testing.T
 		t.Fatalf("rounded integer literals: %v", got)
 	}
 }
+
+func TestServerRenderDropsReservedDispatchAttrs(t *testing.T) {
+	for _, name := range []string{"data-gosx-handler", "data-gosx-path", "data-gosx-on-click", "DATA-GOSX-ON-INPUT", "data-gosx-on-"} {
+		prog, err := gosx.Compile([]byte("package main\n\nfunc Page() Node {\n return <button " + name + "=\"evil\" {...extra} data-gosx-link=\"true\">ok</button>\n}\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := RenderProgramComponent(prog, "Page", ProgramRenderEnv{Values: map[string]any{"extra": map[string]any{name: "evil"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "evil") || !strings.Contains(out, `data-gosx-link="true"`) {
+			t.Fatalf("%s: %s", name, out)
+		}
+		var b strings.Builder
+		r := &fileProgramRenderer{}
+		r.renderResolvedAttrs(&b, "button", []RenderAttr{{Name: name, Value: "evil"}, {Name: "data-gosx-link", Value: "true"}})
+		if b.String() != ` data-gosx-link="true"` {
+			t.Fatalf("profile output: %s", b.String())
+		}
+		fallback := defaultRenderedComponent("Unknown", fileComponentHTMLAttrs{values: map[string]any{name: "evil"}}, "")
+		if strings.Contains(fallback, "evil") {
+			t.Fatalf("fallback output: %s", fallback)
+		}
+	}
+}

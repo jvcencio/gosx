@@ -18,6 +18,19 @@ func ValidName(name string) bool {
 	return true
 }
 
+// ReservedDispatchName identifies attributes owned by island event dispatch.
+// Match HTML names without case sensitivity, including the bare event prefix.
+func ReservedDispatchName(name string) bool {
+	return strings.EqualFold(name, "data-gosx-handler") ||
+		strings.EqualFold(name, "data-gosx-path") ||
+		(len(name) >= len("data-gosx-on-") && strings.EqualFold(name[:len("data-gosx-on-")], "data-gosx-on-"))
+}
+
+// SafeAuthoredName permits HTML names that cannot replace dispatch metadata.
+func SafeAuthoredName(name string) bool {
+	return ValidName(name) && !ReservedDispatchName(name)
+}
+
 // ValidTag permits HTML, SVG and custom element names, without HTML syntax.
 func ValidTag(name string) bool {
 	if name == "" {
@@ -39,7 +52,7 @@ func ValidTag(name string) bool {
 // or CSS. Authors can supply trusted style explicitly instead of in a spread.
 func SafeSpreadName(name string) bool {
 	name = strings.ToLower(name)
-	return ValidName(name) && !strings.HasPrefix(name, "on") && name != "style"
+	return SafeAuthoredName(name) && !strings.HasPrefix(name, "on") && name != "style"
 }
 
 // FilterURL allows web, email and telephone URLs and relative references.

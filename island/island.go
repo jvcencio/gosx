@@ -2010,8 +2010,28 @@ func renderResolvedAttrs(node *vm.ResolvedNode, path string) []vm.ResolvedAttr {
 	// Fast path: no events → return the static attrs directly (no alloc).
 	// Only elements with event handlers need the synthesized data-gosx-on-*
 	// markers and the data-gosx-path attribute appended.
+	//
+	// An authored attribute named like a synthesized marker is dropped on
+	// both paths: HTML keeps the first of two duplicate attributes, so an
+	// authored data-gosx-on-click would otherwise beat the real marker. The
+	// scan allocates nothing; the copy happens only when something must go.
+	reserved := 0
+	for i := range node.Attrs {
+		if htmlattr.ReservedDispatchName(node.Attrs[i].Name) {
+			reserved++
+		}
+	}
 	if len(node.Events) == 0 {
-		return node.Attrs
+		if reserved == 0 {
+			return node.Attrs
+		}
+		kept := make([]vm.ResolvedAttr, 0, len(node.Attrs)-reserved)
+		for _, attr := range node.Attrs {
+			if !htmlattr.ReservedDispatchName(attr.Name) {
+				kept = append(kept, attr)
+			}
+		}
+		return kept
 	}
 
 	// Pre-size: static attrs + 1 marker per event + 1 extra for each click
@@ -2023,8 +2043,12 @@ func renderResolvedAttrs(node *vm.ResolvedNode, path string) []vm.ResolvedAttr {
 			extra++
 		}
 	}
-	attrs := make([]vm.ResolvedAttr, 0, len(node.Attrs)+extra)
-	attrs = append(attrs, node.Attrs...)
+	attrs := make([]vm.ResolvedAttr, 0, len(node.Attrs)-reserved+extra)
+	for _, attr := range node.Attrs {
+		if !htmlattr.ReservedDispatchName(attr.Name) {
+			attrs = append(attrs, attr)
+		}
+	}
 	for _, event := range node.Events {
 		eventType := eventNameToType(event.Name)
 		attrs = append(attrs, vm.ResolvedAttr{
