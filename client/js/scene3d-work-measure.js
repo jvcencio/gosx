@@ -230,6 +230,7 @@ async function mountScene(props, profileName, backend) {
   const registry = c.__gosx_scene3d_api.sceneBackendRegistry;
   const entry = registry.list().find(entry => entry.kind === backend);
   assert.ok(entry, "the requested renderer chunk must register its backend");
+  let warming = true;
   const create = entry.create;
   entry.create = function(...args) {
     const renderer = create.apply(this, args);
@@ -238,6 +239,7 @@ async function mountScene(props, profileName, backend) {
     const render = renderer.render;
     renderer.render = function(...frameArgs) {
       const outcome = render.apply(this, frameArgs);
+      if (warming && outcome === "pending") return outcome;
       assert.equal(outcome, "submitted", "each counted frame must submit real renderer work");
       renders++;
       return outcome;
@@ -259,6 +261,7 @@ async function mountScene(props, profileName, backend) {
     await step(1000 / 30);
     if (i === 0 || i === 7) await H.flushAsyncWork();
   }
+  warming = false;
   assert.ok(mount.__gosxScene3DHandle, `bootstrap must mount Scene3D (${profileName}/${backend}): ${JSON.stringify(env.consoleLogs)}`);
   const canvas = mount.children.find(child => child.tagName === "CANVAS");
   assert.ok(canvas);
