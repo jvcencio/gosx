@@ -536,16 +536,16 @@ test("authored compute-particle shaders prepare before readiness and never draw 
     renderFragment: "precision mediump float; uniform float brightness; void main() { gl_FragColor = vec4(brightness); }",
     renderUniforms: { brightness: 1.25 },
   });
-  h.renderer.render(bundle, viewport);
+  assert.equal(h.renderer.render(bundle, viewport), "pending");
   assert.ok(h.gl.programMatching("uniform float brightness"), "the authored shader is submitted before the frame check");
   assert.equal(h.gl.ops.filter(op => op[0] === "useProgram" || op[0] === "drawArrays").length, 0);
   assert.equal(h.gl.ops.filter(op => op[0] === "getUniformLocation" || op[0] === "getAttribLocation").length, 0);
   h.raf.flush(48);
-  h.renderer.render(bundle, viewport);
+  assert.equal(h.renderer.render(bundle, viewport), "pending");
   assert.equal(h.gl.ops.filter(op => op[0] === "drawArrays").length, 0, "unfinished programs keep the frame parked");
   h.setComplete(true);
   h.raf.flush(64);
-  h.renderer.render(bundle, viewport);
+  assert.equal(h.renderer.render(bundle, viewport), "submitted");
   assert.ok(h.gl.ops.some(op => op[0] === "drawArrays" && op[1] === h.gl.POINTS && op[3] === 4));
   assert.ok(h.gl.ops.some(op => op[0] === "uniform1f" && op[1] === "brightness" && op[2] === 1.25));
   h.renderer.dispose();

@@ -274,7 +274,7 @@ function sceneRenderWithTiming(renderer, bundle, viewport, meta, timing) {
   const start = performance.now();
   timing.frameIntervalMS = timing.submitAtMS > 0 ? start - timing.submitAtMS : 0;
   timing.submitAtMS = start;
-  try { renderer.render(bundle, viewport, meta); }
+  try { return renderer.render(bundle, viewport, meta); }
   finally { timing.cpuSubmitMS = performance.now() - start; }
 }
 
@@ -282,4 +282,46 @@ function sceneRenderWithTiming(renderer, bundle, viewport, meta, timing) {
 function sceneRendererFrameTiming(renderer, timing) {
   return Object.assign({ status: "unavailable", source: "none", scope: "frame", gpuMS: null },
     renderer && typeof renderer.getFrameTiming === "function" ? renderer.getFrameTiming() : {}, timing);
+}
+
+// Requested submission receipts are opt-in. Ordinary frames do not create a
+// collector, scan model membership, allocate sets, or dispatch receipt events.
+function sceneCreateFrameRequest(detail: any, revision: number) {
+  if (!detail || typeof detail.id !== "string" || !detail.id || !Array.isArray(detail.modelIDs) ||
+      !detail.modelIDs.length || detail.modelIDs.length > 64 ||
+      detail.modelIDs.some((id: any) => typeof id !== "string" || !id)) return null;
+  const request = {
+    id: detail.id, revision, modelIDs: detail.modelIDs.slice(), accepted: false,
+    expected: new Set(), drawn: new Set(), generation: 0, commandRevision: 0,
+    record(id: string) { if (this.expected.has(id)) this.drawn.add(id); },
+  };
+  return request;
+}
+
+function scenePrepareFrameRequest(request: any, state: any, commandRevision: number) {
+  if (!request || !request.accepted || state._modelHydrationUncommitted ||
+      !state._modelHydrationGeneration || commandRevision < request.revision) return null;
+  request.expected.clear(); request.drawn.clear();
+  for (const modelID of request.modelIDs) {
+    let found = false;
+    for (const object of state.objects.values()) {
+      if (!object || typeof object.id !== "string" || !object.id.startsWith(modelID + "/") ||
+          object.visible === false || object._modelHidden || object.opacity === 0) continue;
+      request.expected.add(object.id); found = true;
+    }
+    // A declaration with no actual hydrated instance cannot pass admission.
+    if (!found) { request.expected.clear(); return null; }
+  }
+  request.generation = state._modelHydrationGeneration;
+  request.commandRevision = commandRevision;
+  return request;
+}
+
+function sceneFrameRequestSubmitted(request: any, state: any, commandRevision: number, outcome: string) {
+  if (!request || outcome !== "submitted" || state._modelHydrationUncommitted ||
+      request.generation !== state._modelHydrationGeneration ||
+      request.commandRevision !== commandRevision || !request.expected.size) return false;
+  // record() is the sole writer and admits only IDs in expected. Preparation
+  // clears both sets together, so equal cardinality proves complete coverage.
+  return request.drawn.size === request.expected.size;
 }

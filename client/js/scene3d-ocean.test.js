@@ -133,7 +133,7 @@ test("ocean-only mounts reveal their first rendered content", async () => {
       "/gosx/bootstrap-feature-engines.js": { text: freshFeatureBundleSource("engines") },
       "/gosx/bootstrap-feature-scene3d-webgpu.js": { text: `
         window.__gosx_scene3d_webgpu_api = { createRenderer: function() {
-          return { kind: "webgpu", diagnostics: function() { return {}; }, render: function() {}, dispose: function() {} };
+          return { kind: "webgpu", diagnostics: function() { return {}; }, render: function() { return "submitted"; }, dispose: function() {} };
         } };` },
     },
     manifest: { runtime: { path: "/gosx/runtime.wasm" }, engines: [{

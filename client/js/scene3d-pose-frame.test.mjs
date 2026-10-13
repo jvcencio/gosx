@@ -19,7 +19,7 @@ function runtime(handle, extra = {}) {
   return { context, bridge: context.window.__gosx_scene3d_command_bridge, handle };
 }
 
-function frame(count = 1) {
+function frame(count = 1, options = {}) {
   const bytes = [];
   const encoder = new TextEncoder();
   const id = (value) => { const chars = encoder.encode(value); bytes.push(chars.length, 0, ...chars); };
@@ -27,11 +27,14 @@ function frame(count = 1) {
   const f32 = (value) => { const data = new DataView(new ArrayBuffer(4)); data.setFloat32(0, value, true); bytes.push(...new Uint8Array(data.buffer)); };
   bytes.push(71, 83, 80, 50); // GSP2
   u16(1); id("run"); // clip dictionary
-  u16(1); id("heroes"); u16(count);
-  for (let index = 0; index < count; index++) {
-    id(index === 0 ? "hero" : `actor-${index}`);
-    for (const value of [1.5, 2, 3, 0, 0.5, 0, 1, 1, 1, 0.25]) f32(value);
-    u16(1); bytes.push(1);
+  u16(options.duplicateBatch ? 2 : 1);
+  for (let batch = 0; batch < (options.duplicateBatch ? 2 : 1); batch++) {
+    id("heroes"); u16(count);
+    for (let index = 0; index < count; index++) {
+      id(index === 0 || options.duplicateInstance ? "hero" : `actor-${index}`);
+      for (const value of [1.5, 2, 3, 0, 0.5, 0, 1, 1, 1, 0.25]) f32(value);
+      u16(1); bytes.push(1);
+    }
   }
   return Uint8Array.from(bytes);
 }
@@ -45,6 +48,12 @@ test("GSP2 decoder carries transform and animation and rejects truncated frames"
   assert.equal(decoded[0].instances[0].animationTime, 0.25);
   assert.equal(decoded[0].instances[0].animationLoop, true);
   assert.throws(() => bridge.decodePoseFrame(frame().subarray(0, -1)), /truncated/);
+});
+
+test("duplicate packed batch and instance IDs are rejected before retained application", () => {
+  const { bridge } = runtime();
+  assert.throws(() => bridge.decodePoseFrame(frame(1, { duplicateBatch: true })), /duplicate Scene3D pose batch ID/);
+  assert.throws(() => bridge.decodePoseFrame(frame(2, { duplicateInstance: true })), /duplicate Scene3D pose instance ID/);
 });
 
 test("GSP2 dispatch calls the retained pose path", async () => {
@@ -187,19 +196,26 @@ test("retained pose application reaches the existing crowd animation rows", () =
   const start = rendererSource.indexOf("function sceneUpdateRigidInstancePoses(");
   const end = rendererSource.indexOf("function sceneRigidMembershipModelID(", start);
   assert.ok(start > 0 && end > start);
-  context.sceneHydrationModels = state => state.instancedGLBMeshes[0].instances.map(instance => ({ id: instance.id, x: instance.x, _crowdPose: { animation: instance.animation, animationTime: instance.animationTime, animationLoop: instance.animationLoop } }));
+  context.sceneHydrationModels = () => { throw Error('binary poses must not expand the whole declaration'); };
+  context.sceneInstancedGLBMeshToModels = batch => batch.instances.map(instance => ({ id: batch.id + '/' + instance.id, x: instance.x, _crowdPose: { animation: instance.animation, animationTime: instance.animationTime, animationLoop: instance.animationLoop } }));
   context.sceneModelTransformMatrix = model => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, model.x, 0, 0, 1]);
-  context.sceneRigidMembershipModelID = () => "";
+  context.sceneRigidMembershipModelID = model => model.id;
+  context.sceneRigidInstanceHydrationEligible = () => true;
   context.sceneRigidInstanceHydrationKey = (_state, model) => model.id;
   context.sceneReusableRigidInstance = () => true;
   context.sceneRigidMembershipScopeKey = () => "";
   context.sceneInstancedGLBHydrationTemplates = new WeakMap();
+  const expand = context.sceneInstancedGLBMeshToModels;
+  context.sceneInstancedGLBMeshToModels = batch => expand(batch).map(model => {
+    context.sceneInstancedGLBHydrationTemplates.set(model, 'hero-template');
+    return model;
+  });
   vm.runInContext(rendererSource.slice(start, end), context);
   const atlas = { clips: new Map([["run", { start: 1, duration: 1, segments: 4 }]]), missingClips: new Set() };
   const rows = new Float32Array(3);
   const object = { _crowdMotion: { record: new Float32Array(24) }, _crowdSkin: { atlas, rows, poseRows(_atlas, pose, out) { out[0] = pose.animation === "run" ? 1 + pose.animationTime * 4 : 0; out[1] = pose.animationLoop ? 1 : 0; return out; } } };
   const staged = { objects: [object] };
-  const state = { instancedGLBMeshes: [{ id: "heroes", instances: [{ id: "hero", x: 0, animation: "idle", animationTime: 0, animationLoop: false }] }], _hydratedModelRecords: { modelCount: 1, rigidInstances: new Map([["hero", staged]]) } };
+  const state = { instancedGLBMeshes: [{ id: "heroes", instances: [{ id: "hero", x: 0, animation: "idle", animationTime: 0, animationLoop: false }] }], _hydratedModelRecords: { modelCount: 1, rigidInstances: new Map([["heroes/hero", staged]]), rigidInstancesByID: new Map([["heroes/hero", { key: 'heroes/hero', template: 'hero-template', scope: '', staged }]]) } };
   bridge.applyMountedPoseFrame(state, bridge.decodePoseFrame(frame()), context.sceneUpdateRigidInstancePoses, () => {}, {});
   assert.equal(object.parentMatrix[12], 1.5);
   assert.equal(object._crowdMotion, undefined, 'pose fallback returns the object to the legacy crowd shader');

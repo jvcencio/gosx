@@ -769,7 +769,7 @@ async function mountLostWaterWebGPU() {
                     adapterInfo: { vendor: "test-vendor", architecture: "test-arch" }
                   };
                 },
-                render: function() { instance.renderCount += 1; },
+                render: function() { instance.renderCount += 1; return "submitted"; },
                 dispose: function() { instance.disposeCount += 1; }
               };
             }
@@ -974,7 +974,7 @@ async function mountReownableWebGLFallback() {
                       : null
                   };
                 },
-                render: function() { instance.renderCount += 1; },
+                render: function() { instance.renderCount += 1; return "submitted"; },
                 dispose: function() { instance.disposeCount += 1; }
               };
             }
