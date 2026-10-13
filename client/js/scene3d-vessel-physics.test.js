@@ -115,6 +115,19 @@ test('helm state machine enforces proximity and leaves on deck; V toggles wheel 
  const wheel=api.camera(s,{fov:60},1/60);near(wheel.z,h.z);assert.equal(wheel.fov,65);assert.equal(wheel.near,.05);
  assert.equal(api.helm(s,h),'leave');assert.equal(s.mode,'deck');near(s.trim,0);assert.equal(api.helm(s,h),'take');
 });
+
+test('wheel free look and chase orbit are bounded camera offsets, independent of sailing',()=>{
+ const s=ship({navigation:true});s.mode='sailing';s.trim=1;s.cameraMode='wheel';
+ context.window.__gosx_scene3d_vessel_navigation.holdCourse(s,60);
+ const neutral=api.camera(s,{},.1),course=s.course;api.look(s,1,.3);const looked=api.camera(s,{},.1);
+ near(looked.x,neutral.x);near(looked.z,neutral.z);near(looked.rotationY-neutral.rotationY,1);near(looked.rotationX-neutral.rotationX,.3);
+ near(s.heading,0);near(s.trim,1);near(s.course,course);
+ const yaw=s.lookYaw,pitch=s.lookPitch;api.look(s,Infinity,0);api.look(s,0,NaN);near(s.lookYaw,yaw);near(s.lookPitch,pitch);
+ api.look(s,Math.PI*20,20);assert.ok(Math.abs(s.lookYaw)<=Math.PI);assert.equal(s.lookPitch,1.25);
+ s.cameraMode='stern';s.lookYaw=s.lookPitch=0;s.cameraReady=false;const aft=api.camera(s,{},.1);
+ api.look(s,Math.PI/2,0);s.cameraReady=false;const side=api.camera(s,{},.1);assert.ok(Math.hypot(aft.x-side.x,aft.z-side.z)>30);
+ near(s.heading,0);near(s.course,course);
+});
 test('touch steering and sail hold have independent pointer IDs and cancel only their own input',()=>{
  const input=touch.create();assert.equal(touch.down(input,'rudder',11,20),true);assert.equal(touch.down(input,'sail',22,0),true);
  assert.equal(touch.down(input,'rudder',33,40),false);input.sail=1;touch.move(input,11,75);near(touch.value(input).rudder,1);near(touch.value(input).sail,1);
@@ -159,14 +172,20 @@ test('wake is bounded, follows wave height, uses alpha without depth writes and 
  const wave=(x,z,t)=>({y:.2*Math.sin(x+t)+.1*Math.cos(z)});
  for(let i=0;i<40;i++) {s.z=-i*.8;wake.update(s,i*.2,wave,1);}
  assert.ok(wake.trail.length<=24);const p=wake.vertices.positions;
- for(let i=0;i<p.length;i+=3)near(p[i+1],wave(p[i],p[i+2],7.8).y+.055,1e-5);
+ for(let i=0;i<240;i+=4) {
+  if(p[i*3]===p[(i+1)*3]&&p[i*3+2]===p[(i+1)*3+2])continue;
+  const center=[0,0,0];for(let j=0;j<4;j++)for(let k=0;k<3;k++)center[k]+=p[(i+j)*3+k]/4;
+  near(center[1],wave(center[0],center[2],7.8).y+.1,1e-5,'each small foam patch follows its water sample');
+ }
+ for(let i=240*3;i<p.length;i+=3)near(p[i+1],wave(p[i],p[i+2],7.8).y+.055,1e-5);
  const object=scene.objects.values().next().value;assert.equal(object.depthWrite,false);assert.equal(object.renderPass,'alpha');assert.equal(object.texture,'/foam.png');
+ assert.equal(object.wireframe,false,'foam uses textured triangles');assert.equal(wake.vertices.indices.BYTES_PER_ELEMENT,4,'the indexed mesh pipeline requires uint32 indices');
  const indices=wake.vertices.indices;
- for(let i=indices.length-12;i<indices.length;i+=3) {
+ for(let i=indices.length-48;i<indices.length;i+=3) {
   const [a,b,c]=Array.from(indices.slice(i,i+3),n=>n*3);
   assert.ok((p[b+2]-p[a+2])*(p[c]-p[a])-(p[b]-p[a])*(p[c+2]-p[a+2])>0,'bow foam faces upward on both sides');
  }
- wake.update(s,8,wave,.4);assert.ok(wake.trail.length<=14);wake.reset();assert.equal(wake.trail.length,0);assert.equal(object.visible,false);
+ wake.update(s,8,wave,.4);assert.ok(wake.trail.length<10);wake.reset();assert.equal(wake.trail.length,0);assert.equal(object.visible,false);
  wake.update(s,0,wave,1);assert.equal(wake.trail.length,1);wake.dispose();assert.equal(scene.objects.size,0);
 });
 
@@ -204,7 +223,7 @@ test('wake ages in world space through turns; deterministic spray is bounded and
  const create=()=>{const scene={objects:new Map()},wake=context.window.__gosx_scene3d_vessel_wake.create(scene,{addObject:(s,id,p)=>s.objects.set(id,p)},{nodeId:'ship'});return {scene,wake};};
  const a=create(),b=create(),s=ship();s.mode='sailing';s.speed=6;s.bowImpact=2;
  for(let i=0;i<40;i++) {s.z=-i*.4;s.heading=i*.025;for(const effect of [a,b])effect.wake.update(s,i*.1,flat,.4,{rotationY:.5});}
- assert.ok(a.wake.trail.length<=14);assert.ok(a.wake.spray.particles.length<=10);assert.ok(a.wake.spray.particles.length>0);
+ assert.ok(a.wake.trail.length<10);assert.ok(a.wake.spray.particles.length<=10);assert.ok(a.wake.spray.particles.length>0);
  assert.deepEqual(Array.from(a.wake.spray.vertices.positions),Array.from(b.wake.spray.vertices.positions));
  const point={...a.wake.trail[4]};s.heading=2;s.speed=0;s.bowImpact=0;
  a.wake.update(s,4,flat,1);near(a.wake.trail[4].x,point.x);near(a.wake.trail[4].z,point.z);
@@ -221,12 +240,31 @@ test('inactive wake skips ocean queries; reduced detail samples only distinct fo
  for(let i=0;i<30;i++){s.z=-i;wake.update(s,i*.25,wave,.4);}
  queries=0;wake.update(s,7.4,wave,.4);assert.ok(queries<=50,`${queries} ocean queries at reduced detail`);
  const p=wake.vertices.positions,n=wake.vertices.normals,u=wake.vertices.uvs;
- for(let i=14;i<24;i++) {
-  assert.deepEqual(Array.from(p.slice(i*9,i*9+9)),Array.from(p.slice(13*9,14*9)));
-  assert.deepEqual(Array.from(n.slice(i*9,i*9+9)),Array.from(n.slice(13*9,14*9)));
-  assert.deepEqual(Array.from(u.slice(i*6,i*6+6)),Array.from(u.slice(13*6,14*6)));
+ for(let i=10;i<20;i++) {
+  for(let j=0;j<12;j++)assert.deepEqual(Array.from(p.slice((i*12+j)*3,(i*12+j+1)*3)),Array.from(p.slice(9*36,9*36+3)),'inactive patches collapse to zero area');
+  assert.deepEqual(Array.from(n.slice(i*36,(i+1)*36)),Array.from(n.slice(9*36,10*36)));
+  assert.deepEqual(Array.from(u.slice(i*24,(i+1)*24)),Array.from(u.slice(9*24,10*24)));
  }
  s.speed=0;queries=0;wake.update(s,14,wave,1);assert.equal(queries,0);assert.equal(scene.objects.get('gosx-vessel-wake:ship').visible,false);
+ wake.dispose();
+});
+
+test('foam remains attached between stamps and fans along the traveled path when the hull crabs',()=>{
+ const scene={objects:new Map()},s=ship(),wake=context.window.__gosx_scene3d_vessel_wake.create(scene,{addObject:(s,id,p)=>s.objects.set(id,p)},{nodeId:'ship'});
+ s.mode='sailing';s.speed=6;s.heading=1.2;
+ let queries=0;const water=()=>{queries++;return {y:0,normal:{x:0,y:1,z:0}};};
+ for(let i=0;i<22;i++){s.z=-i*2.4;wake.update(s,i*.4,water,1);}
+ s.z-=.3;queries=0;wake.update(s,8.45,water,1);
+ const p=wake.vertices.positions,stern=api.localPoint(s,0,0,s.length*.51);
+ const center=(start)=>[0,1,2,3].reduce((out,j)=>{out.x+=p[(start+j)*3]/4;out.z+=p[(start+j)*3+2]/4;return out;},{x:0,z:0});
+ const fresh=center(4);assert.ok(Math.hypot(fresh.x-stern.x,fresh.z-stern.z)<.21,'fresh churn stays attached to the stern');
+ assert.ok(queries<=80);assert.ok(wake.vertices.count<=260);assert.equal(scene.objects.size,2,'foam and bounded spray retain two effects');
+ // The stored track runs along Z while the hull points diagonally. Its cross
+ // sections must follow that track, rather than rotating with the hull.
+ const left=center(5*12),right=center(5*12+8);near(left.z,right.z,1e-5);
+ assert.ok(right.x-left.x>center(8).x-center(0).x+3,'the older wake spreads away from the stern');
+ const stamp={...wake.trail[4]};s.speed=0;s.heading=-2;queries=0;wake.update(s,8.5,water,1);
+ assert.equal(wake.trail[4].x,stamp.x);assert.equal(wake.trail[4].z,stamp.z);assert.ok(queries<=60,'stopped bow foam needs no water queries');
  wake.dispose();
 });
 

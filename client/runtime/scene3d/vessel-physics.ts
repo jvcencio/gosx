@@ -22,7 +22,7 @@
       wind: (c.windDirection ?? ocean.windDirection ?? 0) * radians,
       strength: c.windStrength || 8, maxSpeed: c.maxSpeed || 10, mode: "moored", cameraMode: "stern",
       pressure: 0, luff: 1, bowImpact: 0, bowWater: NaN, reduced: false,
-      grounded: false, accumulator: 0, speed: 0, tack: 0, course: NaN, distance: 0, detached: false, cameraReady: false, camera: {x:0,y:0,z:0,rotationX:0,rotationY:0,rotationZ:0} };
+      grounded: false, accumulator: 0, speed: 0, tack: 0, course: NaN, distance: 0, detached: false, lookYaw:0,lookPitch:0,cameraReady: false, camera: {x:0,y:0,z:0,rotationX:0,rotationY:0,rotationZ:0} };
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function localPoint(s, x, y, z) {
@@ -45,6 +45,11 @@
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function toggleCamera(s) { s.cameraMode = s.cameraMode === "stern" ? "wheel" : "stern"; return s.cameraMode; }
+  // @ts-ignore TS7006 -- camera input never changes the vessel's course or pose.
+  function look(s,yaw,pitch) {
+    if(s.mode!=='sailing'||s.detached||!Number.isFinite(yaw)||!Number.isFinite(pitch))return;
+    s.lookYaw=angle(s.lookYaw+yaw);s.lookPitch=clamp(s.lookPitch+pitch,-1.25,1.25);
+  }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function spring(s, key, velocity, goal, dt, frequency) {
     s[velocity] += ((goal-s[key])*frequency*frequency-2*frequency*s[velocity])*dt;
@@ -151,10 +156,10 @@
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function camera(s, previous, dt, seconds=0) {
-    const wheel=s.cameraMode === "wheel", h=s.helm;
-    const p=localPoint(s,wheel?h.x:0,wheel?h.y:(s.followDistance||s.length*1.8)*.25,wheel?h.z:(s.followDistance||s.length*1.8));
+    const wheel=s.cameraMode === "wheel", h=s.helm,distance=s.followDistance||s.length*1.8;
+    const p=localPoint(s,wheel?h.x:Math.sin(s.lookYaw)*distance,wheel?h.y:distance*.25,wheel?h.z:Math.cos(s.lookYaw)*distance);
     const target=localPoint(s,wheel?h.x:0,wheel?s.deck:s.length*.4,wheel?-s.length*.35: -s.length*.15);
-    const yaw=Math.atan2(-(target.x-p.x),-(target.z-p.z)), pitch=Math.atan2(target.y-p.y,Math.hypot(target.x-p.x,target.z-p.z));
+    const yaw=Math.atan2(-(target.x-p.x),-(target.z-p.z))+(wheel?s.lookYaw:0), pitch=clamp(Math.atan2(target.y-p.y,Math.hypot(target.x-p.x,target.z-p.z))+s.lookPitch,-1.45,1.45);
     const bob=deckBob(s,seconds);
     const result=Object.assign({},previous,{x:p.x,y:p.y+(wheel?bob:0),z:p.z,rotationX:pitch,rotationY:yaw,rotationZ:wheel&&!s.reduced?s.roll*.35:0,fov:65,near:wheel?.05:previous.near});
     if (!wheel && s.cameraReady && s.camera) {
@@ -166,5 +171,5 @@
   }
   // @ts-ignore TS7006 -- cosmetic deck motion never affects physics or boarding.
   function deckBob(s, seconds) { return s.reduced?0:.018*Math.sin(seconds*1.8)+clamp(s.vy,-1,1)*.018; }
-  window.__gosx_scene3d_vessel_physics={create,speedCurve,localPoint,canBoard,helm,toggleCamera,buoyancy,allowed,step,advance,camera,deckBob,windLoad};
+  window.__gosx_scene3d_vessel_physics={create,speedCurve,localPoint,canBoard,helm,toggleCamera,look,buoyancy,allowed,step,advance,camera,deckBob,windLoad};
 })();
