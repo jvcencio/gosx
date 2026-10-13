@@ -290,7 +290,7 @@
     "    hasIBL: u32,",
     "    radianceMipLevels: u32,",
     "    hasEnvMap: u32,",
-    "    _pad1: u32,",
+    "    envMapMaxLod: f32,",
     "    _pad2: u32,",
     "    _pad3: u32,",
     "};",
@@ -2252,18 +2252,12 @@
     "        ambient = (diffuseIBL + specularIBL) * env.envIntensity;",
     "        specularEnvironment = specularIBL * env.envIntensity;",
     "    } else if (env.hasEnvMap != 0u) {",
-    // NOTE: unlike the WebGL2 renderer, the WebGPU equirect environment
-    // texture is currently uploaded with a single mip level (WebGPU has no
-    // gl.generateMipmap equivalent; a downsample chain needs its own WGSL
-    // compute/render pipeline). textureSample here already resolves to that
-    // one level, so a roughness-driven textureSampleLevel would be a no-op
-    // that implies a blur this renderer cannot yet produce. Tracked as a
-    // follow-up: build the mip chain, then switch both samples below to
-    // textureSampleLevel exactly like the WebGL2 fix.
+    // Explicit LOD avoids seam/pole derivative blur and matches WebGL2.
     "        let Nr = rotateEnvY(N, env.envRotation);",
     "        let Rr = rotateEnvY(reflect(-V, N), env.envRotation);",
-    "        let envDiffuse = textureSample(envMapTex, envMapSampler, envEquirectUV(Nr)).rgb * albedo;",
-    "        let envSpecular = textureSample(envMapTex, envMapSampler, envEquirectUV(Rr)).rgb;",
+    "        let maxLod = env.envMapMaxLod;",
+    "        let envDiffuse = textureSampleLevel(envMapTex, envMapSampler, envEquirectUV(Nr), maxLod).rgb * albedo;",
+    "        let envSpecular = textureSampleLevel(envMapTex, envMapSampler, envEquirectUV(Rr), roughness * maxLod).rgb;",
     "        let Fenv = fresnelSchlickRoughness(NoV, F0, F90, roughness);",
     "        let FdielEnv = fresnelSchlickRoughness(NoV, specF0, specF90, roughness);",
     "        let kDenv = (1.0 - max(FdielEnv.x, max(FdielEnv.y, FdielEnv.z))) * (1.0 - metalness);",
@@ -3511,55 +3505,69 @@
   }
   // Device ownership fences cached pipelines across device-loss recovery.
   var wgpuTextureMipCaches = new WeakMap();
-  function wgpuGenerateTextureMips(device, texture, format, levels) {
-    if (levels <= 1) return;
+  function wgpuGenerateTextureMips(device: any, texture: any, format: string, levels: number) {
+    if (levels <= 1) return Promise.resolve();
     var cache = wgpuTextureMipCaches.get(device);
     if (!cache) wgpuTextureMipCaches.set(device, cache = new Map());
     var resources = cache.get(format);
-    if (!resources) {
-      var layout = device.createBindGroupLayout({ entries: [
-        { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
-        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
-      ] });
-      resources = {
-        layout: layout,
-        sampler: device.createSampler({ minFilter: "linear", magFilter: "linear" }),
-        pipeline: device.createRenderPipeline({
-          label: "gosx-texture-mips-" + format,
-          layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
-          vertex: { module: device.createShaderModule({ code: WGSL_POST_VERTEX }), entryPoint: "vertexMain" },
-          fragment: { module: device.createShaderModule({ code: WGSL_POST_BLIT_FRAGMENT }), entryPoint: "fragmentMain", targets: [{ format: format }] },
-          primitive: { topology: "triangle-strip" },
-        }),
-      };
-      cache.set(format, resources);
-    }
-    var encoder = device.createCommandEncoder({ label: "gosx-texture-mips" });
-    for (var level = 1; level < levels; level++) {
-      var group = device.createBindGroup({ layout: resources.layout, entries: [
-        { binding: 0, resource: texture.createView({ baseMipLevel: level - 1, mipLevelCount: 1 }) },
-        { binding: 1, resource: resources.sampler },
-      ] });
-      var pass = encoder.beginRenderPass({ label: "gosx-texture-mip-" + level, colorAttachments: [{
-        view: texture.createView({ baseMipLevel: level, mipLevelCount: 1 }),
-        loadOp: "clear", clearValue: [0, 0, 0, 0], storeOp: "store",
-      }] });
-      pass.setPipeline(resources.pipeline);
-      pass.setBindGroup(0, group);
-      pass.draw(4);
-      pass.end();
-    }
-    // The queue orders this chain after the external-image copy and before
-    // any frame that sees the newly settled texture record.
-    device.queue.submit([encoder.finish()]);
+    var error: any = null;
+    device.pushErrorScope("validation");
+    try {
+      if (!resources) {
+        var layout = device.createBindGroupLayout({ entries: [
+          { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+          { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+        ] });
+        resources = {
+          layout: layout,
+          sampler: device.createSampler({ minFilter: "linear", magFilter: "linear" }),
+          pipeline: device.createRenderPipeline({
+            label: "gosx-texture-mips-" + format,
+            layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+            vertex: { module: device.createShaderModule({ code: WGSL_POST_VERTEX }), entryPoint: "vertexMain" },
+            fragment: { module: device.createShaderModule({ code: WGSL_POST_BLIT_FRAGMENT }), entryPoint: "fragmentMain", targets: [{ format: format }] },
+            primitive: { topology: "triangle-strip" },
+          }),
+        };
+        cache.set(format, resources);
+      }
+      var encoder = device.createCommandEncoder({ label: "gosx-texture-mips" });
+      for (var level = 1; level < levels; level++) {
+        var group = device.createBindGroup({ layout: resources.layout, entries: [
+          { binding: 0, resource: texture.createView({ baseMipLevel: level - 1, mipLevelCount: 1 }) },
+          { binding: 1, resource: resources.sampler },
+        ] });
+        var pass = encoder.beginRenderPass({ label: "gosx-texture-mip-" + level, colorAttachments: [{
+          view: texture.createView({ baseMipLevel: level, mipLevelCount: 1 }),
+          loadOp: "clear", clearValue: [0, 0, 0, 0], storeOp: "store",
+        }] });
+        pass.setPipeline(resources.pipeline);
+        pass.setBindGroup(0, group);
+        pass.draw(4);
+        pass.end();
+      }
+      // Queue order keeps mip generation between upload and publication.
+      device.queue.submit([encoder.finish()]);
+    } catch (failure) { error = failure; }
+    // Pop before yielding: concurrent image loads cannot swap device scopes.
+    return Promise.resolve(device.popErrorScope()).then(function(failure) {
+      if (error || failure) throw error || failure;
+    }).catch(function(failure) {
+      if (cache.get(format) === resources) cache.delete(format);
+      throw failure;
+    });
   }
   function wgpuCreateImageTexture(device: any, width: number, height: number, colorSpace: string) {
     var format = colorSpace === "srgb" ? "rgba8unorm-srgb" : "rgba8unorm";
-    var levels = Math.floor(Math.log2(Math.max(width, height))) + 1;
+    var levels = Math.floor(Math.log2(Math.max(1, width, height))) + 1;
     return { format: format, levels: levels, texture: device.createTexture({
       size: [width, height, 1], format: format, mipLevelCount: levels,
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     }) };
+  }
+  function wgpuTextureRecordDisposed(record: any): boolean { return !!(record.disposed || record.generation && record.generation.disposed); }
+  function wgpuEnvMapMaxLod(envMap: any): number {
+    return envMap.active ? Math.max(0, sceneNumber(envMap.record && envMap.record.levels, 1) - 1) : 0;
   }
   function wgpuLoadTexture(device, url, cache, rawDescriptor, fallbackRole, fallbackColorSpace) {
     if (!cache) return null;
@@ -3597,10 +3605,7 @@
       disposed: false,
     };
     cache.set(cacheKey, record);
-    // A .ktx2 URI holds a block-compressed container, not an image an <img>
-    // element can decode. Hand it to the KTX2 reader instead. Feeding it to an
-    // image element produces a broken texture that still reports success, which
-    // is exactly the defect class the upload gate exists to prevent.
+    // KTX2 uploads supplied mips through its decoder, outside the Image path.
     if (wgpuIsKTX2URL(key) && wgpuKTX2API()) {
       wgpuUploadKTX2Texture(device, key, record);
       return record;
@@ -3614,20 +3619,16 @@
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ var image = new Image();
       record.image = image;
       image.onload = function() {
-        if (record.disposed || record.generation && record.generation.disposed) return;
-        // Specular-color and base-color maps store meaningful RGB under a
-        // possibly-zero alpha channel; base-color alpha additionally drives
-        // MASK coverage. Browser bitmap decode can premultiply, zeroing RGB
-        // wherever alpha is 0, which makes the specular tint or albedo
-        // collapse to black. Request explicitly unpremultiplied decode and
-        // copy for these roles only; other roles keep their prior behavior.
+        if (wgpuTextureRecordDisposed(record)) return;
+        // Preserve base/specular RGB under transparent pixels and MASK alpha
+        // by decoding/copying these roles unpremultiplied.
         var needsUnpremultipliedAlpha = ["specular-color", "base-color"].indexOf(descriptor.role) >= 0;
         var w = image.width;
         var h = image.height;
+        if (!w || !h) { image.onerror(); return; }
         var imageTexture = wgpuCreateImageTexture(device, w, h, descriptor.colorSpace);
         var tex = imageTexture.texture;
-        // Chromium rejects an ImageBitmap made from an SVG foreignObject.
-        // Drawing the Image to a canvas gives WebGPU a readable upload source.
+        // Canvas makes SVG foreignObject pixels readable by Chromium WebGPU.
         var isHTMLTexture = key.indexOf("data:image/svg+xml") === 0 && key.indexOf("foreignObject") >= 0;
         var htmlCanvas = null;
         if (isHTMLTexture && typeof document !== "undefined" && document.createElement) {
@@ -3643,30 +3644,30 @@
           imagePromise = createImageBitmap(image, bitmapOptions);
         }
         if (imagePromise) {
-          imagePromise.then(function(bitmap) {
-            if (record.disposed || record.generation && record.generation.disposed) {
-              tex.destroy();
+          imagePromise.then(async function(bitmap) {
+            try {
+              if (wgpuTextureRecordDisposed(record)) { tex.destroy(); return; }
+              device.queue.copyExternalImageToTexture(
+                { source: bitmap },
+                needsUnpremultipliedAlpha || isHTMLTexture ? { texture: tex, premultipliedAlpha: false } : { texture: tex },
+                [w, h]
+              );
+              await wgpuGenerateTextureMips(device, tex, imageTexture.format, imageTexture.levels);
+              if (wgpuTextureRecordDisposed(record)) { tex.destroy(); return; }
+              record.texture.destroy();
+              record.texture = tex;
+              record.view = tex.createView();
+              record.levels = imageTexture.levels;
+              record.colorSpace = descriptor.colorSpace === "srgb" ? "srgb" : "linear";
+              record.loaded = true;
+              record.pending = false;
+              wgpuNotifyTextureSettled(record);
+            } finally {
               if (typeof ImageBitmap !== "undefined" && bitmap instanceof ImageBitmap) bitmap.close();
-              return;
             }
-            device.queue.copyExternalImageToTexture(
-              { source: bitmap },
-              needsUnpremultipliedAlpha || isHTMLTexture ? { texture: tex, premultipliedAlpha: false } : { texture: tex },
-              [w, h]
-            );
-            wgpuGenerateTextureMips(device, tex, imageTexture.format, imageTexture.levels);
-            record.texture.destroy();
-            record.texture = tex;
-            record.view = tex.createView();
-            record.levels = imageTexture.levels;
-            record.colorSpace = descriptor.colorSpace === "srgb" ? "srgb" : "linear";
-            record.loaded = true;
-            record.pending = false;
-            if (typeof ImageBitmap !== "undefined" && bitmap instanceof ImageBitmap) bitmap.close();
-            wgpuNotifyTextureSettled(record);
           }).catch(function() {
             tex.destroy();
-            if (record.disposed || record.generation && record.generation.disposed) return;
+            if (wgpuTextureRecordDisposed(record)) return;
             record.failed = true;
             record.pending = false;
             wgpuNotifyTextureSettled(record);
@@ -3678,7 +3679,7 @@
         }
       };
       image.onerror = function() {
-        if (record.disposed || record.generation && record.generation.disposed) return;
+        if (wgpuTextureRecordDisposed(record)) return;
         record.failed = true;
         record.pending = false;
         wgpuNotifyTextureSettled(record);
@@ -14652,11 +14653,8 @@
       }
       if (envMapResources.key !== url) {
         envMapResources.key = url;
-        // The legacy equirect environment map is an ordinary sRGB-encoded
-        // PNG/JPEG, not a raw linear radiance buffer — see the matching fix
-        // in the WebGL2 renderer (scenePBRUploadEnvironmentMap). Loading it
-        // as "linear" skipped the rgba8unorm-srgb decode and left every
-        // sample ~2.2x too bright.
+        // Legacy equirect PNG/JPEG is sRGB, as in WebGL2; uploading it as
+        // linear skipped decoding and made samples about 2.2x too bright.
         envMapResources.record = wgpuLoadTexture(device, url, textureCache, null, "environment-radiance", "srgb");
       }
       var record = envMapResources.record;
@@ -14672,9 +14670,7 @@
       var ambientColorRGBA = sceneColorRGBA(env.ambientColor, [1, 1, 1, 1]);
       var skyColorRGBA = sceneColorRGBA(env.skyColor, [0.88, 0.94, 1, 1]);
       var groundColorRGBA = sceneColorRGBA(env.groundColor, [0.12, 0.16, 0.22, 1]);
-
-      // EnvUniforms: three vec3+scalar pairs, one IBL control vec4, and one
-      // envMap control vec4 (only word 0 used today) = 80 bytes.
+      // 80-byte EnvUniforms, matching WGSL.
       var data = _envUniformF;
       var words = _envUniformU;
       data[0] = ambientColorRGBA[0]; data[1] = ambientColorRGBA[1]; data[2] = ambientColorRGBA[2];
@@ -14688,10 +14684,10 @@
       words[14] = ibl.active ? 1 : 0;
       words[15] = ibl.active ? Math.max(1, ibl.diagnostics.radianceMipLevels | 0) : 0;
       words[16] = envMap.active ? 1 : 0;
-      words[17] = 0; words[18] = 0; words[19] = 0;
+      data[17] = wgpuEnvMapMaxLod(envMap);
+      words[18] = 0; words[19] = 0;
       device.queue.writeBuffer(envUniformBuffer, 0, data);
     }
-
     function uploadShadowUniforms(shadowLightMatrices, shadowLightIndices, lights) {
       var lightArray = Array.isArray(lights) ? lights : [];
       // ShadowUniforms: mat4(64) + mat4(64) + 6*u32(24) + pad(8) = 160. Round up to 256.
