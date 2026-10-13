@@ -17801,7 +17801,7 @@
       // production pays a single boolean read per diagnostic interval.
       var truthApi = renderTruth();
       if (truthApi.enabled()) {
-        truthApi.publish(mount, {
+        truthApi.publish(webGPUAttributeSink, {
           backend: "webgpu",
           postChain: published.postChain,
           meshSubmitted: published.meshObjects || 0,

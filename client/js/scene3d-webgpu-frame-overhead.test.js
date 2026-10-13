@@ -107,3 +107,17 @@ test("mount watchdog reads current JS progress without DOM attribute reads", () 
   vm.runInContext(source.slice(start, end), api);
   assert.deepEqual(JSON.parse(JSON.stringify(api.readSceneWebGPUProgress())), { seq: 123, at: 456 });
 });
+
+test("WebGPU render truth diagnostics skip unchanged attributes", async () => {
+  const h = await setup();
+  try {
+    h.env.context.__gosx_scene3d_render_truth = true;
+    await h.frame(512);
+    const previous = new Map(h.writes);
+    const before = h.writes.length;
+    await h.frame(768);
+    const writes = h.writes.slice(before).filter(([name]) => name.startsWith("data-gosx-scene3d-render-"));
+    assert.equal(writes.filter(([name, value]) => previous.get(name) === value).length, 0);
+    assert.equal(writes.length, 1, "only the advancing uniform clock changes");
+  } finally { h.renderer.dispose(); }
+});
