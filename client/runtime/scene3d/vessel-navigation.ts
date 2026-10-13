@@ -48,6 +48,7 @@
         case 'helm': helm(true);break;
         case 'course': if(!holdCourse(state,d.bearing))return;break;
         case 'release-course': state.course=NaN;break;
+        case 'center-view': state.lookYaw=state.lookPitch=0;break;
         case 'trim':
           if(state.mode!=='sailing'||!Number.isFinite(d.trim)||d.trim<0||d.trim>1)return;
           state.trim=d.trim;break;

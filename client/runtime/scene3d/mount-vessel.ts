@@ -58,7 +58,7 @@
       helpers.schedule('vessel-helm');
     }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-    const controls=window.__gosx_scene3d_vessel_input.setup(canvas,mount,state,{helm:changeHelm,camera:()=>{physics.toggleCamera(state);state.camera=null;helpers.schedule('vessel-camera');},reset});
+    const controls=window.__gosx_scene3d_vessel_input.setup(canvas,mount,state,{helm:changeHelm,camera:()=>{physics.toggleCamera(state);state.camera=null;helpers.schedule('vessel-camera');},look:(yaw: number,pitch: number)=>{physics.look(state,yaw,pitch);helpers.schedule('vessel-look');},reset});
     function land() {
       const site=window.__gosx_scene3d_vessel_navigation.landing(state);
       if(!site)return false;
@@ -72,16 +72,18 @@
     const wake=window.__gosx_scene3d_vessel_wake&&props.vessel.wake!==false?window.__gosx_scene3d_vessel_wake.create(sceneState,helpers,props.vessel):null;
     function reset() {leave();window.__gosx_scene3d_vessel_input.clear(controls.input);if(wake)wake.reset();if(base.reset)base.reset();Object.assign(state,physics.create(props.vessel,ocean,walk));first=true;lastBob=0;helpers.schedule('vessel-reset');}
   // @ts-ignore TS7006 -- plain JS method parameters are exercised without transpilation.
-    return {controller,state,zoomController:base.controller,reset,cancelTouch:()=>{if(base.cancelTouch)base.cancelTouch();window.__gosx_scene3d_vessel_input.clear(controls.input);},stopInertia:()=>false,advance(dt,seconds,detail,paused) {
+    return {controller,state,zoomController:base.controller,reset,cancelTouch:()=>{if(base.cancelTouch)base.cancelTouch();window.__gosx_scene3d_vessel_input.clear(controls.input);},stopInertia:()=>false,advance(dt,seconds,detail,paused,waterSeconds=seconds) {
       if(disposed)return;
       state.reduced=!!(motion&&motion.matches);
-      const camera=read(),before=new Float32Array(model.pose),aboard=state.mode==='deck'&&!first;
-      const local=aboard?window.__gosx_scene3d_vessel_model.inversePoint(before,Object.assign({},camera,{y:camera.y-lastBob})):null;
+      const camera=read(),aboard=state.mode==='deck'&&!first;
+      const local=aboard?window.__gosx_scene3d_vessel_model.inversePoint(model.pose,Object.assign({},camera,{y:camera.y-lastBob})):null;
       lastBob=0;
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-      const q=helpers.lowHardware()?low:high,sample=(x,z,t)=>query.sample(q,x,z,t);
-      if(first) {state.y=sample(state.x,state.z,seconds).y;first=false;}
-      if(!paused)physics.advance(state,dt,seconds,window.__gosx_scene3d_vessel_input.value(controls.input),sample,floor);
+      const q=helpers.lowHardware()?low:high,sample=(x,z)=>query.sample(q,x,z,waterSeconds);
+      if(first) {state.y=sample(state.x,state.z).y;first=false;}
+      const input=window.__gosx_scene3d_vessel_input.value(controls.input,true);
+      physics.look(state,input.lookYaw*Math.min(.1,dt)*1.4,input.lookPitch*Math.min(.1,dt)*1.4);
+      if(!paused)physics.advance(state,dt,seconds,input,sample,floor);
       deck(state,physics,surface);
       if(local&&Math.abs(local.x)<surface.sizeX/2+.3&&Math.abs(local.z)<surface.sizeZ/2+.3&&Math.abs(local.y-state.helm.y)<2) {
         const p=physics.localPoint(state,local.x,local.y,local.z);
@@ -91,8 +93,8 @@
       if(state.mode==='sailing'&&!state.detached)state.camera=physics.camera(state,camera,dt,seconds);
       model.update(state,controller.currentCamera(),seconds,detail);
       if(wake)wake.update(state,seconds,sample,detail,controller.currentCamera());
-      controls.refresh(physics.canBoard(state,read()));
-      mount.setAttribute('data-gosx-scene3d-vessel',state.mode);
+      controls.refresh(state.config.quickBoard||physics.canBoard(state,read()));
+      if(mount.getAttribute('data-gosx-scene3d-vessel')!==state.mode)mount.setAttribute('data-gosx-scene3d-vessel',state.mode);
       if(navigation)navigation.advance(dt);
     },dispose() {
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.

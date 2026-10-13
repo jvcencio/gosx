@@ -8,8 +8,8 @@ import (
 
 const (
 	blackglassDiscoveriesScriptSrc = "/blackglass-discoveries.js?v=e9d25a75d914"
-	blackglassChartScriptSrc       = "/blackglass-chart.js?v=d85a3afa4595"
-	blackglassViewScriptSrc        = "/blackglass-view.js?v=3ae6ecfd76bc"
+	blackglassChartScriptSrc       = "/blackglass-chart.js?v=ec4b2d0a3f15"
+	blackglassViewScriptSrc        = "/blackglass-view.js?v=2d8d7472a996"
 	blackglassDiscoveriesStylesSrc = "/blackglass-discoveries.css?v=30dac342e0ac"
 )
 

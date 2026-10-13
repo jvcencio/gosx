@@ -4,9 +4,42 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"image/png"
 	"math"
 	"testing"
 )
+
+func TestWakeFoamBranchesFadeAndRemainBounded(t *testing.T) {
+	data, err := WakeFoam()
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) > 16384 || img.Bounds().Dx() != 128 || img.Bounds().Dy() != 128 {
+		t.Fatal("foam texture exceeds its bounded resolution or byte budget")
+	}
+	alpha := func(x, y int) uint32 { _, _, _, a := img.At(x, y).RGBA(); return a }
+	for i := 0; i < 128; i++ {
+		if alpha(0, i) != 0 || alpha(127, i) != 0 || alpha(i, 127) != 0 {
+			t.Fatal("foam must fade at its edges and at the end of its life")
+		}
+	}
+	var bands, gaps uint32
+	for y := 0; y < 100; y++ {
+		bands += alpha(18, y) + alpha(64, y) + alpha(109, y)
+		gaps += alpha(40, y) + alpha(87, y)
+	}
+	if bands <= gaps*3 {
+		t.Fatal("wake needs distinct foam arms and churn separated by open water")
+	}
+	again, err := WakeFoam()
+	if err != nil || !bytes.Equal(data, again) {
+		t.Fatal("wake generation is not reproducible")
+	}
+}
 
 func TestClipperLODsMaterialsAndBudget(t *testing.T) {
 	assets, err := ShipAssets()

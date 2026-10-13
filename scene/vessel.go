@@ -37,7 +37,7 @@ const VesselCommandEvent = "gosx:scene3d:vessel-command"
 const VesselStateEvent = "gosx:scene3d:vessel-state"
 
 // VesselCommand controls the configured vessel without taking ownership of its
-// transforms. Actions are helm, course, release-course, trim and land. Land
+// transforms. Actions are helm, course, release-course, center-view, trim and land. Land
 // stops the ship and steps ashore only near a configured landing at low speed.
 // Course Bearing
 // is a compass heading in degrees [0,360]; Trim is a fraction in [0,1].

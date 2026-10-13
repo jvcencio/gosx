@@ -720,8 +720,8 @@
     }
   },
   "files": {
-    "../runtime/scene3d/webgl.ts": 11613,
-    "../runtime/scene3d/webgpu.ts": 19603,
+    "../runtime/scene3d/webgl.ts": 11292,
+    "../runtime/scene3d/webgpu.ts": 19605,
     "bootstrap-src/16a1-scene-webgpu-selena-uniforms.ts": 208,
     "../runtime/scene3d/hydrate-input.ts": 90,
     "../runtime/scene3d/mount-webgl.ts": 5347,
@@ -740,11 +740,11 @@
     "../runtime/scene3d/ocean-query.ts": 84,
     "../runtime/scene3d/ocean-waves.ts": 27,
     "../runtime/scene3d/walk-surfaces.ts": 14,
-    "../runtime/scene3d/vessel-physics.ts": 170,
-    "../runtime/scene3d/vessel-input.ts": 102,
+    "../runtime/scene3d/vessel-physics.ts": 175,
+    "../runtime/scene3d/vessel-input.ts": 131,
     "../runtime/scene3d/vessel-model.ts": 103,
-    "../runtime/scene3d/vessel-wake.ts": 97,
-    "../runtime/scene3d/mount-vessel.ts": 104,
+    "../runtime/scene3d/vessel-wake.ts": 124,
+    "../runtime/scene3d/mount-vessel.ts": 106,
     "../runtime/scene3d/webgpu-transmission.ts": 111,
     "../runtime/scene3d/webgl-transmission.ts": 98,
     "../runtime/scene3d/webgl-depth-post.ts": 68,
@@ -757,7 +757,7 @@
     "../runtime/scene3d/webgl-specular-bloom.ts": 26,
     "../runtime/scene3d/webgpu-specular-bloom.ts": 41,
     "../runtime/scene3d/walk-input.ts": 58,
-    "../runtime/scene3d/vessel-navigation.ts": 67,
+    "../runtime/scene3d/vessel-navigation.ts": 68,
     "../runtime/scene3d/model-preparation.ts": 87
   },
   "functionDefaults": {
@@ -771,22 +771,22 @@
     {
       "source": "../runtime/scene3d/mount-vessel.ts",
       "name": "anonymous@2:2",
-      "lines": 103,
-      "cyclomatic": 70,
-      "cognitive": 75,
+      "lines": 105,
+      "cyclomatic": 73,
+      "cognitive": 77,
       "maxNesting": 2,
       "parameters": 0,
-      "reason": "The measured mount owns the dynamic deck, asynchronous bathymetry, walker suspension, helm/camera transitions and reset. It uses the paced scene loop; model and wake authorities stay separate. Reduced-motion deck bob is removed before deck-local carry, preventing accumulated camera drift. Opt-in zoom adds navigation scaling, canvas pinch cancellation and bounded chase distance; limits reflect the measured orchestration growth. Navigation adds bounded lifecycle calls; validated low-speed landing transfers the camera to the walker and samples sparse hull patches. Commands and instruments remain in a separate module. The measured closure grows by eight lines and five branches; first-load rendering is unchanged. Scoped camera detachment preserves navigation while enabling the walker; retaking the helm preserves the ship position and course. Detached keyboard and touch input cannot steer the ship."
+      "reason": "Measured paced-loop orchestration for bathymetry, dynamic deck, walker ownership, helm transitions, reset and landing. Look feeds the existing camera authority without another RAF. Stable vessel attributes and helm layout avoid per-frame DOM writes; deck carry reads the pose directly without allocating a matrix copy. Wave sampling uses the rendered animation clock, while simulation and foam aging retain elapsed time."
     },
     {
       "source": "../runtime/scene3d/mount-vessel.ts",
       "name": "setup@25:3",
-      "lines": 78,
-      "cyclomatic": 63,
-      "cognitive": 67,
+      "lines": 80,
+      "cyclomatic": 66,
+      "cognitive": 69,
       "maxNesting": 2,
       "parameters": 5,
-      "reason": "The measured mount owns the dynamic deck, asynchronous bathymetry, walker suspension, helm/camera transitions and reset. It uses the paced scene loop; model and wake authorities stay separate. Reduced-motion deck bob is removed before deck-local carry, preventing accumulated camera drift. Opt-in zoom adds navigation scaling, canvas pinch cancellation and bounded chase distance; limits reflect the measured orchestration growth. Navigation adds bounded lifecycle calls; validated low-speed landing transfers the camera to the walker and samples sparse hull patches. Commands and instruments remain in a separate module. The measured closure grows by eight lines and five branches; first-load rendering is unchanged. Scoped camera detachment preserves navigation while enabling the walker; retaking the helm preserves the ship position and course. Detached keyboard and touch input cannot steer the ship."
+      "reason": "Measured paced-loop orchestration for bathymetry, dynamic deck, walker ownership, helm transitions, reset and landing. Look feeds the existing camera authority without another RAF. Stable vessel attributes and helm layout avoid per-frame DOM writes; deck carry reads the pose directly without allocating a matrix copy. Wave sampling uses the rendered animation clock, while simulation and foam aging retain elapsed time."
     },
     {
       "source": "../runtime/scene3d/mount-walk.ts",
@@ -811,22 +811,22 @@
     {
       "source": "../runtime/scene3d/vessel-input.ts",
       "name": "anonymous@2:2",
-      "lines": 101,
-      "cyclomatic": 59,
-      "cognitive": 70,
-      "maxNesting": 3,
+      "lines": 130,
+      "cyclomatic": 76,
+      "cognitive": 99,
+      "maxNesting": 4,
       "parameters": 0,
-      "reason": "The measured input installer includes focus and disposal, independent rudder/sail pointer ownership, keyboard controls and the phone steering hint. Mounted tests verify simultaneous touch inputs and cancellation. Scoped camera detachment preserves navigation while enabling the walker; retaking the helm preserves the ship position and course. Detached keyboard and touch input cannot steer the ship."
+      "reason": "Measured cumulative input installer with independent rudder, sail and look pointer ownership, focused arrow controls, cancellation and disposal. Helm layout updates only on mode changes and readout text only when its displayed value changes. Dragging releases the cursor for instruments; mounted input tests cover simultaneous touch and course-preserving look."
     },
     {
       "source": "../runtime/scene3d/vessel-input.ts",
-      "name": "setup@27:3",
-      "lines": 74,
-      "cyclomatic": 52,
-      "cognitive": 63,
-      "maxNesting": 3,
+      "name": "setup@51:3",
+      "lines": 79,
+      "cyclomatic": 54,
+      "cognitive": 77,
+      "maxNesting": 4,
       "parameters": 4,
-      "reason": "The measured input installer includes focus and disposal, independent rudder/sail pointer ownership, keyboard controls and the phone steering hint. Mounted tests verify simultaneous touch inputs and cancellation. Scoped camera detachment preserves navigation while enabling the walker; retaking the helm preserves the ship position and course. Detached keyboard and touch input cannot steer the ship."
+      "reason": "Measured cumulative input installer with independent rudder, sail and look pointer ownership, focused arrow controls, cancellation and disposal. Helm layout updates only on mode changes and readout text only when its displayed value changes. Dragging releases the cursor for instruments; mounted input tests cover simultaneous touch and course-preserving look."
     },
     {
       "source": "../runtime/scene3d/vessel-model.ts",
@@ -841,26 +841,26 @@
     {
       "source": "../runtime/scene3d/vessel-physics.ts",
       "name": "anonymous@2:2",
-      "lines": 169,
-      "cyclomatic": 119,
-      "cognitive": 132,
+      "lines": 174,
+      "cyclomatic": 117,
+      "cognitive": 131,
       "maxNesting": 3,
       "parameters": 0,
-      "reason": "The plain-JS IIFE includes the fixed-step helpers. Its measured cumulative limits cover point-of-sail propulsion, damped buoyancy, capsule collision and grounded retreat; physics unit tests exercise each behavior. The wheel camera adds one conditional near-plane selection; the paid-off rudder comment adds one line. Limits equal measured growth, with mooring and camera regressions. The backed-canvas authority now applies inside the no-go zone, adding one measured conditional. Exact recorded-input timing and authored terrain tests prove it escapes irons without increasing high-speed steering. Wind pressure replaces speed-based heel; relative bow water entry drives spray. Opt-in zoom adds navigation scaling, canvas pinch cancellation and bounded chase distance; limits reflect the measured orchestration growth. The voyage odometer adds one measured line after accepted collision-constrained movement; the course controller lives in the separate bounded navigation module."
+      "reason": "Measured cumulative fixed-step physics helpers for propulsion, buoyancy, hull collision and deck carry. Bounded yaw and pitch offsets add independent wheel look and chase orbit without changing the course or trim; physics tests cover finite input, limits, mode ownership and neutral-camera parity."
     },
     {
       "source": "../runtime/scene3d/vessel-wake.ts",
       "name": "anonymous@2:2",
-      "lines": 96,
-      "cyclomatic": 48,
-      "cognitive": 60,
-      "maxNesting": 3,
+      "lines": 123,
+      "cyclomatic": 64,
+      "cognitive": 101,
+      "maxNesting": 4,
       "parameters": 0,
-      "reason": "Measured cumulative plain-JS IIFE for bounded vessel effects. Helpers keep deformation, triangle normals, wake aging and deterministic impact spray outside renderer orchestration. Tests cover anchors, world-space history, capacity and disposal. Skip dormant effects and copy duplicate foam rows without resampling the ocean; the measured guard growth is covered by a query-budget and geometry-parity test."
+      "reason": "Measured cumulative bounded foam and impact spray helpers. Sixty small foam patches follow local water tangents and fan along a continuous world-space track; a separate helper draws curved bow strips. The effect uses at most 260 vertices, two effect objects and 80 high-detail / 50 reduced-detail water queries. Inactive patches collapse to zero area, avoiding duplicate transparency draws. Tests cover water following, turns, lifetime, capacity and disposal. Effects explicitly use standard alpha materials and uint32 indices so foam coverage reaches the textured mesh pipeline."
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "createSceneWaterSimWebGL@2429:3",
+      "name": "createSceneWaterSimWebGL@2430:3",
       "lines": 256,
       "cyclomatic": 78,
       "cognitive": 84,
@@ -869,7 +869,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "createSceneWaterRendererWebGL@3179:3",
+      "name": "createSceneWaterRendererWebGL@3180:3",
       "lines": 1198,
       "cyclomatic": 322,
       "cognitive": 394,
@@ -878,7 +878,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "waterShadowSignature@3364:5",
+      "name": "waterShadowSignature@3365:5",
       "lines": 11,
       "cyclomatic": 4,
       "cognitive": 4,
@@ -887,7 +887,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "applyWaterQualityProfile@3695:5",
+      "name": "applyWaterQualityProfile@3696:5",
       "lines": 100,
       "cyclomatic": 58,
       "cognitive": 68,
@@ -896,7 +896,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "renderMeshTextureTarget@3853:5",
+      "name": "renderMeshTextureTarget@3854:5",
       "lines": 28,
       "cyclomatic": 6,
       "cognitive": 5,
@@ -905,7 +905,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "drawFrame@3882:5",
+      "name": "drawFrame@3883:5",
       "lines": 407,
       "cyclomatic": 110,
       "cognitive": 138,
@@ -914,7 +914,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "createScenePostProcessor@4452:3",
+      "name": "createScenePostProcessor@4453:3",
       "lines": 586,
       "cyclomatic": 164,
       "cognitive": 232,
@@ -923,7 +923,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "anonymous@4873:14",
+      "name": "anonymous@4874:14",
       "lines": 153,
       "cyclomatic": 40,
       "cognitive": 87,
@@ -932,7 +932,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "scenePBRUploadLights@6960:3",
+      "name": "scenePBRUploadLights@6961:3",
       "lines": 116,
       "cyclomatic": 33,
       "cognitive": 64,
@@ -941,7 +941,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "scenePBRUploadEnvironmentMap@7302:3",
+      "name": "scenePBRUploadEnvironmentMap@7303:3",
       "lines": 126,
       "cyclomatic": 52,
       "cognitive": 98,
@@ -950,7 +950,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "createScenePBRRenderer@7589:3",
+      "name": "createScenePBRRenderer@7590:3",
       "lines": 3464,
       "cyclomatic": 1062,
       "cognitive": 1694,
@@ -959,7 +959,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "uploadCustomUniforms@8537:5",
+      "name": "uploadCustomUniforms@8538:5",
       "lines": 24,
       "cyclomatic": 21,
       "cognitive": 31,
@@ -968,7 +968,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "renderFrame@8759:5",
+      "name": "renderFrame@8760:5",
       "lines": 339,
       "cyclomatic": 114,
       "cognitive": 164,
@@ -977,7 +977,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "prepareRigidMeshBatches@9579:5",
+      "name": "prepareRigidMeshBatches@9580:5",
       "lines": 148,
       "cyclomatic": 86,
       "cognitive": 198,
@@ -986,7 +986,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "drawPBRObjectList@9853:5",
+      "name": "drawPBRObjectList@9854:5",
       "lines": 292,
       "cyclomatic": 89,
       "cognitive": 219,
@@ -995,7 +995,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "applyPointsAuthoredCustomUniforms@10221:5",
+      "name": "applyPointsAuthoredCustomUniforms@10222:5",
       "lines": 33,
       "cyclomatic": 16,
       "cognitive": 44,
@@ -1004,7 +1004,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "drawPointsEntries@10397:5",
+      "name": "drawPointsEntries@10398:5",
       "lines": 197,
       "cyclomatic": 63,
       "cognitive": 125,
@@ -1013,7 +1013,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "drawInstancedMeshes@10689:5",
+      "name": "drawInstancedMeshes@10690:5",
       "lines": 191,
       "cyclomatic": 57,
       "cognitive": 116,
@@ -1022,7 +1022,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "wgpuLoadTexture@3516:3",
+      "name": "wgpuLoadTexture@3518:3",
       "lines": 131,
       "cyclomatic": 42,
       "cognitive": 83,
@@ -1031,7 +1031,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "wgpuCreateSceneColorPipeline@4132:3",
+      "name": "wgpuCreateSceneColorPipeline@4134:3",
       "lines": 26,
       "cyclomatic": 2,
       "cognitive": 1,
@@ -1040,7 +1040,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "wgpuCreatePostProcessor@4373:3",
+      "name": "wgpuCreatePostProcessor@4375:3",
       "lines": 720,
       "cyclomatic": 131,
       "cognitive": 198,
@@ -1049,7 +1049,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "anonymous@4760:14",
+      "name": "anonymous@4762:14",
       "lines": 314,
       "cyclomatic": 29,
       "cognitive": 83,
@@ -1058,7 +1058,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "createSceneWebGPUPicker@5432:3",
+      "name": "createSceneWebGPUPicker@5434:3",
       "lines": 415,
       "cyclomatic": 118,
       "cognitive": 173,
@@ -1067,7 +1067,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "queuePick@5594:5",
+      "name": "queuePick@5596:5",
       "lines": 31,
       "cyclomatic": 9,
       "cognitive": 18,
@@ -1076,17 +1076,17 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "createSceneWebGPURenderer@6671:3",
+      "name": "createSceneWebGPURenderer@6673:3",
       "lines": 12241,
-      "cyclomatic": 4168,
+      "cyclomatic": 4170,
       "cognitive": 5385,
       "maxNesting": 7,
       "parameters": 2,
-      "reason": "The existing renderer closure includes its draw and resource helpers. Excluding direct vertex draws from baked-buffer sizing adds one conditional to its cumulative metrics, covered by the mixed hull/canvas upload regression. Other limits remain fixed."
+      "reason": "The existing renderer closure includes its draw and resource helpers. Excluding direct vertex draws from baked-buffer sizing adds one conditional to its cumulative metrics, covered by the mixed hull/canvas upload regression. Other limits remain fixed. Disabled alpha-cutoff upload distinguishes BLEND texture coverage (-2) from OPAQUE (-1) without changing the material uniform layout."
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "initGPUResources@7892:6",
+      "name": "initGPUResources@7894:6",
       "lines": 395,
       "cyclomatic": 26,
       "cognitive": 34,
@@ -1095,7 +1095,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "sceneSelenaPipelineAttributes@8632:5",
+      "name": "sceneSelenaPipelineAttributes@8634:5",
       "lines": 57,
       "cyclomatic": 28,
       "cognitive": 59,
@@ -1104,7 +1104,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "sceneWaterObjectState@10024:5",
+      "name": "sceneWaterObjectState@10026:5",
       "lines": 95,
       "cyclomatic": 39,
       "cognitive": 57,
@@ -1113,7 +1113,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "sceneWaterManifestShaderSources@10304:5",
+      "name": "sceneWaterManifestShaderSources@10306:5",
       "lines": 85,
       "cyclomatic": 74,
       "cognitive": 121,
@@ -1122,7 +1122,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "ingestManifestValue@10330:7",
+      "name": "ingestManifestValue@10332:7",
       "lines": 20,
       "cyclomatic": 19,
       "cognitive": 38,
@@ -1131,7 +1131,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "ingestManifestText@10350:7",
+      "name": "ingestManifestText@10352:7",
       "lines": 22,
       "cyclomatic": 22,
       "cognitive": 41,
@@ -1140,7 +1140,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "createSceneWaterSystem@10838:5",
+      "name": "createSceneWaterSystem@10840:5",
       "lines": 202,
       "cyclomatic": 33,
       "cognitive": 32,
@@ -1149,7 +1149,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "renderWaterObjectMeshTargetPass@11641:5",
+      "name": "renderWaterObjectMeshTargetPass@11643:5",
       "lines": 27,
       "cyclomatic": 14,
       "cognitive": 13,
@@ -1158,7 +1158,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "renderWaterObjectSceneTexturePasses@11978:5",
+      "name": "renderWaterObjectSceneTexturePasses@11980:5",
       "lines": 147,
       "cyclomatic": 39,
       "cognitive": 60,
@@ -1167,7 +1167,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "updateWaterSystems@12129:5",
+      "name": "updateWaterSystems@12131:5",
       "lines": 507,
       "cyclomatic": 168,
       "cognitive": 280,
@@ -1176,7 +1176,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawWaterPoolEntries@13657:5",
+      "name": "drawWaterPoolEntries@13659:5",
       "lines": 104,
       "cyclomatic": 34,
       "cognitive": 79,
@@ -1185,7 +1185,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawWaterSurfaceSide@13805:5",
+      "name": "drawWaterSurfaceSide@13807:5",
       "lines": 104,
       "cyclomatic": 34,
       "cognitive": 84,
@@ -1194,7 +1194,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "updateInstancedCullSystems@13966:5",
+      "name": "updateInstancedCullSystems@13968:5",
       "lines": 164,
       "cyclomatic": 69,
       "cognitive": 114,
@@ -1203,7 +1203,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "syncEnvironmentIBL@14406:5",
+      "name": "syncEnvironmentIBL@14408:5",
       "lines": 60,
       "cyclomatic": 31,
       "cognitive": 63,
@@ -1212,7 +1212,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "renderShadowPass@15997:116",
+      "name": "renderShadowPass@15999:116",
       "lines": 102,
       "cyclomatic": 31,
       "cognitive": 61,
@@ -1221,7 +1221,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawPBRObjects@16116:5",
+      "name": "drawPBRObjects@16118:5",
       "lines": 197,
       "cyclomatic": 93,
       "cognitive": 182,
@@ -1230,7 +1230,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "instancedMeshColorData@16357:5",
+      "name": "instancedMeshColorData@16359:5",
       "lines": 48,
       "cyclomatic": 20,
       "cognitive": 35,
@@ -1239,7 +1239,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawPointsEntries@17083:5",
+      "name": "drawPointsEntries@17085:5",
       "lines": 158,
       "cyclomatic": 51,
       "cognitive": 86,
@@ -1248,7 +1248,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawComputeParticleEntries@17258:5",
+      "name": "drawComputeParticleEntries@17260:5",
       "lines": 155,
       "cyclomatic": 44,
       "cognitive": 60,
@@ -1257,7 +1257,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "publishWebGPUFrameStats@17481:5",
+      "name": "publishWebGPUFrameStats@17483:5",
       "lines": 313,
       "cyclomatic": 257,
       "cognitive": 257,
@@ -1266,7 +1266,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "drawBoardLabels@18154:5",
+      "name": "drawBoardLabels@18156:5",
       "lines": 117,
       "cyclomatic": 39,
       "cognitive": 76,
@@ -1275,7 +1275,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "render@18389:5",
+      "name": "render@18391:5",
       "lines": 738,
       "cyclomatic": 235,
       "cognitive": 294,
@@ -1284,7 +1284,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "dispose@19182:5",
+      "name": "dispose@19184:5",
       "lines": 145,
       "cyclomatic": 37,
       "cognitive": 61,
@@ -1294,7 +1294,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "diagnostics@19440:5",
+      "name": "diagnostics@19442:5",
       "lines": 90,
       "cyclomatic": 49,
       "cognitive": 49,
@@ -1363,7 +1363,7 @@
       "source": "../runtime/scene3d/webgpu.ts",
       "name": "createSceneWebGPURenderer",
       "lines": 12241,
-      "cyclomatic": 4168,
+      "cyclomatic": 4170,
       "cognitive": 5385,
       "maxNesting": 7,
       "parameters": 2

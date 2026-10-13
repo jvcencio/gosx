@@ -80,7 +80,7 @@
     helm.addEventListener('click',()=>{arrival=false;command('helm');});
     land.addEventListener('click',()=>{if(!state?.landing)return;arrival=true;command('land');chart.open=false;});
     survey.addEventListener('click',()=>{overview=!overview;map.dataset.survey=String(overview);survey.setAttribute('aria-pressed',String(overview));survey.textContent=overview?'Follow ship':'Show archipelago';map.setAttribute('viewBox',overview?'-245 -430 600 480':state?[state.position.x-80,state.position.z-60,160,120].join(' '):'-70 -80 160 120');});
-    input.addEventListener('change',()=>{destination=null;departure=false;text('[data-coast-destination]','Manual course selected.');});
+    input.addEventListener('input',()=>{destination=null;departure=false;passage=[];text('[data-coast-destination]','Manual course selected.');});
     sail.addEventListener('click',()=>command('trim',{trim:state.trim>.95?0:1}));
     hold.addEventListener('click',()=>{
       if(state.course!==null) {command('release-course');return;}

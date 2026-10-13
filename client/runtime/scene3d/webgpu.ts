@@ -2025,6 +2025,7 @@
     "    let cutoff = material.alphaCutoff;",
     "    let alphaEnabled = cutoff >= 0.0;",
     "    let coverage = finalOpacity * texAlpha;",
+    "    let blendOpacity = select(finalOpacity, coverage, cutoff < -1.5);",
     "",
     "    var roughness = material.roughness;",
     "    if (material.hasRoughnessMap != 0u) {",
@@ -2075,7 +2076,7 @@
     "        let color = albedo + emissiveColor * emissiveStrength;",
     "        // Alpha-cut discard after sampling to keep derivative uniformity.",
     "        if (alphaEnabled && coverage < cutoff) { discard; }",
-    "        return vec4f(color, select(finalOpacity, 1.0, alphaEnabled));",
+    "        return vec4f(color, select(blendOpacity, 1.0, alphaEnabled));",
     "    }",
     "",
     // Resolve per-pixel normal via TBN matrix.
@@ -2338,7 +2339,7 @@
     "    }",
     "",
     "    if (alphaEnabled && coverage < cutoff) { discard; }",
-    "    return vec4f(color, select(finalOpacity, 1.0, alphaEnabled));",
+    "    return vec4f(color, select(blendOpacity, 1.0, alphaEnabled));",
     "}",
     "@fragment fn fragmentMain(in: VertexOutput) -> @location(0) vec4f { return gosxPBRColor(in); }",
     "struct GosxSpecularOutput { @location(0) color: vec4f, @location(1) specular: vec4f };",
@@ -2396,9 +2397,10 @@
       "    let cutoff = material.alphaCutoff;",
       "    let alphaEnabled = cutoff >= 0.0;",
       "    let coverage = unmaskedOpacity * texAlpha;",
+      "    let blendOpacity = select(unmaskedOpacity, coverage, cutoff < -1.5);",
       "    // Alpha-cut discard after sampling; equality survives the cut.",
       "    if (alphaEnabled && coverage < cutoff) { discard; }",
-      "    return vec4f(color, select(unmaskedOpacity, 1.0, alphaEnabled));",
+      "    return vec4f(color, select(blendOpacity, 1.0, alphaEnabled));",
       "}",
     ].join("\n");
   }
@@ -14747,7 +14749,7 @@
       var alphaCutoff = sceneNormalizeMaterialAlphaCutoff(mat.alphaCutoff, null);
       f[42] = (typeof alphaCutoff === "number" && Number.isFinite(alphaCutoff) && alphaCutoff >= 0)
         ? (alphaCutoff <= 1 ? Math.fround(alphaCutoff) : 2)
-        : -1; // alphaCutoff, normalized the same way as the WebGL renderer
+        : (mat.blendMode === "alpha" || mat.blendMode === "additive" ? -2 : -1); // -2 preserves texel alpha for BLEND; -1 keeps OPAQUE semantics.
       f[43] = mat.normalUVScale ? sceneNumber(mat.normalUVScale[1], 1) : 1; // normalUVScaleV
       var specular = sceneWebGPUSpecularFactors(mat);
       f[44] = specular.f0[0];

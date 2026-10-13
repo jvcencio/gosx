@@ -16,7 +16,7 @@
  *  - native u_specularF0 (vec3) + u_specularF90 uniform values observed at
  *    production GL draw calls (getUniformLocation program->location tracking
  *    + getParameter CURRENT_PROGRAM + getUniform at draw time, instanced
- *    forms included), and the 208-byte WebGPU material upload with the
+ *    forms included), and the 288-byte WebGPU material upload with the
  *    effective F0 read at float indices 44..46 and F90 at 47 (bytes
  *    176:192, unchanged), the loaded-intensity flag at u32 index 41 (byte
  *    164) and the loaded-color flag at u32 index 51 (byte 204); all wrappers
@@ -42,7 +42,7 @@
  *  - real GLB KHR_materials_specular specularTexture (intensity-alpha slice)
  *    on BOTH backends: saturated/zero/fractional/RGB-irrelevance/fully-
  *    metallic/IBL-isolated textured cases plus the untextured fractional
- *    control. WebGPU observes the real 208-byte upload flag; WebGL observes
+ *    control. WebGPU observes the real 288-byte upload flag; WebGL observes
  *    the real u_hasSpecularIntensityMap uniform at production draw time
  *    (missing locations/observations are null and never pass);
  *  - real GLB KHR_materials_specular specularColorTexture: white/black/
@@ -103,8 +103,8 @@ if (!fs.existsSync(GLTF_CHUNK)) {
 // A missing or invalid fixture is fatal: no probe runs without it.
 let IBL_FIXTURE = null;
 try {
-  IBL_FIXTURE = JSON.parse(execFileSync('go', ['run', './client/js/testdata/specular-ibl-fixture'],
-    { cwd: REPO, encoding: 'utf8', timeout: 60000 }));
+  IBL_FIXTURE = JSON.parse((process.env.GOSX_MATERIAL_FIXTURES_DIR ? fs.readFileSync(path.join(process.env.GOSX_MATERIAL_FIXTURES_DIR, 'specular-ibl.json'), 'utf8') : execFileSync('go', ['run', './client/js/testdata/specular-ibl-fixture'],
+    { cwd: REPO, encoding: 'utf8', timeout: 60000 })));
   if (!IBL_FIXTURE || !IBL_FIXTURE.radiance || !IBL_FIXTURE.irradiance ||
       !IBL_FIXTURE.brdfLUT || !IBL_FIXTURE.descriptor) {
     throw new Error('incomplete fixture payload');
@@ -631,7 +631,7 @@ const CASES = [
   // (alpha-opaque-a1 with wireframe:false and no authored cutoff; the WebGL
   // glb-mask-fill-control and the WebGPU wg-mask-fill-control), not a
   // default-wireframe opaque case, and same/diff references always name the
-  // same-backend FILL control. The cutoff uniform (WebGL) / 208-byte upload
+  // same-backend FILL control. The cutoff uniform (WebGL) / 288-byte upload
   // float index 42 (WebGPU) is observed at the SAME opacity/F0/F90-qualified
   // PBR draw/upload as opacity.
   // c5-f25: fill alpha 0.25 < cutoff 0.5 -> every fill fragment discarded,
@@ -681,7 +681,7 @@ const CASES = [
     f0: F0(2.42), expectedOpacity: 0.25, same: 'wg-alpha-blend25' }),
   // WebGPU MASK mirror of the glb-mask-* cases: same fixtures, same
   // wireframe:false FILL-only comparisons, same expectedEmpty semantics;
-  // cutoff is validated in the 208-byte material upload (float index 42).
+  // cutoff is validated in the 288-byte material upload (float index 42).
   WG({ name: 'wg-mask-fill-control',
     model: AMODEL('alpha-opaque-a1', { wireframe: false }), f0: F0(2.42),
     expectedOpacity: 1, expectedAlphaCutoff: -1 }),
@@ -997,7 +997,7 @@ CASES.push(...[
 });
 // ---- Specular-intensity-ALPHA texture cases (WebGPU only, ALPHA slice) ----
 // CPU factors stay at the pre-texture values (specularFactor defaults to 1),
-// so the 208-byte upload assertions expect F0 .04 / F90 1 while the final
+// so the 288-byte upload assertions expect F0 .04 / F90 1 while the final
 // per-pixel intensity comes from the texture ALPHA channel; those CPU factors
 // are NOT the final per-pixel factors. The observed hasSpecularIntensityMap
 // flag (float index 41 of the real upload) must reach 1 before capture and is
@@ -1122,7 +1122,7 @@ CASES.push(...[
 ].forEach((c) => CASES.push(c));
 
 // ---- Specular-COLOR texture cases (WebGPU only, color slice) --------------
-// CPU factors stay at the pre-texture authored values, so the 208-byte upload
+// CPU factors stay at the pre-texture authored values, so the 288-byte upload
 // assertions expect the authored F0/F90 (float indices 44..47, bytes 176:192,
 // unchanged) while the final per-pixel F0 comes from the sRGB-decoded color
 // texture RGB; the texture ALPHA channel must not affect the color role. The
@@ -1401,7 +1401,7 @@ const MASKROUTE_MAT = { color: '#3a7bd5', roughness: 0.35, metalness: 0, ior: 1.
   // Explicit renderPass:'alpha' control: blended route, no depth write,
   // sentinel cutoff, opaque factor 1.
   push('alpha-opaque', { opacity: 1, renderPass: 'alpha' },
-    { expectedOpacity: 1, expectedAlphaCutoff: -1,
+    { expectedOpacity: 1, expectedAlphaCutoff: -2,
       expectedDepthWrite: false, expectedBlend: true });
   // MASK inputs on the explicit alpha route: surviving fragments force
   // output alpha 1 in the built-in shader, so pixels match the alpha
@@ -1412,7 +1412,7 @@ const MASKROUTE_MAT = { color: '#3a7bd5', roughness: 0.35, metalness: 0, ior: 1.
   // Mask disabled (explicit alphaCutoff null): fractional opacity routes to
   // the blended alpha pass; cutoff uniform/upload sentinel -1.
   push('mask-disabled', { opacity: 0.5, alphaCutoff: null },
-    { expectedOpacity: 0.5, expectedAlphaCutoff: -1,
+    { expectedOpacity: 0.5, expectedAlphaCutoff: -2,
       expectedDepthWrite: false, expectedBlend: true });
   // CSS-authored cutoff: the raw input stays the string
   // var(--mask-cutoff, 0.5); the runtime effective cutoff is the numeric
@@ -1422,6 +1422,28 @@ const MASKROUTE_MAT = { color: '#3a7bd5', roughness: 0.35, metalness: 0, ior: 1.
     { expectedOpacity: 0.5, expectedAlphaCutoff: 0.5,
       expectedDepthWrite: true, expectedBlend: false, same: pfx + 'opaque' });
 });
+// BLEND must retain base-color texture coverage; OPAQUE and MASK keep
+// their existing contracts. These cases exercise real importer and shader pixels.
+for (const webgpu of [false, true]) {
+  const prefix = webgpu ? 'wg-blendtex-' : 'gl-blendtex-';
+  for (const [name, tex, factor, unlit] of [
+    ['control', 'a255', 1, false], ['empty', 'a0', 1, false],
+    ['half', 'a128', 1, false], ['quarter', 'a128', .5, false],
+    ['unlit-control', 'a255', 1, true], ['unlit-half', 'a128', 1, true],
+  ]) {
+    const path = '/tex/alb-white-' + tex + '.png';
+    GLB_FILES['/models/' + prefix + name + '.glb'] = buildQuadGLBTex({ alphaMode: 'BLEND', baseColorTex: path, baseAlpha: factor, unlit, ior: 2.42 });
+    const c = { name: prefix + name, webgpu, model: AMODEL(prefix + name, {wireframe:false}),
+      albedoTex: true, requiredTex: [path], f0: F0(2.42), expectedOpacity: factor,
+      expectedAlphaCutoff: -2, expectedDepthWrite: false, expectedBlend: true, expectedUnlit: unlit };
+    if (name === 'empty') c.expectedEmpty = true;
+    if (name !== 'control' && name !== 'unlit-control') {
+      c.differs = prefix + (name === 'unlit-half' ? 'unlit-control' : name === 'quarter' ? 'half' : 'control');
+      c.minChanged = 50;
+    }
+    CASES.push(c);
+  }
+}
 const byName = {};
 // Verified typed AlphaCutoff fixture: one JSON object on stdout carrying
 // exactly five same-geometry standard-material scenes lowered through the
@@ -1431,9 +1453,9 @@ const byName = {};
 // alteration of object or material field data.
 let MASK_FIXTURE = null;
 try {
-  MASK_FIXTURE = JSON.parse(execFileSync('go',
+  MASK_FIXTURE = JSON.parse((process.env.GOSX_MATERIAL_FIXTURES_DIR ? fs.readFileSync(path.join(process.env.GOSX_MATERIAL_FIXTURES_DIR, 'alpha-mask.json'), 'utf8') : execFileSync('go',
     ['run', './client/js/testdata/alpha-mask-typed-fixture'],
-    { cwd: REPO, encoding: 'utf8', timeout: 60000 }));
+    { cwd: REPO, encoding: 'utf8', timeout: 60000 })));
   if (!MASK_FIXTURE || MASK_FIXTURE.schema !== 'gosx.alpha-cutoff.fixture.v1') {
     throw new Error('bad fixture schema');
   }
@@ -1492,7 +1514,7 @@ try {
   // Cutoff disabled (null): fractional opacity routes to the blended alpha
   // pass; sentinel cutoff.
   push('disabled', 'disabled',
-    { expectedOpacity: 0.5, expectedAlphaCutoff: -1,
+    { expectedOpacity: 0.5, expectedAlphaCutoff: -2,
       expectedDepthWrite: false, expectedBlend: true,
       differs: pfx + 'opaque', minChanged: 1 });
   // Discard 1/2: every fragment discarded, strict empty image, still the
@@ -1503,6 +1525,19 @@ try {
       differs: pfx + 'opaque', minChanged: 1 });
 });
 CASES.forEach((c) => { byName[c.name] = c; });
+// Named subsets include their pixel-reference controls and fail on unknown names.
+const caseFilter = (process.env.GOSX_MATERIAL_CASES || '').split(',').filter(Boolean);
+if (caseFilter.length) {
+  const selected = new Set();
+  const include = name => {
+    if (!byName[name]) throw new Error('unknown material probe case: ' + name);
+    if (selected.has(name)) return;
+    selected.add(name);for (const key of ['same', 'differs']) if (byName[name][key]) include(byName[name][key]);
+  };
+  caseFilter.forEach(include);
+  const subset = CASES.filter(c => selected.has(c.name));CASES.splice(0, CASES.length, ...subset);
+}
+
 
 function propsFor(c) {
   const p = { width: W, height: H, autoRotate: false, animation: false,
@@ -1739,7 +1774,7 @@ async function evalSend(send, expression, extra) {
 // Nothing is inferred from uniform1f/useProgram. GPUQueue.writeBuffer is
 // wrapped with its true signature (buffer, bufferOffset, data, dataOffset?,
 // size?) with correct element/byte dataOffset+size semantics, capturing only
-  // 208-byte material uploads and reading F0 at float indices 44..46 and F90
+  // 288-byte material uploads and reading F0 at float indices 44..46 and F90
 // at 47, plus the alpha cutoff at float index 42 (byte 168).
 const PRELOAD = `
   window.__gosxIOR = { draws: 0, pbrDraws: 0, lastDrawF0: null, lastDrawF90: null, f0s: [], obsErrors: [], gl: null,
@@ -2170,19 +2205,19 @@ const PRELOAD = `
               hasEnvMap: dv80.getUint32(16 * 4, true)
             });
           }
-          if (byteLen === 208 && window.__gosxWGPU.dumps.length < 256 &&
-              byteOff >= 0 && byteOff + 208 <= totalBytes) {
-            // 208-byte material capture: production writes Float32Array(52);
+          if (byteLen === 288 && window.__gosxWGPU.dumps.length < 256 &&
+              byteOff >= 0 && byteOff + 288 <= totalBytes) {
+            // 288-byte material capture: production writes Float32Array(52);
             // the effective specular F0 lives at float indices 44..46 and F90
             // at 47 (bytes 176:192, unchanged). Slots 0..43 are pre-existing
             // uniform data; 48..50 are the color log coefficients. Capped by
             // the 256-entry dump limit.
-            var dv = new DataView(buf, base + byteOff, 208);
+            var dv = new DataView(buf, base + byteOff, 288);
             var floats = new Array(52);
             for (var i = 0; i < 52; i++) floats[i] = dv.getFloat32(i * 4, true);
             // float index 6 is the material opacity and float index 42
             // (byte 168) is the alpha cutoff (-1 disabled, 0 valid, >1
-            // finite), both captured from the same actual 208-byte upload
+            // finite), both captured from the same actual 288-byte upload
             // as F0/F90.
             window.__gosxWGPU.dumps.push({
               f0: [floats[44], floats[45], floats[46]], f90: floats[47], opacity: floats[6],
@@ -2532,7 +2567,7 @@ setTimeout(() => {
   profile = fs.mkdtempSync(path.join(os.tmpdir(), 'gosx-ior-probe-'));
   const CHROME = process.env.GOSX_CHROME_BIN || '/usr/bin/google-chrome';
   chrome = spawn(CHROME, [
-    '--headless=new', '--no-sandbox', '--use-gl=angle', '--use-angle=gl-egl',
+    '--headless=new', '--no-sandbox', '--use-gl=angle', '--use-angle=' + (process.platform === 'win32' ? 'd3d11' : 'gl-egl'),
     '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--enable-unsafe-webgpu',
     '--disable-dev-shm-usage', '--user-data-dir=' + profile, '--remote-debugging-port=0', 'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -2682,9 +2717,9 @@ setTimeout(() => {
         // Texture cases must additionally wait, boundedly, for the REAL
         // texture-loaded state before settling/capturing. WebGPU: the
         // intensity flag at u32 index 41 (byte 164) and the color flag at u32
-        // index 51 (byte 204) of actual 208-byte uploads, each read as a
+        // index 51 (byte 204) of actual 288-byte uploads, each read as a
         // uint32 word; combined color+intensity cases require BOTH flags
-        // present in the SAME 208-byte dump (separate partial dumps never
+        // present in the SAME 288-byte dump (separate partial dumps never
         // satisfy combined readiness). WebGL: the real u_hasSpecularIntensityMap
         // uniform observed at production PBR draw time (getUniformLocation
         // tracking + getUniform), read as true/1; missing locations or
@@ -2740,13 +2775,13 @@ setTimeout(() => {
         if (c.specColorTex) rec.specColorMapFlag = colorFlagReady ? 1 : 0;
         if (!intFlagReady) {
           fail(c.name + (c.webgpu
-            ? ': hasSpecularIntensityMap flag not observed as 1 in any 208-byte upload within '
+            ? ': hasSpecularIntensityMap flag not observed as 1 in any 288-byte upload within '
             : ': u_hasSpecularIntensityMap not observed loaded (true/1) at production draw within ') +
             CASE_WAIT_MS + 'ms');
         }
         if (!colorFlagReady) {
           fail(c.name + (c.webgpu
-            ? ': hasSpecularColorMap flag not observed as 1 in any 208-byte upload within '
+            ? ': hasSpecularColorMap flag not observed as 1 in any 288-byte upload within '
             : ': u_hasSpecularColorMap not observed loaded (true/1) at production draw within ') +
             CASE_WAIT_MS + 'ms');
         }
@@ -2765,7 +2800,7 @@ setTimeout(() => {
         }
         if (!albedoReady) {
           fail(c.name + (c.webgpu
-            ? ': hasAlbedoMap flag not observed as 1 in any 208-byte upload within '
+            ? ': hasAlbedoMap flag not observed as 1 in any 288-byte upload within '
             : ': u_hasAlbedoMap not observed loaded (true/1) at production draw within ') +
             CASE_WAIT_MS + 'ms');
         }
@@ -2891,7 +2926,7 @@ setTimeout(() => {
             // Unknown/missing state: fail, never silently accept.
             fail(c.name + ': unknown/missing data-gosx-scene3d-webgpu-bundle-state: ' + s.bundleState);
           }
-          if (!(s.wgpu.uploads > 0)) fail(c.name + ': no 208-byte material uploads observed');
+          if (!(s.wgpu.uploads > 0)) fail(c.name + ': no 288-byte material uploads observed');
           let hit = null;
           (s.wgpu.dumps || []).forEach((d) => {
             if (hit || !Array.isArray(d.f0) || d.f0.length !== 3) return;
@@ -2909,7 +2944,7 @@ setTimeout(() => {
               c.albedoTex || typeof c.expectedUnlit === 'boolean') {
             // Opacity (float index 6) and the alpha cutoff (float index 42,
             // byte 168) must be present with the expected RGB F0 and F90 in
-            // the SAME 208-byte upload, never sighted independently.
+            // the SAME 288-byte upload, never sighted independently.
             let ohit = null;
             (s.wgpu.dumps || []).forEach((d) => {
               if (ohit || !Array.isArray(d.f0) || d.f0.length !== 3) return;
@@ -2949,12 +2984,12 @@ setTimeout(() => {
                 (typeof c.expectedUnlit === 'boolean' ? ' unlit ' + (c.expectedUnlit ? 1 : 0) : '') +
                 (c.albedoTex ? ' + hasAlbedoMap===1' : '') +
                 ' with F0 [' + expF0.join(',') + '] + F90 ' + expF90 +
-                ' not found together in any 208-byte upload (floats[6]/floats[42]/floats[44..47])');
+                ' not found together in any 288-byte upload (floats[6]/floats[42]/floats[44..47])');
             }
           }
           if (!hit) {
             fail(c.name + ': expected F0 [' + expF0.join(',') + '] + F90 ' + expF90 +
-              ' not found at float indices 44..47 of any 208-byte upload');
+              ' not found at float indices 44..47 of any 288-byte upload');
           }
           if (s.wgpuErr) {
             fail(c.name + ': WebGPU renderer produced nonempty wgpuErr: ' + s.wgpuErr);
@@ -3346,7 +3381,7 @@ setTimeout(() => {
     note: 'Real Chrome + real WebGL2/WebGPU PBR with the actual built bootstrap.js, real GLB ' +
       'loading and native draws. u_specularF0/u_specularF90 read from real uniform state at ' +
       'production draw calls (getUniformLocation tracking + CURRENT_PROGRAM + getUniform, ' +
-      'instanced forms) and at float indices 44..47 of 208-byte WebGPU material uploads; ' +
+      'instanced forms) and at float indices 44..47 of 288-byte WebGPU material uploads; ' +
       'the intensity-texture loaded state is observed per backend as the real ' +
       'u_hasSpecularIntensityMap draw-time uniform (WebGL, missing = null) or the byte-164 ' +
       'upload flag (WebGPU), and the color-texture loaded state as the real ' +
