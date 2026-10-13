@@ -99,7 +99,7 @@ func SelenaUniforms(values any) (map[string]any, error) {
 // backend: the returned material carries GLSL ES 3.00 for WebGL2 and WGSL for WebGPU,
 // plus the binding layout the runtime uses to wire uniforms and textures.
 func CompileSelenaMaterial(source []byte, opts SelenaMaterialOptions) (CustomMaterial, bindings.Layout, error) {
-	result, err := selena.Compile(source, selena.CompileOptions{
+	result, err := compileSelenaCached(source, selena.CompileOptions{
 		Material:    opts.Material,
 		SpecularMRT: opts.SpecularMRT,
 		Targets:     selenaMaterialTargets(opts),

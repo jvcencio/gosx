@@ -91,11 +91,10 @@ func WriteHTML(w http.ResponseWriter, res HTMLResponse) {
 	if res.Cache.shouldApply() {
 		// A streamed response has no complete body yet, so report no body and
 		// keep the request-derived validator. See ApplyCacheHeadersForBody.
-		var body []byte
 		if !streaming {
-			body = res.cacheDigestBody(html)
+			res.Cache.setRepresentationString(res.cacheDigestHTML(html))
 		}
-		if ApplyCacheHeadersForBody(res.Request, res.Headers, status, res.Cache, res.Revalidator, body) {
+		if ApplyCacheHeaders(res.Request, res.Headers, status, res.Cache, res.Revalidator) {
 			WriteNotModified(w, res.Headers)
 			return
 		}
@@ -138,7 +137,7 @@ func stripResponseNonceAttribute(markup, nonce string) string {
 	return strings.ReplaceAll(markup, nonceAttr, "")
 }
 
-// cacheDigestBody returns the bytes that describe the resource representation.
+// cacheDigestHTML returns the string that describe the resource representation.
 //
 // WHY it strips values: a GoSX document embeds the per-request ID in its
 // document contract script, and it can embed a per-request
@@ -147,7 +146,7 @@ func stripResponseNonceAttribute(markup, nonce string) string {
 // request could ever match. Neither value describes the resource: a shared cache
 // that replayed one client's request ID or nonce to another client would be
 // wrong. Remove them, then hash what is left.
-func (res HTMLResponse) cacheDigestBody(html string) []byte {
+func (res HTMLResponse) cacheDigestHTML(html string) string {
 	if id := RequestID(res.Request); id != "" {
 		html = strings.ReplaceAll(html, id, "")
 	}
@@ -157,7 +156,7 @@ func (res HTMLResponse) cacheDigestBody(html string) []byte {
 		}
 		html = strings.ReplaceAll(html, value, "")
 	}
-	return []byte(html)
+	return html
 }
 
 func splitStreamTail(html string) (string, string, bool) {

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"html"
+	"m31labs.dev/gosx/internal/filepolicy"
 	"m31labs.dev/gosx/internal/htmlattr"
 	"net/http"
 	"os"
@@ -57,6 +58,14 @@ func init() {
 // loadCachedGSXProgram returns the compiled program for a .gsx file, reading
 // and compiling it only when the file changed since the last request.
 func loadCachedGSXProgram(path string) (*ir.Program, error) {
+	if filepolicy.Immutable() {
+		gsxCompileCache.mu.RLock()
+		entry, ok := gsxCompileCache.files[path]
+		gsxCompileCache.mu.RUnlock()
+		if ok {
+			return entry.prog, entry.err
+		}
+	}
 	info, statErr := os.Stat(path)
 	if statErr != nil {
 		// Stat failed. Read the bytes and fall back to the content hash.
@@ -117,6 +126,11 @@ type htmlSourceEntry struct {
 }
 
 func loadCachedHTMLSource(path string) (string, error) {
+	if filepolicy.Immutable() {
+		if entry, ok := htmlSourceCache.Load(path); ok {
+			return entry.(htmlSourceEntry).source, nil
+		}
+	}
 	info, statErr := os.Stat(path)
 	if statErr != nil {
 		data, err := os.ReadFile(path)
@@ -479,11 +493,17 @@ func scopeHTMLFragmentRoots(fragment, scopeID string) string {
 	attrValue := html.EscapeString(scopeID)
 
 	var out strings.Builder
+	out.Grow(len(fragment) + 64)
 	depth := 0
 	for i := 0; i < len(fragment); {
 		if fragment[i] != '<' {
-			out.WriteByte(fragment[i])
-			i++
+			next := strings.IndexByte(fragment[i:], '<')
+			if next < 0 {
+				out.WriteString(fragment[i:])
+				break
+			}
+			out.WriteString(fragment[i : i+next])
+			i += next
 			continue
 		}
 		switch {
