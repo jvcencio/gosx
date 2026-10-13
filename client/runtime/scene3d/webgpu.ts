@@ -3522,6 +3522,52 @@
   }
 
 
+  // Device ownership fences cached pipelines across device-loss recovery.
+  var wgpuTextureMipCaches = new WeakMap();
+
+  function wgpuGenerateTextureMips(device, texture, format, levels) {
+    if (levels <= 1) return;
+    var cache = wgpuTextureMipCaches.get(device);
+    if (!cache) wgpuTextureMipCaches.set(device, cache = new Map());
+    var resources = cache.get(format);
+    if (!resources) {
+      var layout = device.createBindGroupLayout({ entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+      ] });
+      resources = {
+        layout: layout,
+        sampler: device.createSampler({ minFilter: "linear", magFilter: "linear" }),
+        pipeline: device.createRenderPipeline({
+          label: "gosx-texture-mips-" + format,
+          layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+          vertex: { module: device.createShaderModule({ code: WGSL_POST_VERTEX }), entryPoint: "vertexMain" },
+          fragment: { module: device.createShaderModule({ code: WGSL_POST_BLIT_FRAGMENT }), entryPoint: "fragmentMain", targets: [{ format: format }] },
+          primitive: { topology: "triangle-strip" },
+        }),
+      };
+      cache.set(format, resources);
+    }
+    var encoder = device.createCommandEncoder({ label: "gosx-texture-mips" });
+    for (var level = 1; level < levels; level++) {
+      var group = device.createBindGroup({ layout: resources.layout, entries: [
+        { binding: 0, resource: texture.createView({ baseMipLevel: level - 1, mipLevelCount: 1 }) },
+        { binding: 1, resource: resources.sampler },
+      ] });
+      var pass = encoder.beginRenderPass({ label: "gosx-texture-mip-" + level, colorAttachments: [{
+        view: texture.createView({ baseMipLevel: level, mipLevelCount: 1 }),
+        loadOp: "clear", clearValue: [0, 0, 0, 0], storeOp: "store",
+      }] });
+      pass.setPipeline(resources.pipeline);
+      pass.setBindGroup(0, group);
+      pass.draw(4);
+      pass.end();
+    }
+    // The queue orders this chain after the external-image copy and before
+    // any frame that sees the newly settled texture record.
+    device.queue.submit([encoder.finish()]);
+  }
+
   function wgpuLoadTexture(device, url, cache, rawDescriptor, fallbackRole, fallbackColorSpace) {
     if (!cache) return null;
     var descriptor = wgpuTextureDescriptor(rawDescriptor, url, fallbackRole, fallbackColorSpace);
@@ -3552,6 +3598,7 @@
       src: key,
       descriptor: descriptor,
       colorSpace: "",
+      levels: 1,
       loaded: false,
       pending: true,
       failed: false,
@@ -3588,9 +3635,12 @@
         var needsUnpremultipliedAlpha = ["specular-color", "base-color"].indexOf(descriptor.role) >= 0;
         var w = image.width;
         var h = image.height;
+        var levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
+        var format = descriptor.colorSpace === "srgb" ? "rgba8unorm-srgb" : "rgba8unorm";
         var tex = device.createTexture({
           size: [w, h, 1],
-          format: descriptor.colorSpace === "srgb" ? "rgba8unorm-srgb" : "rgba8unorm",
+          format: format,
+          mipLevelCount: levels,
           usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
         });
         // Chromium rejects an ImageBitmap made from an SVG foreignObject.
@@ -3621,9 +3671,11 @@
               needsUnpremultipliedAlpha || isHTMLTexture ? { texture: tex, premultipliedAlpha: false } : { texture: tex },
               [w, h]
             );
+            wgpuGenerateTextureMips(device, tex, format, levels);
             record.texture.destroy();
             record.texture = tex;
             record.view = tex.createView();
+            record.levels = levels;
             record.colorSpace = descriptor.colorSpace === "srgb" ? "srgb" : "linear";
             record.loaded = true;
             record.pending = false;
