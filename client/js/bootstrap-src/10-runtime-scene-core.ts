@@ -6426,6 +6426,7 @@
     if (sceneMeshObjectEffectivelyInvisible(object, material)) {
       return;
     }
+    const resourceOwner = object.resourceOwner || object;
     const materialIndex = sceneBundleMaterialIndex(bundle, materialLookup, material);
     const outlineColor = emitsSelectionEdges ? (authoredOutlineColor || "#facc15") : "";
     const outlineWidth = emitsSelectionEdges ? Math.max(2, authoredOutlineWidth || 3) : 0;
@@ -6478,7 +6479,7 @@
         depthWrite: object.depthWrite, bounds, depthNear: depth.near, depthFar: depth.far, depthCenter: depth.center,
         viewCulled: false, doubleSided: Boolean(object.doubleSided), skin: null, _crowdSkin: object._crowdSkin,
         _crowdMotion: motion || null,
-        vertices, directVertices: true, retainedGeometry: true, resourceOwner: object.resourceOwner || object, geometryRevision: 0,
+        vertices, directVertices: true, retainedGeometry: true, resourceOwner, geometryRevision: 0,
         modelMatrix, vertexOffset: 0, vertexCount: vertices.count };
       sceneStampRetainedMeshCSSInput(meshRecord, object);
       bundle.meshObjects.push(meshRecord);
@@ -6519,7 +6520,7 @@
         vertices: vertices,
         directVertices: true,
         retainedGeometry: retained,
-        resourceOwner: retained ? (object.resourceOwner || object) : undefined,
+        resourceOwner: retained ? resourceOwner : undefined,
         geometryRevision: retained ? geometryRevision : undefined,
         modelMatrix: sceneObjectModelMatrix(object, timeSeconds),
         vertexOffset: 0,
@@ -6563,7 +6564,7 @@
           vertices,
           directVertices: true,
           retainedGeometry: true,
-          resourceOwner: object.resourceOwner || object,
+          resourceOwner,
           geometryRevision,
           modelMatrix,
           vertexOffset: 0,

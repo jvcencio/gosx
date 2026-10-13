@@ -9324,10 +9324,7 @@
     function createSelenaBindGroup(material, resource, cacheOwner, renderContext) {
       var uniformData = sceneSelenaUniformData(material, cacheOwner, renderContext, selenaFrame);
       if (!uniformData || !resource) return null;
-      // Pack from the current draw record, but cache on a persistent owner.
-      var owner = cacheOwner && cacheOwner.id
-        ? webGPUInstancedCacheOwner("selena:" + cacheOwner.id)
-        : (cacheOwner && cacheOwner.resourceOwner || cacheOwner || material);
+      var owner = sceneWebGPUMeshCacheOwner(cacheOwner, material, webGPUInstancedCacheOwner);
       var uniformSlot = sceneSelenaUniformBufferSlot(renderContext);
       var uniformBuffer = wgpuCachedTrackedBuffer(
         owner,
@@ -9401,22 +9398,15 @@
           cacheStorages.push(stateBuffer);
         }
       }
-      // Memoize the bind group. GPUBindGroups have no destroy() (GC-only), so
-      // creating one per frame causes allocation and GC pressure. The uniform
-      // buffer data is written by wgpuCachedTrackedBuffer above (dynamic=true)
-      // and the bind group references it by identity, so the same bind group
-      // remains valid across frames as long as the resource objects are unchanged.
-      // The ping-pong waterState storage buffer produces 2 variants (bufferA /
-      // bufferB), so the pool stabilises at 2 entries. Pool is capped at 4 to
-      // handle rare extra variants (resolution change, etc.) without unbounded
-      // growth. Device-loss recovery: a new renderer has a different `device`
-      // closure, so pc.device !== device evicts stale entries automatically.
+      // Uniform contents change while resource identities stay stable.
+      // Keep at most four variants for ping-pong storage or resized resources;
+      // device changes reject groups from the previous renderer.
       var bgPoolSlot = "_gosxWGPUSBGC" + uniformSlot;
       var pool = owner[bgPoolSlot];
       if (!Array.isArray(pool)) { pool = []; owner[bgPoolSlot] = pool; }
       for (var pi = 0; pi < pool.length; pi++) {
         var pc = pool[pi];
-        if (!pc || pc.device !== device || pc.uniformBuffer !== uniformBuffer) continue;
+        if (!pc || pc.device !== device || pc.layout !== resource.bindGroupLayout || pc.uniformBuffer !== uniformBuffer) continue;
         if (pc.views.length !== cacheViews.length || pc.storages.length !== cacheStorages.length) continue;
         var match = true;
         for (var vi = 0; vi < cacheViews.length && match; vi++) {
@@ -9429,7 +9419,7 @@
       }
       var newBG = device.createBindGroup({ layout: resource.bindGroupLayout, entries: entries });
       if (pool.length >= 4) pool.shift();
-      pool.push({ device: device, uniformBuffer: uniformBuffer, views: cacheViews, storages: cacheStorages, bg: newBG });
+      pool.push({ device: device, layout: resource.bindGroupLayout, uniformBuffer: uniformBuffer, views: cacheViews, storages: cacheStorages, bg: newBG });
       return newBG;
     }
 
@@ -15294,16 +15284,7 @@
       return matBG;
     }
 
-    // _frameBindGroupCache memoizes the frame bind group. Every entry is a
-    // buffer, a texture view or a sampler held BY REFERENCE, and every one of
-    // them is written with queue.writeBuffer rather than replaced, so the same
-    // bind group stays correct across frames. Rebuilding it each frame cost one
-    // createBindGroup per frame and, worse, gave the render-bundle recorder a
-    // new object identity every frame, so no bundle could ever replay.
-    //
-    // The cache compares identities, so a grown light buffer, a resized shadow
-    // map or a device-loss recovery rebuilds it.
-    // These opaque backend handles stay JavaScript-readable in raw-source tests.
+    // The frame group stays valid while its bound GPU resources retain identity.
     var _frameBindGroupCache = JSON.parse("null");
     var transmissionResources = JSON.parse("null"), transmissionView = JSON.parse("null");
 
@@ -15484,9 +15465,6 @@
     function webGPURetainedMaterialOwner(obj) {
       var vertices = obj && obj.vertices;
       var entry = vertices && retainedMeshAttributeCache.get(vertices);
-      // Retire the old material buffer before createMaterialBindGroup writes
-      // and binds the replacement revision. Waiting for the later vertex
-      // binding path would destroy a buffer already referenced by this frame.
       if (entry && entry.revision !== obj.geometryRevision) {
         retainedMeshBufferStats.rebuilds += 1;
         retainedMeshBufferStats.revisionInvalidations += 1;
@@ -15530,16 +15508,12 @@
 
     function webGPUBeginRetainedMeshFrame(bundle) {
       retainedMeshAttributeEpoch += 1;
-      retainedMaterialFrameSources = new WeakSet();
       var objects = Array.isArray(bundle && bundle.meshObjects) ? bundle.meshObjects : [];
+      retainedMaterialFrameSources = sceneWebGPURetainedFrameSources(objects, webGPURetainedMaterialSource);
       for (var i = 0; i < objects.length; i++) {
         var obj = objects[i];
-        // Direct-vertex entries (including skinned/morph draws that carry an
-        // authored index stream) are marked so their cached GPU buffers survive
-        // the sweep exactly like fully retained ones.
+        // Keep retained and indexed direct-vertex resources alive for this frame.
         if (!obj || !obj.vertices) continue;
-        var source = webGPURetainedMaterialSource(obj);
-        if (source && typeof source === "object") retainedMaterialFrameSources.add(source);
         if (!obj.retainedGeometry && !obj.directVertices) continue;
         var entry = retainedMeshAttributeCache.get(obj.vertices);
         if (entry) entry.lastSeenEpoch = retainedMeshAttributeEpoch;
@@ -16815,17 +16789,14 @@
       return wgpuCachedTrackedBuffer(geom, slot, data, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, false);
     }
 
-    // webGPUInstancedCacheOwner returns the object that owns one instanced
-    // mesh's cached GPU buffers and bind groups. The render bundle hands the
-    // renderer a fresh shallow copy of every instanced mesh each frame, so
-    // caching on that copy created a uniform buffer and a bind group per mesh
-    // per frame and kept render bundles from replaying. Key by mesh id.
-    function webGPUInstancedCacheOwner(meshId = "", fallback?: any) {
+    // Persistent mesh IDs own buffers and groups across transient draw records.
+    function webGPUInstancedCacheOwner(meshId = "", fallback?: any, namespace = "instanced") {
       if (!meshId) return fallback;
-      var owner = instancedCacheOwners.get(meshId);
+      var key = namespace + ":" + meshId;
+      var owner = instancedCacheOwners.get(key);
       if (!owner) {
         owner = { meshId: meshId, seenEpoch: 0 };
-        instancedCacheOwners.set(meshId, owner);
+        instancedCacheOwners.set(key, owner);
       }
       owner.seenEpoch = instancedCacheOwnerEpoch;
       return owner;
@@ -19930,4 +19901,21 @@
   // rather than the function keeps 19-scene-gltf.js free of a backend choice.
   if (typeof window !== "undefined") {
     window.__gosx_scene3d_ktx2_texture_loader = wgpuUploadKTX2Texture;
+  }
+
+  // Selena's current draw record supplies uniforms; persistent owners hold
+  // GPU resources. Keep this selector independent of the renderer closure.
+  function sceneWebGPUMeshCacheOwner(mesh: any, material: any, ownerForID: any, namespace = "selena"): any {
+    return mesh && mesh.id ? ownerForID(mesh.id, namespace) : (mesh && mesh.resourceOwner || mesh || material);
+  }
+
+  function sceneWebGPURetainedFrameSources(objects: any[], sourceForObject: any): WeakSet<object> {
+    var sources: WeakSet<object> = new WeakSet();
+    for (var i = 0; i < objects.length; i++) {
+      var object = objects[i];
+      if (!object || !object.vertices) continue;
+      var source = sourceForObject(object);
+      if (source && typeof source === "object") sources.add(source);
+    }
+    return sources;
   }
