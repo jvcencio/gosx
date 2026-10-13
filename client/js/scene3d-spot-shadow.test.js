@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const ts = require("../runtime/node_modules/typescript");
 
 const {
   createBoardWebGPUHarness,
@@ -70,7 +71,7 @@ function projectShaderF32(matrix, point) {
 function webGPUShadowMatrix(context, raw) {
   if (typeof context.sceneWebGPUShadowDepthMatrix !== "function") {
     const webgpu = read(path.join(runtimeRoot, "webgpu.ts"));
-    vm.runInContext(between(webgpu, "function sceneWebGPUShadowDepthMatrix", "function createSceneWebGPURenderer"), context);
+    vm.runInContext(ts.transpileModule(between(webgpu, "function sceneWebGPUShadowDepthMatrix", "function createSceneWebGPURenderer"), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, context);
   }
   context.raw = raw;
   return vm.runInContext("sceneWebGPUShadowDepthMatrix(raw)", context);
