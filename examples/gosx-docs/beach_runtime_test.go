@@ -28,9 +28,9 @@ func TestBlackglassBeachInstructionsFollowView(t *testing.T) {
 	}{
 		{"shore", "shore", "WASD or arrows to walk", "Left thumb to move"},
 		{"ship", "ship", "WASD or arrows to walk", "Left thumb to move"},
-		{"glass", "glass", "arrows to orbit", "pinch to zoom"},
-		{"cliff", "cliff", "arrows to orbit", "pinch to zoom"},
-		{"pools", "pools", "arrows to orbit", "pinch to zoom"},
+		{"glass", "glass", "WASD or arrows to walk", "Left thumb to move"},
+		{"cliff", "cliff", "WASD or arrows to walk", "Left thumb to move"},
+		{"pools", "pools", "WASD or arrows to walk", "Left thumb to move"},
 		{"unknown", "shore", "WASD or arrows to walk", "Left thumb to move"},
 	} {
 		t.Run(tc.view, func(t *testing.T) {
@@ -46,6 +46,34 @@ func TestBlackglassBeachInstructionsFollowView(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBlackglassLivePresentationEndpoint(t *testing.T) {
+	_, file, _, _ := runtime.Caller(0)
+	configureDocsTestSecret(t)
+	app, err := buildDocsApp(server.ResolveAppRoot(file), "8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := app.Build()
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/blackglass-view?view=cliff&from=noon&period=blue-hour", nil))
+	var update struct {
+		View, Period string
+		Commands     []json.RawMessage
+		Camera       map[string]any
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &update) != nil {
+		t.Fatalf("presentation endpoint returned %d: %s", w.Code, w.Body.String())
+	}
+	if update.View != "cliff" || update.Period != "blue-hour" || len(update.Commands) == 0 || update.Camera["x"] != float64(-33) {
+		t.Fatalf("incorrect authored presentation: %+v", update)
+	}
+	post := httptest.NewRecorder()
+	handler.ServeHTTP(post, httptest.NewRequest(http.MethodPost, "/api/blackglass-view", nil))
+	if post.Code == http.StatusOK {
+		t.Fatal("presentation must be read-only")
 	}
 }
 

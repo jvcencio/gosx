@@ -281,3 +281,5 @@ pose/state replay. The API does not claim to rewind their simulation history.
 
 A host can keep the native clock paused and drive it from one presentation
 playhead. Wait for the scheduled render to settle before capturing its pixels.
+
+`Walk.Grounds` adds disjoint heightfield patches without enlarging the original grid. The highest containing patch supplies the terrain height; `OutsideHeight` sets the seabed outside all patches. Without these options, the original ground still clamps at its edges. Hull collision uses the same patches, while `Walk.Surfaces` supplies visible piers and decks above them.

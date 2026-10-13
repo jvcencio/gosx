@@ -26,7 +26,7 @@ func TestBlackglassDiscoveryTargetsAndApproach(t *testing.T) {
 		case scene.Model:
 			if n.Interactive {
 				interactive++
-				if n.ID != "shore-handheld" || n.Label == "" {
+				if n.Label == "" || (n.ID != "shore-handheld" && n.ID != "drift-letter" && n.ID != "tide-bell" && n.ID != "star-dial") {
 					t.Fatal("collectible requires a stable labeled target")
 				}
 			} else if n.Pickable == nil || *n.Pickable {
@@ -34,8 +34,8 @@ func TestBlackglassDiscoveryTargetsAndApproach(t *testing.T) {
 			}
 		}
 	}
-	if interactive != 4 || p.Controls != scene.ControlOrbit || p.Camera.PortraitFOV < 90 {
-		t.Fatal("four bounded targets and a useful portrait pool view required")
+	if interactive != 7 || p.Controls != scene.ControlFirstPerson || p.Camera.PortraitFOV < 90 {
+		t.Fatal("seven bounded targets and a useful portrait pool view required")
 	}
 	checkBeachApproach(t, []scene.Vector3{scene.Vec3(.5, 0, 22), scene.Vec3(blackglassHandheldX, 0, blackglassHandheldZ)})
 	h := beachgen.TerrainHeight(blackglassHandheldX, blackglassHandheldZ, beachgen.Seed)

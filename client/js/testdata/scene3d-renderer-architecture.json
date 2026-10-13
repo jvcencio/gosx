@@ -744,7 +744,7 @@
     "../runtime/scene3d/vessel-input.ts": 102,
     "../runtime/scene3d/vessel-model.ts": 103,
     "../runtime/scene3d/vessel-wake.ts": 97,
-    "../runtime/scene3d/mount-vessel.ts": 96,
+    "../runtime/scene3d/mount-vessel.ts": 104,
     "../runtime/scene3d/webgpu-transmission.ts": 111,
     "../runtime/scene3d/webgl-transmission.ts": 98,
     "../runtime/scene3d/webgl-depth-post.ts": 68,
@@ -757,7 +757,7 @@
     "../runtime/scene3d/webgl-specular-bloom.ts": 26,
     "../runtime/scene3d/webgpu-specular-bloom.ts": 41,
     "../runtime/scene3d/walk-input.ts": 58,
-    "../runtime/scene3d/vessel-navigation.ts": 54,
+    "../runtime/scene3d/vessel-navigation.ts": 67,
     "../runtime/scene3d/model-preparation.ts": 87
   },
   "functionDefaults": {
@@ -771,22 +771,22 @@
     {
       "source": "../runtime/scene3d/mount-vessel.ts",
       "name": "anonymous@2:2",
-      "lines": 95,
-      "cyclomatic": 57,
-      "cognitive": 61,
+      "lines": 103,
+      "cyclomatic": 70,
+      "cognitive": 75,
       "maxNesting": 2,
       "parameters": 0,
-      "reason": "The measured mount owns the dynamic deck, asynchronous bathymetry, walker suspension, helm/camera transitions and reset. It uses the paced scene loop; model and wake authorities stay separate. Reduced-motion deck bob is removed before deck-local carry, preventing accumulated camera drift. Opt-in zoom adds navigation scaling, canvas pinch cancellation and bounded chase distance; limits reflect the measured orchestration growth. Navigation adds two opt-in lifecycle calls; command validation and instrument snapshots live in a separate module, outside this orchestration function."
+      "reason": "The measured mount owns the dynamic deck, asynchronous bathymetry, walker suspension, helm/camera transitions and reset. It uses the paced scene loop; model and wake authorities stay separate. Reduced-motion deck bob is removed before deck-local carry, preventing accumulated camera drift. Opt-in zoom adds navigation scaling, canvas pinch cancellation and bounded chase distance; limits reflect the measured orchestration growth. Navigation adds bounded lifecycle calls; validated low-speed landing transfers the camera to the walker and samples sparse hull patches. Commands and instruments remain in a separate module. The measured closure grows by eight lines and five branches; first-load rendering is unchanged. Scoped camera detachment preserves navigation while enabling the walker; retaking the helm preserves the ship position and course. Detached keyboard and touch input cannot steer the ship."
     },
     {
       "source": "../runtime/scene3d/mount-vessel.ts",
       "name": "setup@25:3",
-      "lines": 70,
-      "cyclomatic": 50,
-      "cognitive": 53,
+      "lines": 78,
+      "cyclomatic": 63,
+      "cognitive": 67,
       "maxNesting": 2,
       "parameters": 5,
-      "reason": "The measured mount owns the dynamic deck, asynchronous bathymetry, walker suspension, helm/camera transitions and reset. It uses the paced scene loop; model and wake authorities stay separate. Reduced-motion deck bob is removed before deck-local carry, preventing accumulated camera drift. Opt-in zoom adds navigation scaling, canvas pinch cancellation and bounded chase distance; limits reflect the measured orchestration growth. Navigation adds two opt-in lifecycle calls; command validation and instrument snapshots live in a separate module, outside this orchestration function."
+      "reason": "The measured mount owns the dynamic deck, asynchronous bathymetry, walker suspension, helm/camera transitions and reset. It uses the paced scene loop; model and wake authorities stay separate. Reduced-motion deck bob is removed before deck-local carry, preventing accumulated camera drift. Opt-in zoom adds navigation scaling, canvas pinch cancellation and bounded chase distance; limits reflect the measured orchestration growth. Navigation adds bounded lifecycle calls; validated low-speed landing transfers the camera to the walker and samples sparse hull patches. Commands and instruments remain in a separate module. The measured closure grows by eight lines and five branches; first-load rendering is unchanged. Scoped camera detachment preserves navigation while enabling the walker; retaking the helm preserves the ship position and course. Detached keyboard and touch input cannot steer the ship."
     },
     {
       "source": "../runtime/scene3d/mount-walk.ts",
@@ -800,7 +800,7 @@
     },
     {
       "source": "../runtime/scene3d/mount-walk.ts",
-      "name": "setup@225:3",
+      "name": "setup@232:3",
       "lines": 164,
       "cyclomatic": 107,
       "cognitive": 112,
@@ -812,21 +812,21 @@
       "source": "../runtime/scene3d/vessel-input.ts",
       "name": "anonymous@2:2",
       "lines": 101,
-      "cyclomatic": 56,
-      "cognitive": 67,
+      "cyclomatic": 59,
+      "cognitive": 70,
       "maxNesting": 3,
       "parameters": 0,
-      "reason": "The measured input installer includes focus and disposal, independent rudder/sail pointer ownership, keyboard controls and the phone steering hint. Mounted tests verify simultaneous touch inputs and cancellation."
+      "reason": "The measured input installer includes focus and disposal, independent rudder/sail pointer ownership, keyboard controls and the phone steering hint. Mounted tests verify simultaneous touch inputs and cancellation. Scoped camera detachment preserves navigation while enabling the walker; retaking the helm preserves the ship position and course. Detached keyboard and touch input cannot steer the ship."
     },
     {
       "source": "../runtime/scene3d/vessel-input.ts",
       "name": "setup@27:3",
       "lines": 74,
-      "cyclomatic": 49,
-      "cognitive": 60,
+      "cyclomatic": 52,
+      "cognitive": 63,
       "maxNesting": 3,
       "parameters": 4,
-      "reason": "The measured input installer includes focus and disposal, independent rudder/sail pointer ownership, keyboard controls and the phone steering hint. Mounted tests verify simultaneous touch inputs and cancellation."
+      "reason": "The measured input installer includes focus and disposal, independent rudder/sail pointer ownership, keyboard controls and the phone steering hint. Mounted tests verify simultaneous touch inputs and cancellation. Scoped camera detachment preserves navigation while enabling the walker; retaking the helm preserves the ship position and course. Detached keyboard and touch input cannot steer the ship."
     },
     {
       "source": "../runtime/scene3d/vessel-model.ts",
