@@ -523,9 +523,13 @@
     let pendingFrameRequest: ReturnType<typeof sceneCreateFrameRequest> = null;
     let submittedFrameSerial = 0;
     function finishSceneSubmission(outcome: unknown, meta: ReturnType<typeof createSceneRenderFrameMeta>) {
-      if (outcome !== "submitted" || disposed || meta.frameRenderer !== renderer ||
+      if (disposed || meta.frameRenderer !== renderer ||
           meta.commandRevision !== lastMountCommandRevision ||
           meta.hydrationGeneration !== sceneState._modelHydrationGeneration) return false;
+      // An initialized empty renderer is mounted even when its model failed
+      // to load. It has no submitted visuals and cannot admit readiness.
+      if (outcome === "empty") publishMounted();
+      if (outcome !== "submitted") return false;
       submittedFrameSerial++;
       const request = meta && meta.frameRequest;
       if (request && pendingFrameRequest === request &&
@@ -634,11 +638,11 @@
       }
     }
 
-    function renderSceneLayers() {
-      renderSceneLabels(labelLayer, latestBundle, labelLayoutCache, labelElements, viewport.cssWidth, viewport.cssHeight);
-      renderSceneSprites(labelLayer, latestBundle, spriteElements, viewport.cssWidth, viewport.cssHeight);
-      syncSceneNodeFocusProxies.call(null, sceneFocusProxies, latestBundle, sceneState);
-      renderSceneHTML(labelLayer, latestBundle, htmlElements, viewport.cssWidth, viewport.cssHeight, htmlTextureState);
+    function renderSceneLayers(bundle: any = latestBundle) {
+      renderSceneLabels(labelLayer, bundle, labelLayoutCache, labelElements, viewport.cssWidth, viewport.cssHeight);
+      renderSceneSprites(labelLayer, bundle, spriteElements, viewport.cssWidth, viewport.cssHeight);
+      syncSceneNodeFocusProxies.call(null, sceneFocusProxies, bundle, sceneState);
+      renderSceneHTML(labelLayer, bundle, htmlElements, viewport.cssWidth, viewport.cssHeight, htmlTextureState);
     }
 
     const releaseTextLayoutListener = onTextLayoutInvalidated(function() {
@@ -665,6 +669,7 @@
     let initPending = true;
     let initReason = "";
     let readySent = false;
+    let mountedSent = false;
     let revealSent = false;
     let disposed = false;
     if (typeof mount.addEventListener === "function") {
@@ -2978,6 +2983,12 @@
       }
       readySent = true;
       setAttrValue(mount, readyAttr, "true");
+      publishMounted();
+    }
+
+    function publishMounted() {
+      if (mountedSent || disposed) return;
+      mountedSent = true;
       setAttrValue(mount, mountedAttr, "true");
       ctx.emit("mounted", {
         width: viewport.cssWidth,
@@ -3032,6 +3043,31 @@
       performance.measure(name, start, end);
       performance.clearMarks(start);
       performance.clearMarks(end);
+    }
+
+    function renderMountedFrame(bundle: any, now: number, frameStart: number, checkEmpty = false) {
+      if (!ensureRendererCanCoverBundle(bundle)) {
+        scheduleNextAnimationFrame();
+        return;
+      }
+      syncSceneNodeSentinels(bundle);
+      const frameMeta = createSceneRenderFrameMeta(now);
+      const frameOutcome = sceneRenderWithTiming(renderer, bundle, viewport, frameMeta, renderTiming);
+      recordSceneWaterFrame(mount, bundle);
+      if (checkEmpty) maybeEmitRenderEmpty(bundle);
+      renderSceneLayers(bundle);
+      if (statsOverlay) statsOverlay.update(bundle, frameStart, renderer, viewport);
+      if (inspectorOverlay) inspectorOverlay.update();
+      if (sceneUpdateAdaptiveQuality(adaptiveQuality, mount, sceneState, viewport, frameStart, now, renderer)) {
+        viewportDirty = true;
+        scheduleRender("quality-transition");
+      }
+      if (finishSceneSubmission(frameOutcome, frameMeta)) {
+        publishReady();
+        publishRevealed(bundle);
+        notifySceneProgressiveModelRenderCommitted(sceneState);
+      }
+      scheduleNextAnimationFrame();
     }
 
     function renderFrame(now, reason) {
@@ -3099,34 +3135,7 @@
           sceneHydrateBundleWaterShaderSources(effectiveBundle, effectiveBundle.waterShaderSourcesByID);
           latestBundle = effectiveBundle;
           publishMountedSceneCamera(effectiveBundle.camera, reason || "render");
-          if (!ensureRendererCanCoverBundle(effectiveBundle)) {
-            scheduleNextAnimationFrame();
-            return;
-          }
-          syncSceneNodeSentinels(effectiveBundle);
-          const frameMeta = createSceneRenderFrameMeta(now);
-          const frameOutcome = sceneRenderWithTiming(renderer, effectiveBundle, viewport, frameMeta, renderTiming);
-          recordSceneWaterFrame(mount, effectiveBundle);
-          renderSceneLabels(labelLayer, effectiveBundle, labelLayoutCache, labelElements, viewport.cssWidth, viewport.cssHeight);
-          renderSceneSprites(labelLayer, effectiveBundle, spriteElements, viewport.cssWidth, viewport.cssHeight);
-          syncSceneNodeFocusProxies.call(null, sceneFocusProxies, effectiveBundle, sceneState);
-          renderSceneHTML(labelLayer, effectiveBundle, htmlElements, viewport.cssWidth, viewport.cssHeight, htmlTextureState);
-          if (statsOverlay) {
-            statsOverlay.update(effectiveBundle, frameStart, renderer, viewport);
-          }
-          if (inspectorOverlay) {
-            inspectorOverlay.update();
-          }
-          if (sceneUpdateAdaptiveQuality(adaptiveQuality, mount, sceneState, viewport, frameStart, now, renderer)) {
-            viewportDirty = true;
-            scheduleRender("quality-transition");
-          }
-          if (finishSceneSubmission(frameOutcome, frameMeta)) {
-            publishReady();
-            publishRevealed(effectiveBundle);
-            notifySceneProgressiveModelRenderCommitted(sceneState);
-          }
-          scheduleNextAnimationFrame();
+          renderMountedFrame(effectiveBundle, now, frameStart);
           return;
         }
       }
@@ -3214,35 +3223,7 @@
       publishSceneFrameAttr(sceneAttr("compute-quality-reduced-instances"),
         String(Math.max(0, computeQualitySourceInstances - computeQualityActiveInstances)));
       if (perfEnabled) finishScenePerfMeasure("scene3d-bundle");
-      if (!ensureRendererCanCoverBundle(latestBundle)) {
-        scheduleNextAnimationFrame();
-        return;
-      }
-      syncSceneNodeSentinels(latestBundle);
-      const frameMeta = createSceneRenderFrameMeta(now);
-      const frameOutcome = sceneRenderWithTiming(renderer, latestBundle, viewport, frameMeta, renderTiming);
-      recordSceneWaterFrame(mount, latestBundle);
-      maybeEmitRenderEmpty(latestBundle);
-      renderSceneLabels(labelLayer, latestBundle, labelLayoutCache, labelElements, viewport.cssWidth, viewport.cssHeight);
-      renderSceneSprites(labelLayer, latestBundle, spriteElements, viewport.cssWidth, viewport.cssHeight);
-      syncSceneNodeFocusProxies.call(null, sceneFocusProxies, latestBundle, sceneState);
-      renderSceneHTML(labelLayer, latestBundle, htmlElements, viewport.cssWidth, viewport.cssHeight, htmlTextureState);
-      if (statsOverlay) {
-        statsOverlay.update(latestBundle, frameStart, renderer, viewport);
-      }
-      if (inspectorOverlay) {
-        inspectorOverlay.update();
-      }
-      if (sceneUpdateAdaptiveQuality(adaptiveQuality, mount, sceneState, viewport, frameStart, now, renderer)) {
-        viewportDirty = true;
-        scheduleRender("quality-transition");
-      }
-      if (finishSceneSubmission(frameOutcome, frameMeta)) {
-        publishReady();
-        publishRevealed(latestBundle);
-        notifySceneProgressiveModelRenderCommitted(sceneState);
-      }
-      scheduleNextAnimationFrame();
+      renderMountedFrame(latestBundle, now, frameStart, true);
     }
 
     function maybeEmitRenderEmpty(bundle) {

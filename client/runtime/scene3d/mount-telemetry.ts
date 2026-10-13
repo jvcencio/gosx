@@ -321,6 +321,7 @@ function sceneFrameRequestSubmitted(request: any, state: any, commandRevision: n
   if (!request || outcome !== "submitted" || state._modelHydrationUncommitted ||
       request.generation !== state._modelHydrationGeneration ||
       request.commandRevision !== commandRevision || !request.expected.size) return false;
-  for (const id of request.expected) if (!request.drawn.has(id)) return false;
-  return true;
+  // record() is the sole writer and admits only IDs in expected. Preparation
+  // clears both sets together, so equal cardinality proves complete coverage.
+  return request.drawn.size === request.expected.size;
 }

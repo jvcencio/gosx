@@ -1802,9 +1802,25 @@ test("Scene3D fixed-clock backend contracts skip zero-tick work and retain event
   assert.doesNotMatch(webgpu, /if \(hasSimulationTick && runWaterSim\) \{\s*var normalResult/);
   assert.match(webgpu, /Math\.floor\(Math\.max\(0, waterClock\.tickSeq \|\| 0\) \/ expensivePassCadence\)/);
 
-  assert.equal((mount.match(/const frameMeta = createSceneRenderFrameMeta\(/g) || []).length, 3,
-    "every mount render seam must capture owning frame metadata");
-  assert.equal((mount.match(/sceneRenderWithTiming\([^;]*frameMeta, renderTiming\)/g) || []).length, 3, "every renderer attempt uses its captured frame metadata");
+  function frameSeam(name, next) {
+    const start = mount.indexOf(`function ${name}(`);
+    const end = mount.indexOf(`function ${next}(`, start);
+    assert.ok(start >= 0 && end > start, `${name} must have an inspectable render seam`);
+    return mount.slice(start, end);
+  }
+  const sharedFrame = frameSeam("renderMountedFrame", "renderFrame");
+  assert.match(sharedFrame, /const frameMeta = createSceneRenderFrameMeta\(now\);\s*const frameOutcome = sceneRenderWithTiming\(renderer, bundle, viewport, frameMeta, renderTiming\);/,
+    "shared completion captures current owning metadata for the exact bundle renderer attempt");
+  assert.match(sharedFrame, /finishSceneSubmission\(frameOutcome, frameMeta\)/,
+    "submission admission uses the same renderer outcome and captured metadata");
+  const normalFrame = frameSeam("renderFrame", "maybeEmitRenderEmpty");
+  assert.match(normalFrame, /latestBundle = effectiveBundle;[\s\S]*renderMountedFrame\(effectiveBundle, now, frameStart\);/,
+    "runtime frames preserve their effective bundle snapshot through shared completion");
+  assert.match(normalFrame, /renderMountedFrame\(latestBundle, now, frameStart, true\);/,
+    "ordinary frames pass their latest bundle and retain the native empty-frame diagnostic");
+  const restoredFrame = frameSeam("renderLatestSceneBundle", "emitRendererWarmup");
+  assert.match(restoredFrame, /const frameMeta = createSceneRenderFrameMeta\(null\);\s*const frameOutcome = sceneRenderWithTiming\(renderer, latestBundle, viewport, frameMeta, renderTiming\);\s*finishSceneSubmission\(frameOutcome, frameMeta\);/,
+    "restore captures independent owning metadata before rendering and admitting its retained bundle");
   assert.match(fs.readFileSync(path.join(__dirname, "../runtime/scene3d/mount-telemetry.ts"), "utf8"), /renderer\.render\(bundle, viewport, meta\)/);
   assert.match(mount, /renderer\.setLifecycle\(\{\s*nowMS:[\s\S]*active:[\s\S]*paused:[\s\S]*disposed:[\s\S]*reason:/);
   assert.match(mount, /if \(!active \|\| paused \|\| disposing\) lastSceneRenderNowMS = null/);

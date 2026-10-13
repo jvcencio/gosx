@@ -10,6 +10,7 @@ function run(code, context) {
 }
 function harness() {
   const events = [];
+  const lifecycleEvents = [], attributes = {};
   const state = { objects: new Map([0, 1, 2].map(i => [i, { id: `hero/slot-0/prim-${i}`, visible: true, opacity: 1 }])),
     _modelHydrationGeneration: 4, _modelHydrationUncommitted: false };
   const renderer = { kind: "webgl" };
@@ -17,17 +18,24 @@ function harness() {
   let sets = 0;
   class CountingSet extends Set { constructor(...args) { super(...args); sets++; } }
   const context = vm.createContext({ Set: CountingSet, state, sceneState: state, renderer, mount, disposed: false,
+    ctx:{emit(type,detail){lifecycleEvents.push({type,detail});}},viewport:{cssWidth:320,cssHeight:200},props:{},
+    readyAttr:'ready',mountedAttr:'mounted',revealedAttr:'revealed',revealClass:'',
+    setAttrValue(_mount,name,value){attributes[name]=value;},
+    sceneStateObjects:s=>Array.from(s.objects.values()),sceneStateLabels:()=>[],sceneStateSprites:()=>[],
+    sceneStateHTML:()=>[],sceneStateLights:()=>[],sceneModels:()=>[],
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } }, performance: { now: () => 1 } });
   const telemetry = source("mount-telemetry.ts");
   run(telemetry.slice(telemetry.indexOf("function sceneCreateFrameRequest")), context);
   const mounted = source("mount.ts");
+  run('let readySent=false,mountedSent=false,revealSent=false;',context);
+  run(mounted.slice(mounted.indexOf('    function publishReady('),mounted.indexOf('    function finishScenePerfMeasure(')),context);
   run(mounted.slice(mounted.indexOf("    let lastMountCommandRevision = 0;"), mounted.indexOf("    function createSceneRenderFrameMeta")), context);
   run(`lastMountCommandRevision=9;
     pendingFrameRequest=sceneCreateFrameRequest({id:'drop',modelIDs:['hero/slot-0']},6);
     pendingFrameRequest.accepted=true;
     var receipt=scenePrepareFrameRequest(pendingFrameRequest,state,9);
     var meta={frameRequest:receipt,frameRenderer:renderer,commandRevision:9,hydrationGeneration:4};`, context);
-  return { context, events, state, eval: code => run(code, context), sets: () => sets };
+  return { context, events, lifecycleEvents, attributes, state, eval: code => run(code, context), sets: () => sets };
 }
 
 test("requested submission needs every live color primitive, not a declaration or shadow pass", () => {
@@ -68,6 +76,100 @@ test("normal settled submission frames allocate no request sets and emit no rece
   const h=harness();h.eval("pendingFrameRequest=null;meta.frameRequest=null");const before=h.sets();
   h.eval("for(let i=0;i<10000;i++) finishSceneSubmission('submitted',meta)");
   assert.equal(h.sets(),before);assert.equal(h.events.length,0);
+});
+
+test("empty renderer mounts once without visual readiness or a requested submission", () => {
+  const h=harness();h.state.objects.clear();
+  assert.equal(h.eval("finishSceneSubmission('pending',meta)"),false);
+  assert.equal(h.attributes.mounted,undefined);
+  assert.equal(h.eval("finishSceneSubmission('empty',meta)"),false);
+  assert.equal(h.attributes.mounted,'true');
+  assert.equal(h.attributes.ready,undefined);
+  assert.equal(h.attributes.revealed,undefined);
+  assert.equal(h.events.length,0);
+  assert.equal(h.eval('pendingFrameRequest.id'),'drop');
+  h.eval("finishSceneSubmission('empty',meta)");
+  assert.equal(h.lifecycleEvents.length,1);
+  h.eval("publishReady()");
+  assert.equal(h.attributes.ready,'true');
+  assert.equal(h.lifecycleEvents.length,1,'later readiness never emits a second mount event');
+});
+
+test("stale, failed or disposed empty attempts cannot publish mounted lifecycle", () => {
+  for(const mutation of ['disposed=true','renderer={kind:"webgl"}','lastMountCommandRevision++','state._modelHydrationGeneration++']) {
+    const h=harness();h.eval(mutation);
+    assert.equal(h.eval("finishSceneSubmission('empty',meta)"),false);
+    assert.equal(h.attributes.mounted,undefined);
+    assert.equal(h.lifecycleEvents.length,0);
+  }
+  for(const outcome of ['pending','failed',undefined]) {
+    const h=harness();h.eval(`finishSceneSubmission(${JSON.stringify(outcome)},meta)`);
+    assert.equal(h.attributes.mounted,undefined);
+    assert.equal(h.attributes.ready,undefined);
+  }
+});
+
+test("a first submitted ready frame publishes readiness before its mounted event", () => {
+  const h=harness();
+  h.context.ctx.emit=(type)=>{
+    assert.equal(type,'mounted');assert.equal(h.attributes.ready,'true');
+    assert.equal(h.attributes.mounted,'true');
+  };
+  h.eval('publishReady()');
+});
+
+test("receipt coverage excludes foreign IDs and clears the previous frame before new membership", () => {
+  const h=harness();
+  h.eval("receipt.record('hero/slot-0/prim-0');for(let i=0;i<10;i++)receipt.record('foreign/'+i)");
+  assert.equal(h.eval("sceneFrameRequestSubmitted(receipt,state,9,'submitted')"),false);
+  assert.equal(h.eval('receipt.drawn.size'),1);
+  h.eval("for(const id of receipt.expected)receipt.record(id)");
+  assert.equal(h.eval("sceneFrameRequestSubmitted(receipt,state,9,'submitted')"),true);
+  h.state.objects.set(3,{id:'hero/slot-0/prim-3',visible:true,opacity:1});
+  h.eval('scenePrepareFrameRequest(receipt,state,9)');
+  assert.equal(h.eval('receipt.drawn.size'),0);
+  h.eval("for(let i=0;i<3;i++)receipt.record('hero/slot-0/prim-'+i)");
+  assert.equal(h.eval("sceneFrameRequestSubmitted(receipt,state,9,'submitted')"),false);
+  h.eval("receipt.record('hero/slot-0/prim-3')");
+  assert.equal(h.eval("sceneFrameRequestSubmitted(receipt,state,9,'submitted')"),true);
+  h.state._modelHydrationGeneration++;
+  assert.equal(h.eval("sceneFrameRequestSubmitted(receipt,state,9,'submitted')"),false);
+});
+
+function completedFrame(outcome,checkEmpty=false,covered=true) {
+  const h=harness(),trace=[];
+  const bundle={id:'current'},viewport={cssWidth:320,cssHeight:200};
+  const step=name=>(...args)=>{trace.push(name);return args;};
+  Object.assign(h.context,{bundle,viewport,renderTiming:{},adaptiveQuality:{},viewportDirty:false,
+    ensureRendererCanCoverBundle(){trace.push('coverage');return covered;},
+    syncSceneNodeSentinels:step('sentinels'),createSceneRenderFrameMeta(){trace.push('meta');return h.eval('meta');},
+    sceneRenderWithTiming(_renderer,rendered){assert.equal(rendered,bundle);trace.push('render');return outcome;},
+    recordSceneWaterFrame:step('water'),maybeEmitRenderEmpty:step('empty'),
+    renderSceneLayers:step('layers'),statsOverlay:{update:step('stats')},inspectorOverlay:{update:step('inspector')},
+    sceneUpdateAdaptiveQuality(){trace.push('quality');return true;},scheduleRender:step('schedule'),
+    publishReady:step('ready'),publishRevealed:step('revealed'),notifySceneProgressiveModelRenderCommitted:step('progressive'),
+    scheduleNextAnimationFrame:step('next')});
+  const mount=source('mount.ts');
+  run(mount.slice(mount.indexOf('    function renderMountedFrame('),mount.indexOf('    function renderFrame(')),h.context);
+  h.eval(`renderMountedFrame(bundle,10,8,${checkEmpty})`);
+  return {h,trace};
+}
+
+test("shared completion preserves runtime/native ordering, overlays, quality and submission admission", () => {
+  const common=['coverage','sentinels','meta','render','water'];
+  const finish=['layers','stats','inspector','quality','schedule','ready','revealed','progressive','next'];
+  for(const native of [false,true]) {
+    const {h,trace}=completedFrame('submitted',native);
+    assert.deepEqual(trace,[...common,...(native?['empty']:[]),...finish]);
+    assert.equal(h.context.viewportDirty,true);
+    assert.equal(h.events.length,0,'positive frame outcome still cannot acknowledge an undrawn requested actor');
+  }
+  for(const outcome of ['pending','empty','failed',undefined]) {
+    const {h,trace}=completedFrame(outcome,true);
+    assert.deepEqual(trace,[...common,'empty','layers','stats','inspector','quality','schedule','next']);
+    assert.equal(h.events.length,0);
+  }
+  assert.deepEqual(completedFrame('submitted',true,false).trace,['coverage','next']);
 });
 
 test("WebGPU partial validation submission returns pending instead of a positive full-frame outcome", () => {
