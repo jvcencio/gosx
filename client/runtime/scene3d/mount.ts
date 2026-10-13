@@ -520,9 +520,9 @@
     }
 
     let lastMountCommandRevision = 0;
-    let pendingFrameRequest = null;
+    let pendingFrameRequest: ReturnType<typeof sceneCreateFrameRequest> = null;
     let submittedFrameSerial = 0;
-    function finishSceneSubmission(outcome, meta) {
+    function finishSceneSubmission(outcome: unknown, meta: ReturnType<typeof createSceneRenderFrameMeta>) {
       if (outcome !== "submitted" || disposed || meta.frameRenderer !== renderer ||
           meta.commandRevision !== lastMountCommandRevision ||
           meta.hydrationGeneration !== sceneState._modelHydrationGeneration) return false;
@@ -539,7 +539,7 @@
       }
       return true;
     }
-    function cancelSceneFrameRequest(event) {
+    function cancelSceneFrameRequest(event: CustomEvent<{ id?: string }>) {
       const id = event && event.detail && event.detail.id;
       if (event.target === mount && id && pendingFrameRequest && pendingFrameRequest.id === id) pendingFrameRequest = null;
     }
