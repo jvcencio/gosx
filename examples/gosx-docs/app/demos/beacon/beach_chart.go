@@ -11,10 +11,12 @@ import (
 )
 
 type blackglassChartPlace struct {
-	Name string  `json:"name"`
-	X    float64 `json:"x"`
-	Z    float64 `json:"z"`
-	View string  `json:"view"`
+	Name   string       `json:"name"`
+	X      float64      `json:"x"`
+	Z      float64      `json:"z"`
+	View   string       `json:"view"`
+	Island bool         `json:"island,omitempty"`
+	Route  [][2]float64 `json:"route,omitempty"`
 }
 
 var blackglassChartOnce sync.Once
@@ -25,28 +27,34 @@ var blackglassChartShore string
 func blackglassBeachChart() string {
 	blackglassChartOnce.Do(func() {
 		var path strings.Builder
-		const cols, rows = 48, 36
-		for j := 0; j < rows; j++ {
-			for i := 0; i < cols; i++ {
-				x, z := -70+float64(i)*160/cols, -80+float64(j)*120/rows
-				points := [4][2]float64{{x, z}, {x + 160.0/cols, z}, {x + 160.0/cols, z + 120.0/rows}, {x, z + 120.0/rows}}
-				var heights [4]float64
-				for k, p := range points {
-					heights[k] = beachgen.TerrainHeight(p[0], p[1], beachgen.Seed)
-				}
-				var crossings [][2]float64
-				for k, a := range points {
-					b, ha, hb := points[(k+1)%4], heights[k], heights[(k+1)%4]
-					if (ha > 0) == (hb > 0) {
-						continue
+		survey := func(minX, minZ, sizeX, sizeZ float64, sample func(float64, float64) float64) {
+			const cols, rows = 48, 36
+			for j := 0; j < rows; j++ {
+				for i := 0; i < cols; i++ {
+					x, z := minX+float64(i)*sizeX/cols, minZ+float64(j)*sizeZ/rows
+					points := [4][2]float64{{x, z}, {x + sizeX/cols, z}, {x + sizeX/cols, z + sizeZ/rows}, {x, z + sizeZ/rows}}
+					var heights [4]float64
+					for k, p := range points {
+						heights[k] = sample(p[0], p[1])
 					}
-					t := ha / (ha - hb)
-					crossings = append(crossings, [2]float64{a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t})
-				}
-				for k := 0; k+1 < len(crossings); k += 2 {
-					fmt.Fprintf(&path, "M%.1f %.1fL%.1f %.1f", crossings[k][0], crossings[k][1], crossings[k+1][0], crossings[k+1][1])
+					var crossings [][2]float64
+					for k, a := range points {
+						b, ha, hb := points[(k+1)%4], heights[k], heights[(k+1)%4]
+						if (ha > 0) == (hb > 0) {
+							continue
+						}
+						t := ha / (ha - hb)
+						crossings = append(crossings, [2]float64{a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t})
+					}
+					for k := 0; k+1 < len(crossings); k += 2 {
+						fmt.Fprintf(&path, "M%.1f %.1fL%.1f %.1f", crossings[k][0], crossings[k][1], crossings[k+1][0], crossings[k+1][1])
+					}
 				}
 			}
+		}
+		survey(-70, -80, 160, 120, func(x, z float64) float64 { return beachgen.TerrainHeight(x, z, beachgen.Seed) })
+		for _, island := range beachgen.OffshoreIslands() {
+			survey(island.X-48, island.Z-48, 96, 96, func(x, z float64) float64 { return beachgen.IslandHeight(island, x, z) })
 		}
 		blackglassChartShore = path.String()
 	})
@@ -55,9 +63,17 @@ func blackglassBeachChart() string {
 
 func blackglassBeachChartPlaces() string {
 	places := []blackglassChartPlace{
-		{"Tide pools", 10.8, 5.3, "pools"}, {"Black glass", beachgen.MonolithX, beachgen.MonolithZ, "glass"},
-		{"Lighthouse", beaconX, beaconZ, "beacon"}, {"Sun hollow", grottoX, grottoZ, "hollow"},
-		{"Jetty", beachgen.ShipX, beachgen.ShipZ, "ship"},
+		{"Tide pools", 10.8, 5.3, "pools", false, nil}, {"Black glass", beachgen.MonolithX, beachgen.MonolithZ, "glass", false, nil},
+		{"Lighthouse", beaconX, beaconZ, "beacon", false, nil}, {"Sun hollow", grottoX, grottoZ, "hollow", false, nil},
+		{"Jetty", beachgen.ShipX, beachgen.ShipZ, "ship", false, nil},
+	}
+	for _, island := range beachgen.OffshoreIslands() {
+		p := beachgen.IslandPier(island)
+		var passage [][2]float64
+		if island.ID == "starglass" {
+			passage = [][2]float64{{230, -100}, {410, -240}}
+		}
+		places = append(places, blackglassChartPlace{island.Name, p[0], p[2] + p[4]/2 - 1, island.ID, true, passage})
 	}
 	data, _ := json.Marshal(places)
 	return string(data)
@@ -77,3 +93,5 @@ func blackglassBeachPoolRippleSites() string {
 	data, _ := json.Marshal(sites)
 	return string(data)
 }
+
+func blackglassHarborExit() string { return `[80,-80]` }

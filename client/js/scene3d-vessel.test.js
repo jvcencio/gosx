@@ -9,6 +9,7 @@ async function mountScene(vessel=true,maxFPS=60,realShip=false,coarse=false,spec
  if(vessel) {props.vessel={nodeId:'ship',heading:Math.PI/2,windStrength:8,helm:{x:0,y:4.2,z:6.5},wake:false};props.camera={...camera,x:6.5,z:0};props.scene.camera=props.camera;props.scene.environment={ocean:{waveHeight:.9,waveLength:17,choppiness:.7}};}
  if(vessel&&options.quickBoard)props.vessel.quickBoard=true;
  if(vessel&&options.navigation)props.vessel.navigation=true;
+ if(vessel&&options.landings)props.vessel.landings=options.landings;
  if(vessel&&options.openWater) {
   props.vessel.openWater=true;props.vessel.position={x:2000,z:-3000};
   props.walk.bounds={minX:-10,minZ:-10,maxX:10,maxZ:10};
@@ -168,5 +169,18 @@ test('reduced motion keeps held sailing inputs responsive while removing wheel b
  assert.ok(Math.abs(wheel.y-helm.y)<1e-5);assert.equal(wheel.rotationZ,0);assert.ok(h.raf.count()<=1);
  h.event(h.env.document,'keydown',{code:'KeyE'});h.raf.flush(2600);h.raf.flush(2700);
  assert.equal(h.mount.getAttribute('data-gosx-scene3d-vessel'),'deck');assert.equal(h.mount.getAttribute('data-gosx-scene3d-render-loop-wants-animation'),'false');
+ h.handle.dispose();
+});
+
+test('landing transfers the walker to a pier and reboarding preserves the ship position',async()=>{
+ const site={id:'pier',position:{x:20,y:4.3,z:0},radius:28,maxSpeed:1.5};
+ const h=await mountScene(true,60,false,false,false,false,{quickBoard:true,far:true,navigation:true,landings:[site]});
+ const snapshots=[];h.mount.addEventListener('gosx:scene3d:vessel-state',e=>snapshots.push(e.detail));
+ const command=action=>h.event(h.mount,'gosx:scene3d:vessel-command',{detail:{nodeId:'ship',action}});
+ command('land');assert.equal(snapshots.length,0,'a moored distant camera is not a landing');
+ command('helm');assert.equal(snapshots.at(-1).landing,'pier');const ship={...snapshots.at(-1).position};
+ command('land');assert.equal(snapshots.at(-1).mode,'moored');h.raf.flush(250);
+ const camera=h.handle.getCamera();assert.ok(Math.abs(camera.x-site.position.x)<.01);assert.ok(Math.abs(camera.z-site.position.z)<.01);
+ command('helm');assert.equal(snapshots.at(-1).mode,'sailing');assert.equal(snapshots.at(-1).position.x,ship.x);assert.equal(snapshots.at(-1).position.z,ship.z);
  h.handle.dispose();
 });

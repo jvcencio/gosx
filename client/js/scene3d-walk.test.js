@@ -335,3 +335,12 @@ test("optical zoom scales walking travel and every look input with the same proj
   near(zoomed.state.yaw, full.state.yaw * 0.4);
   near(zoomed.state.pitch - camera.rotationX, (full.state.pitch - camera.rotationX) * 0.4);
 });
+
+test('sparse ground patches preserve island walking and reject deep water without clamping another island',()=>{
+ const coast=ground([3],1,1),island={...ground([1,1,3,3],2,2,20,20),minX:200,minZ:-300};
+ const {api,state}=model({ground:coast,grounds:[island],outsideHeight:-10000,water:{level:0,maxDepth:.55}},true,{...camera,x:205,y:3.2,z:-295});
+ near(api.sampleGrounds(api.decodeGround(coast),[api.decodeGround(island)],205,-295,-10000),1.5,.0001);
+ assert.equal(api.sampleGrounds(api.decodeGround(coast),[api.decodeGround(island)],150,-200,-10000),-10000);
+ assert.ok(api.candidateAllowed(state,206,-296));api.move(state,1,-1);near(state.x,206);near(state.z,-296);
+ assert.equal(api.candidateAllowed(state,199,-295),false);
+});

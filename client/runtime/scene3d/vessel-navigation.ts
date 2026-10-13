@@ -17,7 +17,19 @@
     return Math.max(-1,Math.min(1,-angle(state.course-state.heading)*3+state.yawVelocity*4));
   }
   // @ts-ignore TS7006 -- mount-local event adapter; no network authority.
-  function setup(mount,state,config,helm,schedule) {
+  function landing(state) {
+    if(state.mode!=='sailing'&&state.mode!=='deck')return null;
+    let nearest=null,distance=Infinity;
+    for(const site of state.config.landings||[]) {
+      const p=site.position;
+      if(!p||![p.x,p.y,p.z].every(Number.isFinite)||typeof site.id!=='string')continue;
+      const d=Math.hypot(p.x-state.x,p.z-state.z);
+      if(d<= (site.radius||28)&&state.speed<= (site.maxSpeed||1.5)&&d<distance){nearest=site;distance=d;}
+    }
+    return nearest;
+  }
+  // @ts-ignore TS7006 -- landing delegates camera ownership to the mounted walker.
+  function setup(mount,state,config,helm,schedule,land=()=>false) {
     let elapsed=.2;
     const commandEvent='gosx:scene3d:vessel-command';
     function publish() {
@@ -25,7 +37,7 @@
       mount.setAttribute('data-gosx-scene3d-course-hold',String(Number.isFinite(state.course)));
       const detail={nodeId:config.nodeId,mode:state.mode,position:{x:state.x,y:state.y,z:state.z},bearing:bearing(state.heading),
         speed:state.speed,trim:state.trim,distance:state.distance,grounded:state.grounded,windFrom:bearing(state.wind),windStrength:state.strength,
-        course:Number.isFinite(state.course)?bearing(state.course):null};
+        course:Number.isFinite(state.course)?bearing(state.course):null,landing:landing(state)?.id||null};
       mount.dispatchEvent(new CustomEvent('gosx:scene3d:vessel-state',{detail,bubbles:true}));
     }
     // @ts-ignore TS7006 -- exact node and finite bounds scope native commands.
@@ -39,6 +51,7 @@
         case 'trim':
           if(state.mode!=='sailing'||!Number.isFinite(d.trim)||d.trim<0||d.trim>1)return;
           state.trim=d.trim;break;
+        case 'land': if(!land())return;break;
         default: return;
       }
       publish();schedule('vessel-command');
@@ -50,5 +63,5 @@
       dispose() {mount.removeEventListener(commandEvent,command);},
     };
   }
-  window.__gosx_scene3d_vessel_navigation={holdCourse,rudder,setup};
+  window.__gosx_scene3d_vessel_navigation={holdCourse,rudder,landing,setup};
 })();

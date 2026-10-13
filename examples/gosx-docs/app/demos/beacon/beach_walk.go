@@ -26,15 +26,23 @@ func blackglassBeachWalk() *scene.Walk {
 	for _, s := range beachgen.JettySurfaces() {
 		surfaces = append(surfaces, scene.WalkSurface{X: s[0], Y: s[1], Z: s[2], SizeX: s[3], SizeZ: s[4], SlopeX: s[5], SlopeZ: s[6]})
 	}
+	var grounds []scene.WalkGround
+	for _, island := range beachgen.OffshoreIslands() {
+		g := beachgen.IslandGrid(island)
+		grounds = append(grounds, scene.NewWalkGround(g.MinX, g.MinZ, g.SizeX, g.SizeZ, g.Cols, g.Rows, g.Heights))
+		pier := beachgen.IslandPier(island)
+		surfaces = append(surfaces, scene.WalkSurface{X: pier[0], Y: pier[1], Z: pier[2], SizeX: pier[3], SizeZ: pier[4]})
+	}
 	return &scene.Walk{
 		Surfaces:  surfaces,
 		EyeHeight: 1.7, HeadBob: scene.Float(0.012), Hint: "none",
 		WalkSpeed: 3.6,
 		MaxSlope:  34,
 		Ground:    &ground,
+		Grounds:   grounds, OutsideHeight: scene.Float(-1e4),
 		Water:     &scene.WalkWater{Level: 0, MaxDepth: 0.55},
 		Colliders: colliders,
-		Bounds:    &scene.WalkBounds{MinX: -115, MinZ: -180, MaxX: 115, MaxZ: 46},
+		Bounds:    &scene.WalkBounds{MinX: -245, MinZ: -430, MaxX: 355, MaxZ: 46},
 	}
 }
 

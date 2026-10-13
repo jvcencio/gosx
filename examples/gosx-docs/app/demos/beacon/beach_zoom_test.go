@@ -12,9 +12,6 @@ func TestBlackglassZoomCameraModes(t *testing.T) {
 			t.Fatalf("%s must enable zoom", view)
 		}
 		want := scene.ControlFirstPerson
-		if view == "glass" || view == "cliff" {
-			want = scene.ControlOrbit
-		}
 		if p.Controls != want {
 			t.Fatalf("%s controls = %s, want %s", view, p.Controls, want)
 		}

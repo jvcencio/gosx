@@ -10,6 +10,8 @@ func Page() Node {
 		data-coast-pickup={data.pickupCommands}
 		data-coast-chart-places={data.chartPlaces}
 		data-coast-pool-sites={data.poolRippleSites}
+		data-coast-island-finds={data.islandFindSites}
+		data-coast-harbor-exit={data.harborExit}
 		data-gosx-scene3d-control-scope
 		data-gosx-scene3d-status-scope
 	>
@@ -42,7 +44,8 @@ func Page() Node {
 						<g data-coast-map-places></g>
 						<g data-coast-map-ship transform="translate(21 -42)"><path d="M0 -4L1.7 2L0 1L-1.7 2Z" /></g>
 					</svg>
-					<p class="bgb__map-legend">N ↑ · chart follows your ship · select a landmark to visit</p>
+					<p class="bgb__map-legend">N ↑ · select an island to plot its landing</p>
+					<button type="button" data-coast-survey aria-pressed="false">Show archipelago</button>
 					<dl class="bgb__instruments">
 						<div><dt>Heading</dt><dd data-coast-bearing>—</dd></div>
 						<div><dt>Speed</dt><dd data-coast-speed>—</dd></div>
@@ -61,13 +64,15 @@ func Page() Node {
 							inputmode="numeric"
 						 /><span>degrees</span><button type="button" data-coast-hold disabled>Hold course</button></div>
 					<div class="bgb__chart-actions"><button type="button" data-coast-chart-helm disabled>Pilot ship</button><button type="button" data-coast-chart-sail disabled>Full sail</button></div>
+					<button type="button" data-coast-land disabled>Step ashore</button>
+					<p class="bgb__chart-destination" data-coast-destination role="status">Three islands wait offshore. Choose a destination below.</p>
 					<p class="bgb__chart-status" data-coast-chart-status role="status">Instruments connect when the scene is ready.</p>
-					<p class="bgb__chart-hint">Manual steering takes over. Hold a course out at sea and play the Game Boy while the ship sails.</p>
+					<p class="bgb__chart-hint">Hold the plotted course to sail to an island. Sails lower near its pier; slow down, step ashore, then walk to the find. Manual steering takes over at any time.</p>
 					<nav class="bgb__chart-places" data-coast-chart-links aria-label="Visit a coastal landmark"></nav>
 				</div>
 			</details>
 			<details class="bgb__journal">
-				<summary>Field journal <span data-coast-found>0 / 4</span></summary>
+				<summary>Field journal <span data-coast-found>0 / 7</span></summary>
 				<p class="bgb__journal-intro">Small worlds in the basalt. Visit the pools, then click or tap the water to take a closer look.</p>
 				<a class="bgb__journal-route" href={data.poolsHref}>Visit the tide pools ↗</a>
 				<details data-coast-note="tide-pool-0">
@@ -83,6 +88,18 @@ func Page() Node {
 					<p>Pale shells gather along the inner lip of the basalt. The quiet water catches a different sky at every hour.</p>
 				</details>
 				<p data-coast-handheld-note hidden>A violet handheld was left on the dry rock. Your pocket has room for one more discovery.</p>
+				<details data-coast-note="drift-letter">
+					<summary>The drift letter · Drift Isle</summary>
+					<p>A salt-stained cache carries a sailor’s sketch: “The bell is west of the current. Beyond it, the glass remembers the stars.” Read it at the island’s crest.</p>
+				</details>
+				<details data-coast-note="tide-bell">
+					<summary>The tide bell · Bell Rock</summary>
+					<p>A bronze bell faces the empty sea. Strike it on the ridge and listen to its fading note over the surf.</p>
+				</details>
+				<details data-coast-note="star-dial">
+					<summary>The star dial · Starglass Isle</summary>
+					<p>Eight dark rays are set into weathered bronze. A surveyor’s compass left on a grassy crown, pointing back toward Blackglass Coast.</p>
+				</details>
 				<p class="bgb__journal-status" role="status" data-coast-status>Explore at your own pace.</p>
 			</details>
 		</div>
@@ -95,7 +112,7 @@ func Page() Node {
 			<p class="bgb__instructions bgb__instructions-desktop">{data.instructions}</p>
 			<p class="bgb__instructions bgb__instructions-touch">{data.touchInstructions}</p>
 			<p class="bgb__instructions bgb__discoveries">
-				Follow footprints to the glass. Wreck and hollow to the west; tide pools and lighthouse to the east. Pilot ship to explore the sea.
+				Tide pools ashore. Three islands offshore. Plot a course, step ashore, and bring discoveries back in your journal.
 			</p>
 			<nav class="bgb__group" aria-label="View">
 				<a class="bgb__link bgb__view-shore" href={data.shoreHref}>Shore</a>

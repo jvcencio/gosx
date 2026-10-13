@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	blackglassDiscoveriesScriptSrc = "/blackglass-discoveries.js?v=3b15c7d5725e"
-	blackglassChartScriptSrc       = "/blackglass-chart.js?v=d34e26bb4429"
-	blackglassDiscoveriesStylesSrc = "/blackglass-discoveries.css?v=4f268dde7de5"
+	blackglassDiscoveriesScriptSrc = "/blackglass-discoveries.js?v=e810dd409634"
+	blackglassChartScriptSrc       = "/blackglass-chart.js?v=53c831432e26"
+	blackglassDiscoveriesStylesSrc = "/blackglass-discoveries.css?v=30dac342e0ac"
 )
 
 func init() {
@@ -27,16 +27,12 @@ func init() {
 			period := blackglassBeachPeriodFor(ctx.Query("period"))
 			instructions := "Click or drag to look · WASD or arrows to walk · Shift to run · Esc to release"
 			touchInstructions := "Left thumb to move · drag the right side to look"
-			if view.ID == "glass" || view.ID == "cliff" || view.ID == "pools" {
-				instructions = "Drag or use arrows to orbit · scroll or +/− to zoom · Home to reset"
-				touchInstructions = "Drag to orbit · pinch to zoom"
-			}
 			return map[string]any{
 				"instructions": instructions, "touchInstructions": touchInstructions,
 				"scene": BlackglassBeachProgram(view.ID, period.ID), "posterSrc": blackglassBeachPosterSrc,
 				"view": view.ID, "period": period.ID,
-				"pickupCommands": blackglassHandheldPickupCommands(),
-				"chartShore":     blackglassBeachChart(), "chartPlaces": blackglassBeachChartPlaces(), "poolRippleSites": blackglassBeachPoolRippleSites(),
+				"pickupCommands": blackglassHandheldPickupCommands(), "islandFindSites": blackglassIslandFindSites(), "harborExit": blackglassHarborExit(),
+				"chartShore": blackglassBeachChart(), "chartPlaces": blackglassBeachChartPlaces(), "poolRippleSites": blackglassBeachPoolRippleSites(),
 				"shoreHref":  "?view=shore&period=" + period.ID,
 				"glassHref":  "?view=glass&period=" + period.ID,
 				"cliffHref":  "?view=cliff&period=" + period.ID,

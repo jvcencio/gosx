@@ -59,3 +59,11 @@
 .bgb [data-gosx-scene-node]:focus-visible::after { content:attr(aria-label); }
 @media(max-width:640px) { .bgb__tools { top:12px;left:12px;gap:6px; } .bgb__map { aspect-ratio:16/7; } .bgb__journal[open] { width:min(280px,calc(100vw - 72px)); } .bgb__tools:has(> details[open]) > details:not([open]) { display:none; } .bgb__group { flex-wrap:wrap; } .bgb__controls { max-width:100%; } }
 @media(scripting:none) { .bgb__journal-status,.bgb__journal > summary span { display:none; } }
+
+.bgb__chart [data-coast-survey],.bgb__chart [data-coast-land],.bgb__chart-places button { min-height:44px; padding:8px 10px; border:1px solid #ebc99850; border-radius:8px; color:#eee9de; background:#233237; font:inherit; cursor:pointer; }
+.bgb__chart [data-coast-land] { width:100%; margin-top:8px; }
+.bgb__chart [data-coast-land]:disabled { opacity:.45; cursor:default; }
+.bgb__chart-destination { color:#b9d4c6; font-size:12px; }
+.bgb__map[data-survey="true"] text { font-size:11px; }
+.bgb__map[data-survey="true"] circle { r:3px; }
+.bgb__journal[open] { max-height:calc(100dvh - 210px); overflow-y:auto; }

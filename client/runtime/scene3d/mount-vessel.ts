@@ -27,8 +27,9 @@
     const ocean=sceneState.environment.ocean||{},walk=props.walk||{},state=physics.create(props.vessel,ocean,walk);
     const motion=typeof window.matchMedia==='function'?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
     const walkAPI=window.__gosx_scene3d_walk_api,ground=walkAPI?walkAPI.decodeGround(walk.ground):null,outsideHeight=props.vessel.openWater?-1e4:undefined;
+    const grounds=walkAPI?(walk.grounds||[]).map(walkAPI.decodeGround):[];
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-    const floor=(x,z)=>ground?walkAPI.sampleGround(ground,x,z,outsideHeight):-1e4;
+    const floor=(x,z)=>walkAPI&&(ground||grounds.length)?walkAPI.sampleGrounds(ground,grounds,x,z,outsideHeight):-1e4;
     let waveFloor=()=>-1e4,disposed=false,first=true,lastBob=0;
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     const high=query.create(ocean,'high',(x,z)=>waveFloor(x,z),true),low=query.create(ocean,'low',(x,z)=>waveFloor(x,z),true);
@@ -58,7 +59,14 @@
     }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     const controls=window.__gosx_scene3d_vessel_input.setup(canvas,mount,state,{helm:changeHelm,camera:()=>{physics.toggleCamera(state);state.camera=null;helpers.schedule('vessel-camera');},reset});
-    const navigation=props.vessel.navigation?window.__gosx_scene3d_vessel_navigation.setup(mount,state,props.vessel,changeHelm,helpers.schedule):null;
+    function land() {
+      const site=window.__gosx_scene3d_vessel_navigation.landing(state);
+      if(!site)return false;
+      leave();state.mode='moored';state.vx=state.vz=state.speed=0;
+      base.controller?.applyCamera?.(Object.assign({},read(),site.position,{rotationX:0,rotationY:0}));
+      return true;
+    }
+    const navigation=props.vessel.navigation?window.__gosx_scene3d_vessel_navigation.setup(mount,state,props.vessel,changeHelm,helpers.schedule,land):null;
     if(base.bindReset)base.bindReset(reset);
     sceneState._gosxMotionController=controller;
     const wake=window.__gosx_scene3d_vessel_wake&&props.vessel.wake!==false?window.__gosx_scene3d_vessel_wake.create(sceneState,helpers,props.vessel):null;

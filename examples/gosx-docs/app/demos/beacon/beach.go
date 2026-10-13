@@ -22,6 +22,7 @@ const blackglassBeachModelRoot = "/models/blackglass/"
 // so returning visitors get the new preview and matching ocean depth field.
 const blackglassBeachPosterSrc = "/demos/posters/beacon.webp?v=03f3c71ad727"
 const blackglassBeachHeightSrc = blackglassBeachModelRoot + "beach-v2-height.png?v=df420d015fd8"
+const blackglassOffshoreHeightSrc = blackglassBeachModelRoot + "offshore-depth.png?v=0d4d5ed24b44"
 
 type blackglassBeachPeriod struct {
 	ID, Name string
@@ -158,8 +159,8 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 				Clarity: 2.8, Roughness: 0.095, Foam: 0.55, Surf: 0.65, Extent: 4000,
 				Reflections: &scene.OceanReflections{Mode: "ssr+planar", Resolution: 0.5, Strength: 1},
 				Bathymetry: &scene.OceanBathymetry{
-					Src:  blackglassBeachHeightSrc,
-					MinX: beachgen.BathymetryMinX, MinZ: beachgen.BathymetryMinZ, MaxX: beachgen.BathymetryMaxX, MaxZ: beachgen.BathymetryMaxZ,
+					Src:  blackglassOffshoreHeightSrc,
+					MinX: beachgen.OffshoreMinX, MinZ: beachgen.OffshoreMinZ, MaxX: beachgen.OffshoreMaxX, MaxZ: beachgen.OffshoreMaxZ,
 					MinHeight: beachgen.BathymetryMinHeight, MaxHeight: beachgen.BathymetryMaxHeight, Encoding: beachgen.BathymetryEncoding,
 				},
 			},
@@ -189,7 +190,7 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 				Position: scene.Vec3(beachgen.MonolithX, beachgen.MonolithY, beachgen.MonolithZ), Rotation: scene.Euler{Y: beachgen.MonolithYaw}, CastShadow: true, ReceiveShadow: true,
 				Material: scene.StandardMaterial{Color: "#596f6b", Roughness: 0.065, Metalness: 0, Clearcoat: 0.95, Transmission: 0.88, IOR: scene.Float(1.48),
 					Thickness: .45, AttenuationDistance: .3, AttenuationColor: &[3]float64{.12, .24, .21}}},
-		}, append(blackglassBeachBakedMoments(period.ID), blackglassBeachPoolRipple())...)...),
+		}, append(append(blackglassBeachBakedMoments(period.ID), blackglassBeachPoolRipple()), blackglassIslandModels()...)...)...),
 	}
 	// Scenery is not a pick target: keep pointer queries bounded to the three
 	// pools and the collectible, rather than ray-testing the entire coastline.
@@ -217,9 +218,6 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 }
 
 // Scenic presets dolly around their subject; shore and ship remain walkable.
-func blackglassBeachControls(viewID string) string {
-	if viewID == "glass" || viewID == "cliff" || viewID == "pools" {
-		return scene.ControlOrbit
-	}
-	return scene.ControlFirstPerson
-}
+// All viewpoints are starting positions in the same walkable world. A visitor
+// who boards from the pools can step ashore without inheriting orbit controls.
+func blackglassBeachControls(view string) string { return scene.ControlFirstPerson }

@@ -16,7 +16,7 @@ interface SceneWalkHelpers {
   now: () => number;
 }
 interface SceneWalkState {
-  config: Record<string, any>; ground: SceneWalkField | null;
+  config: Record<string, any>; ground: SceneWalkField | null; grounds: SceneWalkField[];
   camera: Record<string, any>; start: Record<string, any>;
   x: number; z: number; yaw: number; pitch: number; eyeY: number; velocityY: number;
   grounded: boolean; distance: number; bobWeight: number; bob: number;
@@ -64,11 +64,18 @@ interface SceneWalkState {
   }
   function groundHeight(s: SceneWalkState, x: number, z: number): number {
     const deck = surfaceHeight(s.config.surfaces, x, z, -Infinity);
-    return Math.max(deck, sampleGround(s.ground, x, z, Number.isFinite(deck) ? -Infinity : undefined));
+    return Math.max(deck, sampleGrounds(s.ground, s.grounds, x, z, Number.isFinite(deck) ? -Infinity : s.config.outsideHeight));
+  }
+  // Sparse patches retain local walking detail without a continent-sized grid.
+  function sampleGrounds(ground: SceneWalkField | null, grounds: SceneWalkField[], x: number, z: number, outsideHeight?: number): number {
+    if (!grounds.length) return sampleGround(ground, x, z, outsideHeight);
+    let y = ground ? sampleGround(ground, x, z, -Infinity) : -Infinity;
+    for (const patch of grounds) y = Math.max(y, sampleGround(patch, x, z, -Infinity));
+    return Number.isFinite(y) ? y : outsideHeight ?? sampleGround(ground, x, z);
   }
   function createState(camera: Record<string, any>, config: Record<string, any>, reduced: boolean): SceneWalkState {
     return {
-      config, ground: decodeGround(config.ground || null), camera: Object.assign({}, camera), start: Object.assign({}, camera),
+      config, ground: decodeGround(config.ground || null), grounds: (config.grounds || []).map(decodeGround), camera: Object.assign({}, camera), start: Object.assign({}, camera),
       x: number(camera.x, 0), z: number(camera.z, 0), yaw: number(camera.rotationY, 0), pitch: number(camera.rotationX, 0),
       eyeY: number(camera.y, 0), velocityY: 0, grounded: false, distance: 0, bobWeight: 0, bob: 0,
       zoomScale: 1, reduced, settling: false, moving: false,
@@ -348,7 +355,7 @@ interface SceneWalkState {
     if (!reset) return false;
     reset(); return true;
   }
-  window.__gosx_scene3d_walk_api = { setup, decodeGround, sampleGround, createState, candidateAllowed, move, advance, look, resetCamera };
+  window.__gosx_scene3d_walk_api = { setup, decodeGround, sampleGround, sampleGrounds, createState, candidateAllowed, move, advance, look, resetCamera };
   const api = (window.__gosx = window.__gosx || {}).scene3d || (window.__gosx.scene3d = {});
   api.resetCamera = resetCamera;
 })();
