@@ -310,7 +310,6 @@ func (w *compressionWriter) closeCompressor() error {
 func (w *compressionWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (w *compressionWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	w.cacheCandidate = false
 	// Resolve support before committing buffered output. ResponseController
 	// follows the same Unwrap chain, but probing by calling it would take over.
 	var hijacker http.Hijacker
@@ -328,10 +327,11 @@ func (w *compressionWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if hijacker == nil {
 		return nil, nil, http.ErrNotSupported
 	}
+	w.cacheCandidate = false
 	// Flush, rather than close, the compressor: a failed takeover must leave
 	// the current stream writable for the handler's fallback response.
 	if w.status != 0 || w.started {
-		if err := w.start(false); err != nil {
+		if err := w.start(len(w.buffer) >= httpcompress.MinimumSize); err != nil {
 			return nil, nil, err
 		}
 		if w.compressor != nil {
