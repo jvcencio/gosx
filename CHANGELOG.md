@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add pre-Build trusted proxy policies and one cached `ClientIP` resolver.
+  Normalize genuine peers and bounded X-Forwarded-For chains without changing
+  RemoteAddr or origin policies. Nested handlers and completion observers share
+  the result; malformed or repeated headers fall back to the peer.
+
 ## v0.57.14
 
 - Preserve live WebGL sampler bindings when PNG, HDR and KTX2 textures upload

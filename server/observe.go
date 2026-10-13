@@ -56,8 +56,9 @@ func (fn RequestObserverFunc) Observe(event RequestEvent) {
 }
 
 type requestObservation struct {
-	kind    string
-	pattern string
+	kind     string
+	pattern  string
+	metadata *requestMetadata
 }
 
 // ObserveHandler wraps a handler with response capture and observer callbacks.
@@ -86,9 +87,13 @@ func ObserveHandler(handler http.Handler, observers []RequestObserver) http.Hand
 		if status == 0 && !recorder.hijacked {
 			status = http.StatusOK
 		}
+		id := recorder.Header().Get(requestIDHeader)
+		if metadata := cachedRequestMetadata(r); metadata != nil {
+			id = metadata.id
+		}
 		event := RequestEvent{
 			Request:       r,
-			ID:            recorder.Header().Get(requestIDHeader),
+			ID:            id,
 			Method:        r.Method,
 			Path:          requestPath(r),
 			Pattern:       state.pattern,
