@@ -7,6 +7,14 @@
   RemoteAddr or origin policies. Nested handlers and completion observers share
   the result; malformed or repeated headers fall back to the peer.
 
+## v0.57.16
+
+- Keep typed browser audio worklet contracts independent of server HTTP asset
+  delivery. JS/WASM imports exclude the HTTP handler and its TLS dependencies;
+  unused worklets no longer initialize or retain the processor asset. Portable
+  `Path` and `Source` APIs retain the same content-addressed processor, while
+  native `Handler` serving, HEAD, cache policy and ETags remain unchanged.
+
 ## v0.57.15
 
 - Add opt-in Scene3D frame requests to atomic command batches and typed
