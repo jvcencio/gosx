@@ -273,13 +273,23 @@ JS_NODE_TESTS := $(wildcard client/js/*.test.js) $(wildcard client/js/*.test.mjs
 JS_NODE_RUNTIME_TESTS := $(wildcard client/js/runtime-[0-9]*.test.js)
 JS_NODE_OTHER_TESTS := $(filter-out $(JS_NODE_RUNTIME_TESTS),$(JS_NODE_TESTS))
 NODE_TEST_GROUP ?=
+#
+# JS_TEST_NODE_OPTIONS caps the heap of the test runner and of every test file
+# process it starts (they inherit NODE_OPTIONS). A runaway test then fails fast
+# and writes one heap snapshot to JS_TEST_HEAP_DIR, instead of growing until it
+# starves the machine. Test files peak near 260 MB, so 2 GiB leaves wide
+# headroom. Options already in NODE_OPTIONS come later and win, so a caller can
+# override these.
+JS_TEST_HEAP_DIR ?= $(or $(TMPDIR),/tmp)
+JS_TEST_NODE_OPTIONS ?= --max-old-space-size=2048 --heapsnapshot-near-heap-limit=1 --diagnostic-dir=$(JS_TEST_HEAP_DIR)
+JS_TEST_NODE = NODE_OPTIONS="$(JS_TEST_NODE_OPTIONS) $$NODE_OPTIONS" $(NODE)
 test-js-node:
 ifeq ($(NODE_TEST_GROUP),)
-	$(NODE) --test $(JS_NODE_TESTS)
+	$(JS_TEST_NODE) --test $(JS_NODE_TESTS)
 else ifeq ($(NODE_TEST_GROUP),runtime)
-	$(NODE) --test $(JS_NODE_RUNTIME_TESTS)
+	$(JS_TEST_NODE) --test $(JS_NODE_RUNTIME_TESTS)
 else ifeq ($(NODE_TEST_GROUP),other)
-	$(NODE) --test $(JS_NODE_OTHER_TESTS)
+	$(JS_TEST_NODE) --test $(JS_NODE_OTHER_TESTS)
 else
 	$(error NODE_TEST_GROUP must be empty, runtime or other; got $(NODE_TEST_GROUP))
 endif
