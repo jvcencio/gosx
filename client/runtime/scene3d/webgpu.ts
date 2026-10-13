@@ -6638,10 +6638,9 @@
   //      frame, so their command stream rarely repeats. Recording them would
   //      cost the walk and never earn a replay.
   //
-  // The three per-object exclusions — skinned, computed-morph and Selena
-  // material draws — bind buffers a compute pass rewrites or bind groups a
-  // per-frame uniform owns. The recorder WOULD catch a change in those, so this
-  // is a payoff limit rather than a correctness limit.
+  // Skinned and computed-morph draws bind buffers a compute pass rewrites.
+  // The recorder would catch resource changes; these paths stay direct
+  // because they rarely reuse the same command stream.
   function sceneWebGPUBundleIneligibleReason(flags) {
     if (!flags) return "no-flags";
     if (flags.disabled) return "disabled";
@@ -18681,15 +18680,14 @@
       return { dispatches: dispatches, skipped: skipped, builtin: builtin };
     }
 
-    // webGPUObjectBlocksBundle names the three per-object draw paths the bundled
-    // set excludes. Each binds a resource a compute pass or a per-frame uniform
-    // owns, so its command stream changes nearly every frame.
+    // Compute-owned mesh resources keep the direct encoder. Selena uniforms
+    // now have stable owners; the recorder uploads their current values and
+    // checks resource identities before replaying.
     function webGPUObjectBlocksBundle(obj, materials) {
       if (!obj) return false;
       if (webGPUObjectIsSkinned(obj)) return true;
       if (webGPUObjectComputedMorphDrawRecord(obj)) return true;
-      var mat = materials[sceneNumber(obj.materialIndex, 0)] || null;
-      return Boolean(mat && typeof sceneSelenaIsMaterial === "function" && sceneSelenaIsMaterial(mat));
+      return false;
     }
 
     // encodeBundleableSceneDraws drives ONE target through the PBR and instanced

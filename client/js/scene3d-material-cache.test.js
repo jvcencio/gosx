@@ -43,7 +43,14 @@ for (const selena of [false, true]) test(`persistent ${selena ? "Selena" : "name
     }
   }
   assert.ok(pending <= 2);
-  if (!selena) assert.ok(Number(h.mount.getAttribute("data-gosx-scene3d-webgpu-bundle-replays")) > 0);
+  assert.ok(Number(h.mount.getAttribute("data-gosx-scene3d-webgpu-bundle-replays")) > 0);
+  if (selena) {
+    h.state.materials[0].customUniforms = { baseColor: [0.125, 0.25, 0.5, 1] };
+    for (let i = 0; i < 3; i++) await h.render();
+    const uniform = h.fake.state.writeBufferCalls.filter(c => c.data && c.data.byteLength === 272).at(-1);
+    assert.equal(h.mount.getAttribute("data-gosx-scene3d-webgpu-bundle-state"), "replayed");
+    assert.equal(uniform.data[32], 0.125, "replayed Selena bundle receives live uniforms");
+  }
 });
 
 test("replacing a retained resource owner retires its material uniform", async t => {
