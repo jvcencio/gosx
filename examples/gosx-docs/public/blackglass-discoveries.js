@@ -10,7 +10,9 @@
     const dialog = root.querySelector(".bgb__handheld-dialog");
     const status = root.querySelector("[data-coast-status]");
     const pocket = root.querySelector("[data-coast-pocket]");
-    const keys = ["tide-pool-0", "tide-pool-1", "tide-pool-2", "shore-handheld"];
+    const islandFinds=JSON.parse(root.dataset.coastIslandFinds||"[]");
+    const keys = ["tide-pool-0", "tide-pool-1", "tide-pool-2", "shore-handheld",...islandFinds.map(site=>site.id)];
+    let bellAudio=null,lastBell=-Infinity;
     const found = new Set();
     let frame = null, previousFocus = null, resumeCoast = false, pickupApplied = false, revision=0, pulseTimer=null, stopPulse=null;
     const poolSites=JSON.parse(root.dataset.coastPoolSites);
@@ -20,7 +22,7 @@
       if (Array.isArray(saved)) for (const id of saved) if (keys.includes(id)) found.add(id);
     } catch (_) { /* Reading notes remains available when storage is blocked. */ }
     function render() {
-      root.querySelector("[data-coast-found]").textContent = found.size + " / 4";
+      root.querySelector("[data-coast-found]").textContent = found.size + " / " + keys.length;
       for (const note of root.querySelectorAll("[data-coast-note]")) note.dataset.found = String(found.has(note.dataset.coastNote));
       pocket.hidden = !found.has("shore-handheld");
       root.querySelector("[data-coast-handheld-note]").hidden = pocket.hidden;
@@ -78,10 +80,28 @@
       dialog.showModal();
       send("resume");
     }
+    function ringBell() {
+      const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return;
+      try {
+        if(!bellAudio)bellAudio=new Audio();bellAudio.resume().catch(()=>{});
+        const t=bellAudio.currentTime;if(t-lastBell<.7)return;lastBell=t;
+        for(const [frequency,weight] of [[440,.13],[880,.04],[1188,.025]]) {
+          const voice=bellAudio.createOscillator(),gain=bellAudio.createGain();voice.type="sine";voice.frequency.value=frequency;
+          gain.gain.setValueAtTime(weight,t);gain.gain.exponentialRampToValueAtTime(.0001,t+2.6);
+          voice.connect(gain);gain.connect(bellAudio.destination);voice.start(t);voice.stop(t+2.7);voice.onended=()=>{voice.disconnect();gain.disconnect();};
+        }
+      } catch(_) {}
+    }
     function observe(id, fromScene) {
       if (typeof id !== "string") return;
       id = id.split("/")[0];
       if (!keys.includes(id)) return;
+      const site=islandFinds.find(site=>site.id===id);
+      if(site) {
+        const handle=scene()?.__gosxScene3DHandle,camera=handle?.getCamera?.();
+        if(!camera||Math.hypot(camera.x-site.position.x,camera.z-site.position.z)>7) {status.textContent="Sail to the island and walk up to this discovery.";if(document.pointerLockElement)document.exitPointerLock();journal.open=true;return;}
+        if(id==="tide-bell")ringBell();
+      }
       const first = !found.has(id);
       found.add(id); render(); removeCollectedHandheld();
       if (id === "shore-handheld") {
@@ -89,7 +109,7 @@
         openHandheld(); return;
       }
       const note = root.querySelector('[data-coast-note="' + id + '"]');
-      ripple(id);
+      if(!site)ripple(id);
       if (fromScene && note) {
         if (document.pointerLockElement) document.exitPointerLock();
         journal.open = true; note.open = true;
@@ -119,10 +139,12 @@
     });
     function message(event) {
       if (event.origin !== location.origin || !frame || event.source !== frame.contentWindow) return;
-      if (event.data && event.data.type === "blackglass-handheld-close") dialog.close();
+      if (event.data?.type === "blackglass-handheld-close") dialog.close();
+      if (event.data?.type === "blackglass-handheld-ready")send(dialog.open?"resume":"pause");
+      if (event.data?.type === "blackglass-handheld-saved")status.textContent=event.data.ok?"Handheld put away · pocket checkpoint saved on this device.":"Handheld put away · this session can resume; autosave is unavailable.";
     }
     window.addEventListener("message", message);
-    window.addEventListener("pagehide", () => { send("pause"); if(stopPulse)stopPulse();window.removeEventListener("message", message); });
+    window.addEventListener("pagehide", () => { send("pause"); if(stopPulse)stopPulse();if(bellAudio){bellAudio.close().catch(()=>{});bellAudio=null;lastBell=-Infinity;}window.removeEventListener("message", message); });
     window.addEventListener("pageshow", event => {
       if (event.persisted) { window.addEventListener("message", message); send(dialog.open ? "resume" : "pause"); }
     });

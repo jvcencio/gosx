@@ -247,3 +247,11 @@ test('pinching flutters the lower sail, keeps yard anchors fixed and deforms rig
  for(let i=0;i<canvas.vertices.normals.length;i+=3)near(Math.hypot(...canvas.vertices.normals.slice(i,i+3)),1,1e-5);
  model.update(s,camera,1,1);assert.deepEqual(Array.from(rope.vertices.positions),rig);near(rope.vertices.positions[7],1);near(rope.vertices.positions[6],-1);
 });
+
+test('landings require a slow nearby ship and a finite authored safe eye point',()=>{
+ const nav=context.window.__gosx_scene3d_vessel_navigation,site={id:'island',position:{x:100,y:4.3,z:-200},radius:28,maxSpeed:1.5};
+ const s=ship({navigation:true,landings:[site]});s.mode='sailing';s.x=100;s.z=-180;s.speed=1;
+ assert.equal(nav.landing(s),site);s.speed=2;assert.equal(nav.landing(s),null);s.speed=1;s.x=200;assert.equal(nav.landing(s),null);
+ s.x=100;s.mode='moored';assert.equal(nav.landing(s),null);s.mode='deck';assert.equal(nav.landing(s),site);
+ s.config.landings=[{...site,position:{x:NaN,y:4,z:0}}];assert.equal(nav.landing(s),null);
+});

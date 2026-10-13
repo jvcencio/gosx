@@ -22,7 +22,7 @@
       wind: (c.windDirection ?? ocean.windDirection ?? 0) * radians,
       strength: c.windStrength || 8, maxSpeed: c.maxSpeed || 10, mode: "moored", cameraMode: "stern",
       pressure: 0, luff: 1, bowImpact: 0, bowWater: NaN, reduced: false,
-      grounded: false, accumulator: 0, speed: 0, tack: 0, course: NaN, distance: 0, cameraReady: false, camera: {x:0,y:0,z:0,rotationX:0,rotationY:0,rotationZ:0} };
+      grounded: false, accumulator: 0, speed: 0, tack: 0, course: NaN, distance: 0, detached: false, cameraReady: false, camera: {x:0,y:0,z:0,rotationX:0,rotationY:0,rotationZ:0} };
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function localPoint(s, x, y, z) {

@@ -6,26 +6,27 @@ package scene
 // metres, speeds metres/second, wind direction degrees toward which wind travels.
 // The runtime owns these models' transforms while this contract is mounted.
 type Vessel struct {
-	NodeID        string      `json:"nodeId"`
-	Position      Vector3     `json:"position"`
-	Heading       float64     `json:"heading,omitempty"`       // yaw radians; 0 faces -Z
-	Length        float64     `json:"length,omitempty"`        // default 22
-	Beam          float64     `json:"beam,omitempty"`          // default 5
-	Draft         float64     `json:"draft,omitempty"`         // default 1.4
-	DeckHeight    float64     `json:"deckHeight,omitempty"`    // default 2.5
-	Helm          Vector3     `json:"helm"`                    // local eye position; default (0.65,4.2,8)
-	BoardRadius   float64     `json:"boardRadius,omitempty"`   // default 4
-	QuickBoard    bool        `json:"quickBoard,omitempty"`    // show a button that takes the helm from anywhere; E still requires proximity
-	WindDirection float64     `json:"windDirection,omitempty"` // fallback Ocean.WindDirection
-	WindStrength  float64     `json:"windStrength,omitempty"`  // default 8 m/s
-	SailTrim      float64     `json:"sailTrim,omitempty"`      // initial trim, default 0.55
-	MaxSpeed      float64     `json:"maxSpeed,omitempty"`      // default 10
-	Bounds        *WalkBounds `json:"bounds,omitempty"`        // otherwise uses Walk.Bounds unless OpenWater
-	OpenWater     bool        `json:"openWater,omitempty"`     // sail beyond Walk.Bounds; terrain and collider checks still apply
-	Navigation    bool        `json:"navigation,omitempty"`    // opt into course holding and scoped vessel command/state events
-	LODs          []VesselLOD `json:"lods,omitempty"`
-	WakeTexture   string      `json:"wakeTexture,omitempty"` // optional alpha foam image
-	Wake          *bool       `json:"wake,omitempty"`        // default true
+	NodeID        string          `json:"nodeId"`
+	Position      Vector3         `json:"position"`
+	Heading       float64         `json:"heading,omitempty"`       // yaw radians; 0 faces -Z
+	Length        float64         `json:"length,omitempty"`        // default 22
+	Beam          float64         `json:"beam,omitempty"`          // default 5
+	Draft         float64         `json:"draft,omitempty"`         // default 1.4
+	DeckHeight    float64         `json:"deckHeight,omitempty"`    // default 2.5
+	Helm          Vector3         `json:"helm"`                    // local eye position; default (0.65,4.2,8)
+	BoardRadius   float64         `json:"boardRadius,omitempty"`   // default 4
+	QuickBoard    bool            `json:"quickBoard,omitempty"`    // show a button that takes the helm from anywhere; E still requires proximity
+	WindDirection float64         `json:"windDirection,omitempty"` // fallback Ocean.WindDirection
+	WindStrength  float64         `json:"windStrength,omitempty"`  // default 8 m/s
+	SailTrim      float64         `json:"sailTrim,omitempty"`      // initial trim, default 0.55
+	MaxSpeed      float64         `json:"maxSpeed,omitempty"`      // default 10
+	Bounds        *WalkBounds     `json:"bounds,omitempty"`        // otherwise uses Walk.Bounds unless OpenWater
+	OpenWater     bool            `json:"openWater,omitempty"`     // sail beyond Walk.Bounds; terrain and collider checks still apply
+	Navigation    bool            `json:"navigation,omitempty"`    // opt into course holding and scoped vessel command/state events
+	Landings      []VesselLanding `json:"landings,omitempty"`      // safe foot positions at reachable piers
+	LODs          []VesselLOD     `json:"lods,omitempty"`
+	WakeTexture   string          `json:"wakeTexture,omitempty"` // optional alpha foam image
+	Wake          *bool           `json:"wake,omitempty"`        // default true
 }
 
 // VesselCommandEvent accepts a VesselCommand on the mounted Scene3D element.
@@ -36,7 +37,9 @@ const VesselCommandEvent = "gosx:scene3d:vessel-command"
 const VesselStateEvent = "gosx:scene3d:vessel-state"
 
 // VesselCommand controls the configured vessel without taking ownership of its
-// transforms. Actions are helm, course, release-course and trim. Course Bearing
+// transforms. Actions are helm, course, release-course, trim and land. Land
+// stops the ship and steps ashore only near a configured landing at low speed.
+// Course Bearing
 // is a compass heading in degrees [0,360]; Trim is a fraction in [0,1].
 type VesselCommand struct {
 	NodeID  string  `json:"nodeId"`
@@ -50,7 +53,8 @@ type VesselCommand struct {
 // Position and Distance are metres, Speed and WindStrength metres per second.
 type VesselState struct {
 	NodeID       string   `json:"nodeId"`
-	Mode         string   `json:"mode"` // moored, deck or sailing
+	Mode         string   `json:"mode"`      // moored, deck or sailing
+	Following    bool     `json:"following"` // camera follows the helm; false while viewing or walking elsewhere
 	Position     Vector3  `json:"position"`
 	Bearing      float64  `json:"bearing"`
 	Speed        float64  `json:"speed"`
@@ -60,6 +64,16 @@ type VesselState struct {
 	WindFrom     float64  `json:"windFrom"`
 	WindStrength float64  `json:"windStrength"`
 	Course       *float64 `json:"course"`
+	Landing      *string  `json:"landing,omitempty"` // available landing ID; absent while distant or moving quickly
+}
+
+// VesselLanding supplies a safe eye position on a pier. Radius defaults to
+// 28 metres and MaxSpeed to 1.5 m/s. It does not teleport or reset the vessel.
+type VesselLanding struct {
+	ID       string  `json:"id"`
+	Position Vector3 `json:"position"`
+	Radius   float64 `json:"radius,omitempty"`
+	MaxSpeed float64 `json:"maxSpeed,omitempty"`
 }
 
 // VesselLOD switches visibility at Distance from the ship (not another fetch).
