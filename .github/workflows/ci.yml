@@ -327,6 +327,21 @@ jobs:
       - name: JavaScript runtime contract tests
         run: make test-js NODE_TEST_GROUP=runtime
 
+      # Match the wire gate's fail-closed base fetch. The startup allowlist
+      # may only shrink; unreadable or unfetched base revisions fail the test.
+      - name: Fetch base branch for startup asset hint ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -eu
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            exit 0
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --quiet --no-tags --depth=1 origin "$BASE_SHA"
+          fi
+          echo "PERF_STARTUP_BASE_REF=$BASE_SHA" >>"$GITHUB_ENV"
+
       - name: Performance asset graph tests
         run: make test-perf-graph
 
