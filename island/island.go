@@ -15,8 +15,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"m31labs.dev/gosx/internal/filepolicy"
 	"m31labs.dev/gosx/internal/htmlattr"
 	"m31labs.dev/gosx/internal/urlpath"
+	"maps"
 	neturl "net/url"
 	"os"
 	"path/filepath"
@@ -24,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"m31labs.dev/gosx"
 	"m31labs.dev/gosx/buildmanifest"
@@ -199,21 +202,45 @@ func enhancementFallbackForNode(node gosx.Node, fallback string) string {
 }
 
 // NewRenderer creates an island renderer.
+type rendererTemplateEntry struct {
+	manifest *buildmanifest.Manifest
+	renderer *Renderer
+}
+
+var rendererTemplateCache atomic.Pointer[rendererTemplateEntry]
+var rendererTemplateMu sync.Mutex
+
+// NewRenderer copies immutable runtime configuration, with fresh request state.
 func NewRenderer(bundleID string) *Renderer {
-	// Load the manifest once. NewRenderer used to call
-	// loadDefaultBuildManifest twice — once through loadDefaultRuntimeAssets
-	// and once for ApplyBuildManifest — and each call tried up to two
-	// buildmanifest.Load disk reads. The measured fixed cost was 419
-	// allocations and 47.4 KB per request.
-	//
-	// The per-request caller is server.NewPageRuntime, which page_state.go
-	// runs once for every page response. An earlier version of this comment
-	// named route/fileeval.go, and that file names neither this package nor
-	// this function. Both claims below fail when the chain moves again.
-	//
-	// gosx:claim has server/runtime.go `island.NewRenderer\("gosx-page"\)`
-	// gosx:claim has server/page_state.go `s.runtime = NewPageRuntime\(\)`
 	manifest := loadDefaultBuildManifest()
+	entry := rendererTemplateCache.Load()
+	if entry == nil || entry.manifest != manifest {
+		rendererTemplateMu.Lock()
+		entry = rendererTemplateCache.Load()
+		if entry == nil || entry.manifest != manifest {
+			entry = &rendererTemplateEntry{manifest: manifest, renderer: newRendererTemplate(manifest)}
+			rendererTemplateCache.Store(entry)
+		}
+		rendererTemplateMu.Unlock()
+	}
+	template := entry.renderer
+	r := *template
+	r.bundleID = bundleID
+	r.manifest = hydrate.NewManifest()
+	r.manifest.Runtime = template.manifest.Runtime
+	r.manifest.Bundles = maps.Clone(template.manifest.Bundles)
+	if bundle, ok := r.manifest.Bundles[""]; ok {
+		delete(r.manifest.Bundles, "")
+		r.manifest.Bundles[bundleID] = bundle
+	}
+	r.programAssets = maps.Clone(template.programAssets)
+	r.runtimeVariants = maps.Clone(template.runtimeVariants)
+	r.featureChunkPaths = maps.Clone(template.featureChunkPaths)
+	return &r
+}
+
+func newRendererTemplate(manifest *buildmanifest.Manifest) *Renderer {
+	bundleID := ""
 	runtimeAssets := buildmanifest.RuntimeAssets{}
 	if manifest != nil {
 		runtimeAssets = manifest.Runtime
@@ -357,8 +384,22 @@ var (
 // copy the read-then-write-without-lock pattern in
 // server/runtime_assets.go:395-425 — it races.
 func loadCachedBuildManifest(path string) *buildmanifest.Manifest {
+	immutable := filepolicy.Immutable()
+	if immutable {
+		buildManifestCacheMu.Lock()
+		entry, ok := buildManifestCache[path]
+		buildManifestCacheMu.Unlock()
+		if ok {
+			return entry.manifest
+		}
+	}
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
+		if immutable {
+			buildManifestCacheMu.Lock()
+			buildManifestCache[path] = buildManifestCacheEntry{}
+			buildManifestCacheMu.Unlock()
+		}
 		return nil
 	}
 	modTimeNano := info.ModTime().UnixNano()

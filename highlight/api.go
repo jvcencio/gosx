@@ -44,7 +44,7 @@ var builtins = map[string]bool{
 //
 // Unknown languages fall back to escaped plain text.
 func HTML(lang, source string) string {
-	return renderHTML(NormalizeLanguage(lang), source)
+	return cachedHTML(NormalizeLanguage(lang), source)
 }
 
 // Go returns syntax-highlighted HTML for Go source.

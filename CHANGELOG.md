@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Reuse template, CSS, metadata, and runtime-manifest lookups in production
+  mode (`GOSX_ENV=production` or `prod`). Restart after replacing build files;
+  `GOSX_DEV=1` keeps file-change checks active.
+
 - Add pre-Build trusted proxy policies and one cached `ClientIP` resolver.
   Normalize genuine peers and bounded X-Forwarded-For chains without changing
   RemoteAddr or origin policies. Nested handlers and completion observers share
