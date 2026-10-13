@@ -6671,6 +6671,35 @@
     };
   }
 
+  function wgpuArrayContentsMatch(a, b) {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  function wgpuShadowFrameBindGroup(device, groups, lightSlot, layout, buffer) {
+    var slot = Math.max(0, Math.floor(sceneNumber(lightSlot, 0)));
+    var cached = groups[slot];
+    if (!cached || cached.buffer !== buffer) {
+      cached = groups[slot] = { buffer: buffer, group: device.createBindGroup({
+        layout: layout, entries: [{ binding: 0, resource: { buffer: buffer, offset: 0, size: 64 } }],
+      }) };
+    }
+    return cached.group;
+  }
+
+  function wgpuBindWorldMeshBuffers(pass, buffers) {
+    if (!buffers) return false;
+    var attributes = [buffers.positions, buffers.normals, buffers.uvs, buffers.tangents];
+    for (var slot = 0; slot < attributes.length; slot++) {
+      var record = attributes[slot];
+      if (!record || !record.buffer) return false;
+      pass.setVertexBuffer(slot, record.buffer, 0, Math.max(4, buffers.vertexCount * record.components * 4));
+    }
+    return true;
+  }
+
   function createSceneWebGPURenderer(canvas, options) {
     function sceneWebGPUFactoryFailure(reason) {
       var text = String(reason || "unknown");
@@ -7745,8 +7774,7 @@
       // wgpuCachedTrackedBuffer call below (identity-based) naturally skips
       // its own writeBuffer -- see this function's comment above.
       var snap = owner[slot];
-      var same = snap && snap.length === typedArray.length;
-      for (var i = 0; same && i < snap.length; i++) if (snap[i] !== typedArray[i]) same = false;
+      var same = wgpuArrayContentsMatch(snap, typedArray);
       if (!same) owner[slot] = snap = typedArray.slice();
       return wgpuCachedTrackedBuffer(owner, bufferSlot, snap, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, false);
     }
@@ -16002,7 +16030,6 @@
     /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ function renderShadowPass(encoder, lightMatrix, bundle, shadowResource, pbrBuffers) {
       var sp = getShadowPipeline();
       if (!sp) return;
-
       var objects = Array.isArray(bundle.meshObjects) ? bundle.meshObjects : [];
       // Each light owns a base matrix followed by its retained caster matrices.
       // Reserve both regions before encoding so the second light cannot grow
@@ -16010,22 +16037,8 @@
       var baseSlot = Math.max(0, Math.floor(sceneNumber(shadowResource.lightSlot, 0))) * (objects.length + 1);
       var baseMatrixOffset = baseSlot * shadowFrameBufferStride;
       if (!ensureShadowFrameBufferCapacity(Math.max(2 * (objects.length + 1), baseSlot + objects.length + 1))) return;
-
       device.queue.writeBuffer(shadowFrameBuffer, baseMatrixOffset, lightMatrix, 0, 16);
-
-      var lightSlot = Math.max(0, Math.floor(sceneNumber(shadowResource.lightSlot, 0)));
-      var cachedShadow = shadowFrameBindGroups[lightSlot];
-      if (!cachedShadow || cachedShadow.buffer !== shadowFrameBuffer) {
-        cachedShadow = shadowFrameBindGroups[lightSlot] = {
-          buffer: shadowFrameBuffer,
-          group: device.createBindGroup({
-            layout: shadowBindGroupLayout,
-            entries: [{ binding: 0, resource: { buffer: shadowFrameBuffer, offset: 0, size: 64 } }],
-          }),
-        };
-      }
-      var shadowBG = cachedShadow.group;
-
+      var shadowBG = wgpuShadowFrameBindGroup(device, shadowFrameBindGroups, shadowResource.lightSlot, shadowBindGroupLayout, shadowFrameBuffer);
       var shadowPassDescriptor = {
         colorAttachments: [],
         depthStencilAttachment: {
@@ -16038,17 +16051,14 @@
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ var shadowStamps = gpuPassTimestampWrites("shadow");
       if (shadowStamps) shadowPassDescriptor.timestampWrites = shadowStamps;
       var pass = encoder.beginRenderPass(shadowPassDescriptor);
-
       pass.setBindGroup(0, shadowBG, [baseMatrixOffset]);
       var currentShadowPipeline = "";
       var retainedShadowMatrixSlot = baseSlot + 1;
-
       for (var i = 0; i < objects.length; i++) {
         var obj = objects[i];
         if (!obj || obj.viewCulled) continue;
         if (!obj.castShadow) continue;
         if (!Number.isFinite(obj.vertexOffset) || !Number.isFinite(obj.vertexCount) || obj.vertexCount <= 0) continue;
-
         if (webGPUObjectIsSkinned(obj)) {
           var skinnedPositionBuffer = obj._gosxWGPUElioSkinOutputBuffer;
           if (!skinnedPositionBuffer) continue;
@@ -16129,9 +16139,7 @@
       var lastReceiveShadow = null;
       var lastMaterialOwner = null;
       var currentPipelineKind = "";
-      var objectDepthWrite = depthWrite;
-      var worldBuffersBound = false;
-
+      var objectDepthWrite = depthWrite, worldBuffersBound = false;
       function bindMeshAttribute(attr, obj, offset, count) {
         var computedRecord = webGPUObjectComputedMorphDrawRecord(obj);
         if (attr.source === "positions") {
@@ -16157,7 +16165,6 @@
         }
         return false;
       }
-
       function bindPBRPipeline(reflected, material = Object.create(null)) {
         var hasDetail = Boolean(material && material.detail);
         var kind = hasDetail ? sceneDetailVariantKey(sceneWebGPUPipelineKind(reflected, "pbr"), true) : sceneWebGPUPipelineKind(reflected, "pbr");
@@ -16170,7 +16177,6 @@
         lastReceiveShadow = null;
         lastMaterialOwner = null;
       }
-
       for (var i = 0; i < objectList.length; i++) {
         var obj = objectList[i];
         var matIndex = sceneNumber(obj.materialIndex, 0);
@@ -16264,9 +16270,7 @@
             continue;
           }
         }
-
         if (mat && mat.detail) pass.setBindGroup(2, sceneWebGPUUploadDetail(device, detailResources, mat, detailEnabled));
-
         if (isSkinned) {
           bindPBRPipeline(reflectedDirect, mat);
           var skinnedOwner = mat || obj;
@@ -16286,9 +16290,7 @@
           }
           continue;
         }
-
         bindPBRPipeline(reflectedDirect, mat);
-
         // Recreate material bind group when material or receiveShadow changes.
         var materialOwner = obj.retainedGeometry ? webGPURetainedMaterialOwner(obj) : (mat || obj);
         if (matIndex !== lastMaterialIndex || receiveShadow !== lastReceiveShadow || materialOwner !== lastMaterialOwner) {
@@ -16303,7 +16305,6 @@
           lastReceiveShadow = receiveShadow;
           lastMaterialOwner = materialOwner;
         }
-
         if (computedMorphRecord) {
           if (!webGPUBindComputedMorphBuffer(pass, 0, computedMorphRecord.positionBuffer, count, 3)) continue;
           if (!webGPUBindComputedMorphBuffer(pass, 1, computedMorphRecord.normalBuffer, count, 3)) continue;
@@ -16314,7 +16315,6 @@
           if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
           continue;
         }
-
         if (obj.retainedGeometry) {
           if (!webGPUBindRetainedMeshAttribute(pass, 0, obj, "positions", 3)) continue;
           if (!webGPUBindRetainedMeshAttribute(pass, 1, obj, "normals", 3)) continue;
@@ -16330,26 +16330,17 @@
           if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
           continue;
         }
-
-        if (!worldBuffersBound) {
-          if (!webGPUBindSceneMeshVertexBuffer(pass, 0, pbrBuffers && pbrBuffers.positions, 0, pbrBuffers && pbrBuffers.vertexCount)) continue;
-          if (!webGPUBindSceneMeshVertexBuffer(pass, 1, pbrBuffers && pbrBuffers.normals, 0, pbrBuffers && pbrBuffers.vertexCount)) continue;
-          if (!webGPUBindSceneMeshVertexBuffer(pass, 2, pbrBuffers && pbrBuffers.uvs, 0, pbrBuffers && pbrBuffers.vertexCount)) continue;
-          if (!webGPUBindSceneMeshVertexBuffer(pass, 3, pbrBuffers && pbrBuffers.tangents, 0, pbrBuffers && pbrBuffers.vertexCount)) continue;
-          worldBuffersBound = true;
-        }
-
+        if (!worldBuffersBound) worldBuffersBound = wgpuBindWorldMeshBuffers(pass, pbrBuffers);
+        if (!worldBuffersBound) continue;
         pass.draw(count, 1, offset, 0);
         if (frameRequest) frameRequest.record(obj.id);
         if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
       }
     }
-
     function instancedMeshCount(mesh) {
       if (!mesh) return 0;
       return Math.max(0, Math.floor(sceneNumber(mesh.instanceCount, sceneNumber(mesh.count, 0))));
     }
-
     function instancedMeshMaterial(mesh, materials) {
       var mat = materials[sceneNumber(mesh && mesh.materialIndex, 0)] || null;
       if (mat) return mat;
@@ -16363,7 +16354,6 @@
         renderPass: mesh && mesh.renderPass,
       };
     }
-
     function instancedMeshTransformData(mesh, count) {
       if (!mesh || count <= 0 || !mesh.transforms) return null;
       if (!mesh._cachedTransforms) {
@@ -16376,24 +16366,17 @@
       var data = mesh._cachedTransforms;
       return data && data.length >= count * 16 ? data : null;
     }
-
     function instancedMeshColorData(mesh, count) {
       if (!mesh || count <= 0) return null;
       var rawColors = mesh.colors;
-      var owner = webGPUInstancedCacheOwner(mesh.id) || mesh;
-      var source = owner._cachedWGPUInstanceColorSource;
-      var same = rawColors ? source && source.length === rawColors.length : !source;
-      for (var i = 0; same && rawColors && i < rawColors.length; i++) {
-        if (source[i] !== rawColors[i]) same = false;
-      }
+      var owner = webGPUInstancedCacheOwner(mesh.id, mesh);
       if (
         owner._cachedWGPUInstanceColors &&
         owner._cachedWGPUInstanceColorCount === count &&
-        same
+        wgpuArrayContentsMatch(owner._cachedWGPUInstanceColorSource, rawColors)
       ) {
         return owner._cachedWGPUInstanceColors;
       }
-
       var data = null;
       if (rawColors && typeof rawColors.length === "number" && rawColors.length > 0) {
         if (Array.isArray(rawColors) && typeof rawColors[0] === "string") {
@@ -16417,7 +16400,6 @@
           }
         }
       }
-
       if (!data) {
         data = new Float32Array(count * 4);
         for (var di = 0; di < count; di++) {
@@ -16427,13 +16409,11 @@
           data[di * 4 + 3] = 1;
         }
       }
-
       owner._cachedWGPUInstanceColors = data;
       owner._cachedWGPUInstanceColorCount = count;
       owner._cachedWGPUInstanceColorSource = rawColors ? Array.prototype.slice.call(rawColors) : null;
       return data;
     }
-
     function getInstancedGeometry(mesh) {
       if (typeof generateInstancedGeometry !== "function") return null;
       var kind = typeof normalizeInstancedGeometryKind === "function"
@@ -16478,8 +16458,8 @@
     // renderer a fresh shallow copy of every instanced mesh each frame, so
     // caching on that copy created a uniform buffer and a bind group per mesh
     // per frame and kept render bundles from replaying. Key by mesh id.
-    function webGPUInstancedCacheOwner(meshId = "") {
-      if (!meshId) return null;
+    function webGPUInstancedCacheOwner(meshId = "", fallback = null) {
+      if (!meshId) return fallback;
       var owner = instancedCacheOwners.get(meshId);
       if (!owner) {
         owner = { meshId: meshId, seenEpoch: 0 };
@@ -19270,8 +19250,7 @@
       destroyRendererGPUResource(shadowPositionBuffer);
       shadowPositionBuffer = null;
       destroyRendererGPUResource(shadowFrameBuffer);
-      shadowFrameBuffer = null;
-      shadowFrameBindGroups.length = 0;
+      shadowFrameBuffer = null; shadowFrameBindGroups.length = 0;
       pointsEntryGPUBuffers.forEach(function(buffer) {
         destroyRendererGPUResource(buffer);
       });
