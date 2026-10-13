@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestWakeFoamBranchesFadeAndRemainBounded(t *testing.T) {
+func TestWakeFoamCellsFeatherDissolveAndRemainBounded(t *testing.T) {
 	data, err := WakeFoam()
 	if err != nil {
 		t.Fatal(err)
@@ -22,18 +22,27 @@ func TestWakeFoamBranchesFadeAndRemainBounded(t *testing.T) {
 		t.Fatal("foam texture exceeds its bounded resolution or byte budget")
 	}
 	alpha := func(x, y int) uint32 { _, _, _, a := img.At(x, y).RGBA(); return a }
-	for i := 0; i < 128; i++ {
-		if alpha(0, i) != 0 || alpha(127, i) != 0 || alpha(i, 127) != 0 {
-			t.Fatal("foam must fade at its edges and at the end of its life")
+	var coverage uint32
+	for stage := 0; stage < 8; stage++ {
+		for x := 0; x < 128; x++ {
+			if alpha(x, stage*16) != 0 || alpha(x, stage*16+15) != 0 {
+				t.Fatal("every foam cell needs transparent leading and trailing edges")
+			}
+		}
+		for y := 0; y < 16; y++ {
+			if alpha(0, stage*16+y) != 0 || alpha(127, stage*16+y) != 0 {
+				t.Fatal("foam must feather at both sides")
+			}
+			for x := 1; x < 127; x++ {
+				coverage += alpha(x, stage*16+y)
+				if stage > 0 && alpha(x, stage*16+y) > alpha(x, (stage-1)*16+y) {
+					t.Fatal("foam aging must dissolve its existing pattern without brightening")
+				}
+			}
 		}
 	}
-	var bands, gaps uint32
-	for y := 0; y < 100; y++ {
-		bands += alpha(18, y) + alpha(64, y) + alpha(109, y)
-		gaps += alpha(40, y) + alpha(87, y)
-	}
-	if bands <= gaps*3 {
-		t.Fatal("wake needs distinct foam arms and churn separated by open water")
+	if coverage == 0 || alpha(64, 8) <= alpha(64, 120)*8 {
+		t.Fatal("foam needs visible fresh coverage and a faint dissolving tail")
 	}
 	again, err := WakeFoam()
 	if err != nil || !bytes.Equal(data, again) {
