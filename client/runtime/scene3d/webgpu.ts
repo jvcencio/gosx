@@ -14749,7 +14749,7 @@
       var alphaCutoff = sceneNormalizeMaterialAlphaCutoff(mat.alphaCutoff, null);
       f[42] = (typeof alphaCutoff === "number" && Number.isFinite(alphaCutoff) && alphaCutoff >= 0)
         ? (alphaCutoff <= 1 ? Math.fround(alphaCutoff) : 2)
-        : (mat.blendMode === "alpha" || mat.blendMode === "additive" ? -2 : -1); // -2 preserves texel alpha for BLEND; -1 keeps OPAQUE semantics.
+        : (["alpha", "additive"].includes(mat.renderPass || mat.blendMode) ? -2 : -1); // -2 preserves texel alpha for BLEND; -1 keeps OPAQUE semantics.
       f[43] = mat.normalUVScale ? sceneNumber(mat.normalUVScale[1], 1) : 1; // normalUVScaleV
       var specular = sceneWebGPUSpecularFactors(mat);
       f[44] = specular.f0[0];

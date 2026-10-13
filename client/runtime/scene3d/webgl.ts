@@ -8615,7 +8615,7 @@
       const alphaCutoff = sceneNormalizeMaterialAlphaCutoff(mat.alphaCutoff, null);
       const cutoffValue = (typeof alphaCutoff === "number" && Number.isFinite(alphaCutoff) && alphaCutoff >= 0)
         ? (alphaCutoff <= 1 ? Math.fround(alphaCutoff) : 2)
-        : (mat.blendMode === "alpha" || mat.blendMode === "additive" ? -2 : -1); // BLEND coverage marker; OPAQUE keeps -1.
+        : (["alpha", "additive"].includes(mat.renderPass || mat.blendMode) ? -2 : -1); // BLEND coverage marker; OPAQUE keeps -1.
       gl.uniform1f(uniforms.alphaCutoff, cutoffValue);
       gl.uniform1i(uniforms.unlit, mat.unlit ? 1 : 0);
 

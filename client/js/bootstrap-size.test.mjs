@@ -772,7 +772,7 @@ const budgets = [
     // retain the 65536 allowance and unchanged gzip/Brotli targets.
     // Float32 views with current main measure 1,934,729 raw bytes. Use the
     // minimum reviewed target under the unchanged 65,536-byte allowance.
-    file: "bootstrap.js", raw: 1869193, gzip: 524100,
+    file: "bootstrap.js", raw: 1_869_518, gzip: 524100,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->
@@ -1159,9 +1159,9 @@ const budgets = [
   // Integrated renderer changes: raw 285100 -> 290400 (measured 304900); gzip 81900 -> 83500 (measured 87668); brotli 68800 -> 70100 (measured 73585). Existing allowances stay fixed.
   {
     // Merge with main preserves sampler wrapping and signed normal-map scales: raw 290400 -> 290800 (measured 305260); gzip 83500 -> 83600 (measured 87766). Governed allowances stay fixed.
-    // Float32 views with current main measure 73,892 Brotli bytes. Use the
+    // BLEND texture coverage with current main measures 73,953 Brotli bytes. Use the
     // minimum target under the unchanged 5% allowance; retain raw and gzip.
-    file: "bootstrap-feature-scene3d-webgl.js", raw: 290800, gzip: 83600, brotli: 70373 },
+    file: "bootstrap-feature-scene3d-webgl.js", raw: 290800, gzip: 83600, brotli: 70431 },
   // Bumped raw 723_000 -> 730_000, gzip 198_000 -> 201_000, brotli 163_000 ->
   // 166_000 for procedural point clouds (11b-scene-points-generate.ts) — the
   // same canonical math kernel and box-scatter expander added to bootstrap.js

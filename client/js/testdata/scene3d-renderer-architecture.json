@@ -662,8 +662,8 @@
         "../runtime/scene3d/webgl-contact-shadows.ts",
         "../runtime/scene3d/webgl-taa.ts"
       ],
-      "maxLines": 12764,
-      "maxFileLines": 11612
+      "maxLines": 12497,
+      "maxFileLines": 11292
     },
     "webgpu": {
       "chunk": "bootstrap-feature-scene3d-webgpu.js",
@@ -715,8 +715,8 @@
         "../runtime/scene3d/webgpu-bloom.ts",
         "../runtime/scene3d/webgpu-contact-shadows.ts"
       ],
-      "maxLines": 21003,
-      "maxFileLines": 19603
+      "maxLines": 21005,
+      "maxFileLines": 19605
     }
   },
   "files": {
