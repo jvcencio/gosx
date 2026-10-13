@@ -16458,7 +16458,7 @@
     // renderer a fresh shallow copy of every instanced mesh each frame, so
     // caching on that copy created a uniform buffer and a bind group per mesh
     // per frame and kept render bundles from replaying. Key by mesh id.
-    function webGPUInstancedCacheOwner(meshId = "", fallback = null) {
+    function webGPUInstancedCacheOwner(meshId = "", fallback?: any) {
       if (!meshId) return fallback;
       var owner = instancedCacheOwners.get(meshId);
       if (!owner) {
