@@ -7739,16 +7739,16 @@
     // drift/bob/spin (program.go), so once placed this collapses "4 buffer
     // allocs + 4 full uploads every frame forever" to "once" -- a scene with
     // genuinely animating mesh geometry still uploads whenever content changes.
-    function wgpuStablePBRAttributeBuffer(slot, typedArray) {
+    function wgpuStablePBRAttributeBuffer(slot, typedArray, owner = pbrSceneAttributeCache, bufferSlot = slot + "B") {
       // Reuse the cached snapshot's IDENTITY (not typedArray's, which is
       // fresh every frame) once content-equal, so the delegated
       // wgpuCachedTrackedBuffer call below (identity-based) naturally skips
       // its own writeBuffer -- see this function's comment above.
-      var snap = pbrSceneAttributeCache[slot];
+      var snap = owner[slot];
       var same = snap && snap.length === typedArray.length;
       for (var i = 0; same && i < snap.length; i++) if (snap[i] !== typedArray[i]) same = false;
-      if (!same) pbrSceneAttributeCache[slot] = snap = typedArray.slice();
-      return wgpuCachedTrackedBuffer(pbrSceneAttributeCache, slot + "B", snap, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, false);
+      if (!same) owner[slot] = snap = typedArray.slice();
+      return wgpuCachedTrackedBuffer(owner, bufferSlot, snap, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, false);
     }
 
     function wgpuCachedTrackedBuffer(owner, slot, typedArray, usage, dynamic) {
@@ -15997,6 +15997,8 @@
       return Boolean(shadowFrameBuffer);
     }
 
+    var shadowFrameBindGroups = [];
+
     /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ function renderShadowPass(encoder, lightMatrix, bundle, shadowResource, pbrBuffers) {
       var sp = getShadowPipeline();
       if (!sp) return;
@@ -16011,12 +16013,18 @@
 
       device.queue.writeBuffer(shadowFrameBuffer, baseMatrixOffset, lightMatrix, 0, 16);
 
-      var shadowBG = device.createBindGroup({
-        layout: shadowBindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: shadowFrameBuffer, offset: 0, size: 64 } },
-        ],
-      });
+      var lightSlot = Math.max(0, Math.floor(sceneNumber(shadowResource.lightSlot, 0)));
+      var cachedShadow = shadowFrameBindGroups[lightSlot];
+      if (!cachedShadow || cachedShadow.buffer !== shadowFrameBuffer) {
+        cachedShadow = shadowFrameBindGroups[lightSlot] = {
+          buffer: shadowFrameBuffer,
+          group: device.createBindGroup({
+            layout: shadowBindGroupLayout,
+            entries: [{ binding: 0, resource: { buffer: shadowFrameBuffer, offset: 0, size: 64 } }],
+          }),
+        };
+      }
+      var shadowBG = cachedShadow.group;
 
       var shadowPassDescriptor = {
         colorAttachments: [],
@@ -16122,6 +16130,7 @@
       var lastMaterialOwner = null;
       var currentPipelineKind = "";
       var objectDepthWrite = depthWrite;
+      var worldBuffersBound = false;
 
       function bindMeshAttribute(attr, obj, offset, count) {
         var computedRecord = webGPUObjectComputedMorphDrawRecord(obj);
@@ -16172,6 +16181,7 @@
         var count = obj.vertexCount;
         var isSkinned = webGPUObjectIsSkinned(obj);
         var computedMorphRecord = !isSkinned ? webGPUObjectComputedMorphDrawRecord(obj) : null;
+        if (isSkinned || computedMorphRecord || obj.retainedGeometry) worldBuffersBound = false;
         // cullMode: "back" is getSelenaPipeline's own default (every OTHER
         // caller passes no options and relies on it -- see the comment on
         // pipelineCullMode there). obj.doubleSided opts a single mesh object
@@ -16215,6 +16225,7 @@
           ? getSelenaSkinnedPipeline(mat, blendMode, depthWrite, selenaPipelineOptions)
           : getSelenaPipeline(mat, blendMode, depthWrite, selenaPipelineOptions);
         if (selenaResource) {
+          worldBuffersBound = false;
           var selenaKey = "selena:" + (isSkinned ? "skin:" : "") + (mat && mat.key || matIndex) + sceneWebGPUSelenaPipelineSuffix(obj, reflectedDirect);
           if (currentPipelineKind !== selenaKey) {
             pass.setPipeline(wgpuRequirePipeline(selenaResource.pipeline));
@@ -16320,12 +16331,15 @@
           continue;
         }
 
-        if (!webGPUBindSceneMeshVertexBuffer(pass, 0, pbrBuffers && pbrBuffers.positions, offset, count)) continue;
-        if (!webGPUBindSceneMeshVertexBuffer(pass, 1, pbrBuffers && pbrBuffers.normals, offset, count)) continue;
-        if (!webGPUBindSceneMeshVertexBuffer(pass, 2, pbrBuffers && pbrBuffers.uvs, offset, count)) continue;
-        if (!webGPUBindSceneMeshVertexBuffer(pass, 3, pbrBuffers && pbrBuffers.tangents, offset, count)) continue;
+        if (!worldBuffersBound) {
+          if (!webGPUBindSceneMeshVertexBuffer(pass, 0, pbrBuffers && pbrBuffers.positions, 0, pbrBuffers && pbrBuffers.vertexCount)) continue;
+          if (!webGPUBindSceneMeshVertexBuffer(pass, 1, pbrBuffers && pbrBuffers.normals, 0, pbrBuffers && pbrBuffers.vertexCount)) continue;
+          if (!webGPUBindSceneMeshVertexBuffer(pass, 2, pbrBuffers && pbrBuffers.uvs, 0, pbrBuffers && pbrBuffers.vertexCount)) continue;
+          if (!webGPUBindSceneMeshVertexBuffer(pass, 3, pbrBuffers && pbrBuffers.tangents, 0, pbrBuffers && pbrBuffers.vertexCount)) continue;
+          worldBuffersBound = true;
+        }
 
-        pass.draw(count);
+        pass.draw(count, 1, offset, 0);
         if (frameRequest) frameRequest.record(obj.id);
         if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
       }
@@ -16366,13 +16380,18 @@
     function instancedMeshColorData(mesh, count) {
       if (!mesh || count <= 0) return null;
       var rawColors = mesh.colors;
-      var source = rawColors || null;
+      var owner = webGPUInstancedCacheOwner(mesh.id) || mesh;
+      var source = owner._cachedWGPUInstanceColorSource;
+      var same = rawColors ? source && source.length === rawColors.length : !source;
+      for (var i = 0; same && rawColors && i < rawColors.length; i++) {
+        if (source[i] !== rawColors[i]) same = false;
+      }
       if (
-        mesh._cachedWGPUInstanceColors &&
-        mesh._cachedWGPUInstanceColorCount === count &&
-        mesh._cachedWGPUInstanceColorSource === source
+        owner._cachedWGPUInstanceColors &&
+        owner._cachedWGPUInstanceColorCount === count &&
+        same
       ) {
-        return mesh._cachedWGPUInstanceColors;
+        return owner._cachedWGPUInstanceColors;
       }
 
       var data = null;
@@ -16409,9 +16428,9 @@
         }
       }
 
-      mesh._cachedWGPUInstanceColors = data;
-      mesh._cachedWGPUInstanceColorCount = count;
-      mesh._cachedWGPUInstanceColorSource = source;
+      owner._cachedWGPUInstanceColors = data;
+      owner._cachedWGPUInstanceColorCount = count;
+      owner._cachedWGPUInstanceColorSource = rawColors ? Array.prototype.slice.call(rawColors) : null;
       return data;
     }
 
@@ -16517,12 +16536,13 @@
       return host;
     }
 
+    // Share content snapshots across all passes and fresh per-frame mesh copies.
     function ensureInstancedTransformGPUBuffer(mesh, data) {
-      return wgpuCachedTrackedBuffer(webGPUInstancedCacheOwner(mesh && mesh.id) || mesh, "_gosxWGPUInstanceTransformBuffer", data, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, true);
+      return wgpuStablePBRAttributeBuffer("_gosxWGPUInstanceTransformSnapshot", data, webGPUInstancedCacheOwner(mesh && mesh.id) || mesh, "_gosxWGPUInstanceTransformBuffer");
     }
 
     function ensureInstancedColorGPUBuffer(mesh, data) {
-      return wgpuCachedTrackedBuffer(webGPUInstancedCacheOwner(mesh && mesh.id) || mesh, "_gosxWGPUInstanceColorBuffer", data, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, true);
+      return wgpuStablePBRAttributeBuffer("_gosxWGPUInstanceColorSnapshot", data, webGPUInstancedCacheOwner(mesh && mesh.id) || mesh, "_gosxWGPUInstanceColorBuffer");
     }
 
     function buildInstancedDrawList(bundle, materials) {
@@ -19251,6 +19271,7 @@
       shadowPositionBuffer = null;
       destroyRendererGPUResource(shadowFrameBuffer);
       shadowFrameBuffer = null;
+      shadowFrameBindGroups.length = 0;
       pointsEntryGPUBuffers.forEach(function(buffer) {
         destroyRendererGPUResource(buffer);
       });
