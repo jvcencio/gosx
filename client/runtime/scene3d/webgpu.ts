@@ -4614,14 +4614,14 @@
           fragmentSource += roundSource +
             "\n@fragment fn fragmentMain(@location(0) uv: vec2f, @builtin(position) position: vec4f) -> @location(0) vec4f {" +
             " let size = vec2f(textureDimensions(inputTex)); let samplePos = uv * size - vec2f(0.5);" +
-            " let delta = floor(samplePos) - floor(position.xy); let weight = fract(samplePos);" +
+            " let delta = floor(samplePos) - floor(position.xy); let w = fract(samplePos);" +
             " let dx = dpdx(uv); let dy = dpdy(uv); let start = uv + dx * delta.x + dy * delta.y;" +
             " let a = _r(_p(start));" +
-            " if (all(weight == vec2f(0.0))) { return a; }" +
-            " if (weight.y == 0.0) { return mix(a, _r(_p(start + dx)), weight.x); }" +
-            " let c = _r(_p(start + dy)); if (weight.x == 0.0) { return mix(a, c, weight.y); }" +
+            " if (all(w == vec2f(0.0))) { return a; }" +
+            " if (w.y == 0.0) { return mix(a, _r(_p(start + dx)), w.x); }" +
+            " let c = _r(_p(start + dy)); if (w.x == 0.0) { return mix(a, c, w.y); }" +
             " let b = _r(_p(start + dx)); let d = _r(_p(start + dx + dy));" +
-            " return mix(mix(a, b, weight.x), mix(c, d, weight.x), weight.y); }";
+            " return mix(mix(a, b, w.x), mix(c, d, w.x), w.y); }";
         } else {
           fragmentSource += roundSource + "\n@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f { return _r(_p(uv)); }";
         }
