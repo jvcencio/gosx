@@ -57,5 +57,5 @@
 .bgb [data-gosx-scene3d-focus-layer]:focus-within { clip-path:none!important; z-index:13; }
 .bgb [data-gosx-scene-node]:focus-visible { top:68px; left:18px; width:max-content!important; max-width:calc(100% - 36px); height:auto!important; min-height:44px; box-sizing:border-box; margin:0!important; padding:10px 14px!important; border-radius:8px; background:#152326; color:#f2ead8; outline:2px solid #ebc998; font:12px/1.5 ui-sans-serif,system-ui; }
 .bgb [data-gosx-scene-node]:focus-visible::after { content:attr(aria-label); }
-@media(max-width:640px) { .bgb__tools { top:12px;left:12px;gap:6px; } .bgb__map { aspect-ratio:16/7; } .bgb__journal[open] { width:min(280px,calc(100vw - 72px)); } .bgb__tools:has(details[open]) > details:not([open]) { display:none; } .bgb__group { flex-wrap:wrap; } .bgb__controls { max-width:100%; } }
+@media(max-width:640px) { .bgb__tools { top:12px;left:12px;gap:6px; } .bgb__map { aspect-ratio:16/7; } .bgb__journal[open] { width:min(280px,calc(100vw - 72px)); } .bgb__tools:has(> details[open]) > details:not([open]) { display:none; } .bgb__group { flex-wrap:wrap; } .bgb__controls { max-width:100%; } }
 @media(scripting:none) { .bgb__journal-status,.bgb__journal > summary span { display:none; } }
