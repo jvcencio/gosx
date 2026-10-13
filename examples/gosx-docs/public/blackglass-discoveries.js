@@ -139,7 +139,9 @@
     });
     function message(event) {
       if (event.origin !== location.origin || !frame || event.source !== frame.contentWindow) return;
-      if (event.data && event.data.type === "blackglass-handheld-close") dialog.close();
+      if (event.data?.type === "blackglass-handheld-close") dialog.close();
+      if (event.data?.type === "blackglass-handheld-ready")send(dialog.open?"resume":"pause");
+      if (event.data?.type === "blackglass-handheld-saved")status.textContent=event.data.ok?"Handheld put away · pocket checkpoint saved on this device.":"Handheld put away · this session can resume; autosave is unavailable.";
     }
     window.addEventListener("message", message);
     window.addEventListener("pagehide", () => { send("pause"); if(stopPulse)stopPulse();if(bellAudio){bellAudio.close().catch(()=>{});bellAudio=null;lastBell=-Infinity;}window.removeEventListener("message", message); });

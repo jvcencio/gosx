@@ -1,4 +1,4 @@
-import init, { GameBoy, GameBoyMode, PadKey } from "./vendor/boytacean-0.13.2/boytacean.js";
+import init, { GameBoy, GameBoyMode, PadKey, StateManager, SaveStateFormat, StateFormat, FromGbOptions } from "./vendor/boytacean-0.13.2/boytacean.js";
 
 const canvas = document.querySelector("canvas"), ctx = canvas.getContext("2d", { alpha:false });
 const status = document.querySelector("[data-status]"), sound = document.querySelector("[data-sound]");
@@ -6,7 +6,7 @@ const speedControl = document.querySelector("[data-speed]"), audioSources = new 
 const image = ctx.createImageData(160,144), pressed = new Set(), pendingReleases = new Set();
 const keyboard = { ArrowUp:"Up",ArrowDown:"Down",ArrowLeft:"Left",ArrowRight:"Right",KeyZ:"A",KeyJ:"A",KeyX:"B",KeyK:"B",Enter:"Start",ShiftLeft:"Select",ShiftRight:"Select" };
 let gb = null, cartridge = null, romHash = "", frame = 0, last = 0, elapsed = 0, running = false, saveAt = 0;
-let allowedToRun = true, romBytes = null, romName = "";
+let allowedToRun = parent === window, romBytes = null, romName = "";
 let audio = null, audioAt = 0, muted = true, activeLoad = 0;
 let speed = 3;
 const maxROM = 8*1024*1024, frameMS = 1000/59.7275;
@@ -38,6 +38,46 @@ function save() {
     localStorage.setItem("gosx.blackglass.cartridge."+romHash,btoa(binary));
   }
   catch (_) { note("Autosave is unavailable here. Export save keeps a copy."); }
+}
+const checkpointPrefix="gosx.blackglass.pocket-state.v1.",maxCheckpoint=2*1024*1024;
+function encode(data) {
+  let binary="";for(let i=0;i<data.length;i+=32768)binary+=String.fromCharCode(...data.subarray(i,i+32768));
+  return btoa(binary);
+}
+function checkpoint() {
+  if(!gb||!romHash)return false;
+  try {
+    const data=StateManager.save_wa(gb,SaveStateFormat.Bosc,FromGbOptions.new(true,StateFormat.Full,"GoSX Pocket","1"));
+    if(!data.length||data.length>maxCheckpoint)throw new Error("Checkpoint too large.");
+    localStorage.setItem(checkpointPrefix+romHash,JSON.stringify({version:1,core:"boytacean-0.13.2",romHash,speed,savedAt:Date.now(),data:encode(data)}));
+    canvas.dataset.checkpoint="saved";
+    note(romName+" · pocket checkpoint saved on this device");
+    parent.postMessage({type:"blackglass-handheld-saved",ok:true},location.origin);
+    return true;
+  } catch(_) {
+    canvas.dataset.checkpoint="unavailable";
+    note("Pocket autosave is unavailable. This session still resumes; Export save keeps your battery save.");
+    parent.postMessage({type:"blackglass-handheld-saved",ok:false},location.origin);
+    return false;
+  }
+}
+function restoreCheckpoint() {
+  const stored=localStorage.getItem(checkpointPrefix+romHash);
+  if(!stored)return false;
+  if(stored.length>maxCheckpoint*4/3+1024)throw new Error("Checkpoint too large.");
+  const entry=JSON.parse(stored);
+  if(entry.version!==1||entry.core!=="boytacean-0.13.2"||entry.romHash!==romHash||typeof entry.data!=="string")throw new Error("Incompatible checkpoint.");
+  const data=Uint8Array.from(atob(entry.data),c=>c.charCodeAt(0));
+  if(!data.length||data.length>maxCheckpoint||StateManager.format_wa(data)!==SaveStateFormat.Bosc)throw new Error("Invalid checkpoint.");
+  StateManager.validate_wa(data);StateManager.load_wa(data,gb,SaveStateFormat.Bosc);
+  speed=entry.speed===1?1:3;speedControl.value=String(speed);canvas.dataset.emulationSpeed=String(speed);
+  canvas.dataset.checkpoint="restored";
+  return true;
+}
+function insert(bytes,mode) {
+  if(cartridge)cartridge.free();if(gb)gb.free();
+  gb=new GameBoy(mode);gb.load_unsafe(true);cartridge=gb.load_rom_wa(bytes);
+  if(mode===GameBoyMode.Dmg)gb.load_boot_state();
 }
 function pixels() {
   const data = gb.frame_buffer_eager();
@@ -82,7 +122,7 @@ function play(value) {
   running=!!(value&&allowedToRun&&gb);release();last=0;elapsed=0;stopAudio();
   if(frame)cancelAnimationFrame(frame);frame=0;
   if(running && gb && !document.hidden)frame=requestAnimationFrame(tick);
-  if(!running){save();if(audio)audio.suspend().catch(()=>{});}else if(audio&&!muted)audio.resume().catch(()=>{});
+  if(!running){save();checkpoint();if(audio)audio.suspend().catch(()=>{});}else if(audio&&!muted)audio.resume().catch(()=>{});
   canvas.dataset.playing=String(running);
 }
 async function load(bytes, name, importedRAM = null, expectedHash = "") {
@@ -93,23 +133,31 @@ async function load(bytes, name, importedRAM = null, expectedHash = "") {
   if(generation!==activeLoad)return;
   const hash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");
   if(expectedHash && hash!==expectedHash)throw new Error("Deployment cartridge changed. Reload the handheld.");
-  play(false);if(cartridge)cartridge.free();if(gb)gb.free();
+  play(false);
   romHash=hash;
   romBytes=bytes;romName=name;
   const mode=(bytes[0x143]&0x80)?GameBoyMode.Cgb:GameBoyMode.Dmg;
-  gb=new GameBoy(mode);gb.load_unsafe(true);cartridge=gb.load_rom_wa(bytes);
-  if(mode===GameBoyMode.Dmg)gb.load_boot_state();
+  insert(bytes,mode);
+  let ram=importedRAM,restored=false,restoreFailed=false;
   try {
     const stored=importedRAM ? null : localStorage.getItem("gosx.blackglass.cartridge."+romHash);
-    const ram=importedRAM || (stored ? Uint8Array.from(atob(stored),c=>c.charCodeAt(0)) : null);
+    ram=importedRAM || (stored ? Uint8Array.from(atob(stored),c=>c.charCodeAt(0)) : null);
     if(ram && ram.length===gb.ram_data_eager().length)gb.set_ram_data(ram);
   } catch (_) {}
-  if(importedRAM)gb.set_ram_data(importedRAM);
+  if(importedRAM) {
+    gb.set_ram_data(importedRAM);
+    try {localStorage.removeItem(checkpointPrefix+romHash);}catch(_) {}
+  } else {
+    try {restored=restoreCheckpoint();} catch(_) {
+      restoreFailed=true;insert(bytes,mode);if(ram && ram.length===gb.ram_data_eager().length)gb.set_ram_data(ram);
+      canvas.dataset.checkpoint="invalid";
+    }
+  }
   document.body.dataset.cartridge=name;
   document.querySelector("[data-screen-prompt]").hidden=true;
   for(const control of document.querySelectorAll("[data-key], [data-save], [data-import-save], [data-sound]"))control.disabled=false;
-  note(name+" · battery saves stay on this device");
-  document.querySelector("[data-hint]").textContent="Play at 3× or switch to 1×. Saves stay on this device. Arrows · Z/X · Enter · Shift";
+  note(name+(restored?" · pocket checkpoint restored":restoreFailed?" · checkpoint unavailable; battery save loaded":" · saves stay on this device"));
+  document.querySelector("[data-hint]").textContent="Put away to pause and autosave your exact place. Pick up to continue. Arrows · Z/X · Enter · Shift";
   pixels();
   play(allowedToRun);if(allowedToRun)canvas.focus({preventScroll:true});
 }
@@ -153,8 +201,9 @@ window.addEventListener("keydown",event=>{
 window.addEventListener("keyup",event=>{const name=keyboard[event.code];if(name){event.preventDefault();key(name,false);}});
 window.addEventListener("blur",release);
 window.addEventListener("message",event=>{if(event.origin===location.origin&&event.source===parent&&event.data?.type==="blackglass-handheld"){allowedToRun=event.data.action==="resume";play(allowedToRun);}});
-document.addEventListener("visibilitychange",()=>{if(document.hidden){release();save();stopAudio();if(audio)audio.suspend().catch(()=>{});if(frame)cancelAnimationFrame(frame);frame=0;last=0;elapsed=0;}else if(running&&gb){last=0;if(audio&&!muted)audio.resume().catch(()=>{});frame=requestAnimationFrame(tick);}});
+document.addEventListener("visibilitychange",()=>{if(document.hidden){release();save();checkpoint();stopAudio();if(audio)audio.suspend().catch(()=>{});if(frame)cancelAnimationFrame(frame);frame=0;last=0;elapsed=0;}else if(running&&gb){last=0;if(audio&&!muted)audio.resume().catch(()=>{});frame=requestAnimationFrame(tick);}});
 window.addEventListener("pagehide",event=>{allowedToRun=false;play(false);if(!event.persisted){if(cartridge)cartridge.free();if(gb)gb.free();gb=null;}});
+parent.postMessage({type:"blackglass-handheld-ready"},location.origin);
 // A deployment may supply a cartridge without adding its bytes to Git. The
 // manifest is fetched only inside the opened pocket, and never displaces a
 // cartridge the player selected while the download was in flight.
