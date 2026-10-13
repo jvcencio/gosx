@@ -4373,6 +4373,49 @@
   // normalizeScenePostEffect lowercased the kind, so this pass never ran and
   // never reached the uniform upload on the frame after its pipeline resolved.
   function sceneWebGPUPostFrameContext(frame) { return Array.isArray(frame) ? { lights: frame } : frame || {}; }
+  // Preserve the HDR attachment rounding and the removed present sampler.
+  function wgpuCanvasPostShader(name, fragmentSource, outputFormat, targetFormat) {
+    if (name === "present" || outputFormat === targetFormat) return fragmentSource;
+    fragmentSource = fragmentSource.replace(
+      "@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f",
+      "fn _p(uv: vec2f) -> vec4f");
+    var roundSource = "\nfn _r(color: vec4f) -> vec4f {" +
+      " let bits = bitcast<vec4u>(clamp(color, vec4f(0.0), vec4f(1.0)));" +
+      " let rounded = bits + vec4u(0xfffu) + ((bits >> vec4u(13u)) & vec4u(1u));" +
+      " return bitcast<vec4f>(rounded & vec4u(0xffffe000u)); }";
+    if (name === "toneMapping" || name === "colorGrade") {
+      // A pointwise effect can reproduce the removed present sampler's
+      // fractional texel blend. Mip zero is the only level on post targets;
+      // explicit LOD lets aligned texels skip neighbour work safely.
+      fragmentSource = fragmentSource.replace("textureSample(inputTex, inputSamp, uv)", "textureSampleLevel(inputTex, inputSamp, uv, 0.0)");
+      fragmentSource += roundSource +
+        "\n@fragment fn fragmentMain(@location(0) uv: vec2f, @builtin(position) position: vec4f) -> @location(0) vec4f {" +
+        " let size = vec2f(textureDimensions(inputTex)); let samplePos = uv * size - vec2f(0.5);" +
+        " let delta = floor(samplePos) - floor(position.xy); let w = fract(samplePos);" +
+        " let dx = dpdx(uv); let dy = dpdy(uv); let start = uv + dx * delta.x + dy * delta.y;" +
+        " let a = _r(_p(start));" +
+        " if (all(w == vec2f(0.0))) { return a; }" +
+        " if (w.y == 0.0) { return mix(a, _r(_p(start + dx)), w.x); }" +
+        " let c = _r(_p(start + dy)); if (w.x == 0.0) { return mix(a, c, w.y); }" +
+        " let b = _r(_p(start + dx)); let d = _r(_p(start + dx + dy));" +
+        " return mix(mix(a, b, w.x), mix(c, d, w.x), w.y); }";
+    } else {
+      fragmentSource += roundSource + "\n@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f { return _r(_p(uv)); }";
+    }
+    return fragmentSource;
+  }
+
+  function wgpuPostCanPresent(kind, width, height, canvasWidth, canvasHeight, format, last) {
+    if (!last) return false;
+    if (width !== canvasWidth || height !== canvasHeight) return false;
+    if (format !== "rgba8unorm" && format !== "bgra8unorm" && format !== "rgba16float") return false;
+    if (kind === SCENE_POST_TONE_MAPPING || kind === SCENE_POST_COLOR_GRADE) return true;
+    // Edge/UV-dependent effects require exactly representable pixel centres.
+    return (kind === SCENE_POST_FXAA || kind === "taa" || kind === SCENE_POST_VIGNETTE) &&
+      (width & (width - 1)) === 0 && (height & (height - 1)) === 0;
+  }
+
+  function wgpuPostOutput(direct, canvasOutput, intermediateOutput) { return direct ? canvasOutput : intermediateOutput; }
   function wgpuCreatePostProcessor(device, presentationFormat, onAllocationError, packSelenaUniforms) {
     var targetFormat = "rgba16float";
     let specularSource: any = null;
@@ -4595,37 +4638,7 @@
       if (name === "present") outputFormat = presentationFormat;
       var cacheKey = name + ":" + outputFormat;
       if (pipelines[cacheKey]) return pipelines[cacheKey];
-      // Preserve rgba16float attachment rounding before SDR canvas conversion.
-      // Explicit nearest-even avoids quantizeToF16's implementation-dependent
-      // rounding. Half subnormals are below the 8-bit canvas's visible precision.
-      if (name !== "present" && outputFormat !== targetFormat) {
-        fragmentSource = fragmentSource.replace(
-          "@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f",
-          "fn _p(uv: vec2f) -> vec4f");
-        var roundSource = "\nfn _r(color: vec4f) -> vec4f {" +
-          " let bits = bitcast<vec4u>(clamp(color, vec4f(0.0), vec4f(1.0)));" +
-          " let rounded = bits + vec4u(0xfffu) + ((bits >> vec4u(13u)) & vec4u(1u));" +
-          " return bitcast<vec4f>(rounded & vec4u(0xffffe000u)); }";
-        if (name === "toneMapping" || name === "colorGrade") {
-          // A pointwise effect can reproduce the removed present sampler's
-          // fractional texel blend. Mip zero is the only level on post targets;
-          // explicit LOD lets aligned texels skip neighbour work safely.
-          fragmentSource = fragmentSource.replace("textureSample(inputTex, inputSamp, uv)", "textureSampleLevel(inputTex, inputSamp, uv, 0.0)");
-          fragmentSource += roundSource +
-            "\n@fragment fn fragmentMain(@location(0) uv: vec2f, @builtin(position) position: vec4f) -> @location(0) vec4f {" +
-            " let size = vec2f(textureDimensions(inputTex)); let samplePos = uv * size - vec2f(0.5);" +
-            " let delta = floor(samplePos) - floor(position.xy); let w = fract(samplePos);" +
-            " let dx = dpdx(uv); let dy = dpdy(uv); let start = uv + dx * delta.x + dy * delta.y;" +
-            " let a = _r(_p(start));" +
-            " if (all(w == vec2f(0.0))) { return a; }" +
-            " if (w.y == 0.0) { return mix(a, _r(_p(start + dx)), w.x); }" +
-            " let c = _r(_p(start + dy)); if (w.x == 0.0) { return mix(a, c, w.y); }" +
-            " let b = _r(_p(start + dx)); let d = _r(_p(start + dx + dy));" +
-            " return mix(mix(a, b, w.x), mix(c, d, w.x), w.y); }";
-        } else {
-          fragmentSource += roundSource + "\n@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f { return _r(_p(uv)); }";
-        }
-      }
+      fragmentSource = wgpuCanvasPostShader(name, fragmentSource, outputFormat, targetFormat);
       var fragModule = device.createShaderModule({ label: "post-" + name, code: fragmentSource });
       var pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [layout] });
       var pipeline = wgpuCreatePostPipeline(device, pipelineLayout, fragModule, outputFormat, name);
@@ -4828,16 +4841,9 @@
         for (var i = 0; i < effects.length; i++) {
           var effect = effects[i];
           var outputView = currentTexView === sceneTexView ? auxTexView : sceneTexView;
-          var directPresent = i === effects.length - 1 && scaledW === canvasW && scaledH === canvasH &&
-            (presentationFormat === "rgba8unorm" || presentationFormat === "bgra8unorm" || presentationFormat === targetFormat) &&
-            (effect.kind === SCENE_POST_TONE_MAPPING || effect.kind === SCENE_POST_FXAA || effect.kind === "taa" ||
-             effect.kind === SCENE_POST_VIGNETTE || effect.kind === SCENE_POST_COLOR_GRADE);
-          // Edge/UV-dependent effects retain the blit when pixel centres cannot
-          // be represented exactly: removing its sampling changes boundary pixels.
-          if ((effect.kind === SCENE_POST_FXAA || effect.kind === "taa" || effect.kind === SCENE_POST_VIGNETTE) &&
-              ((scaledW & (scaledW - 1)) !== 0 || (scaledH & (scaledH - 1)) !== 0)) directPresent = false;
-          if (directPresent) outputView = finalView;
-          var outputFormat = directPresent ? presentationFormat : targetFormat;
+          var directPresent = wgpuPostCanPresent(effect.kind, scaledW, scaledH, canvasW, canvasH, presentationFormat, i === effects.length - 1);
+          outputView = wgpuPostOutput(directPresent, finalView, outputView);
+          var outputFormat = wgpuPostOutput(directPresent, presentationFormat, targetFormat);
           var passW = scaledW;
           var passH = scaledH;
           activePostIndex = i;
@@ -5108,10 +5114,8 @@
           }
         }
 
-        // Detach chain attribution BEFORE the final blit: the blit is not an
-        // authored effect, and counting it against the last chain slot would
-        // make a dead trailing pass look alive -- the precise misreading that
-        // let a no-op customPost look like a working one.
+        // The present blit is not an authored effect. Detach attribution so a
+        // dead trailing effect cannot inherit a successful presentation.
         activePostIndex = -1;
 
         // If no effects matched or we need a final blit.
@@ -6746,6 +6750,50 @@
     return true;
   }
 
+  function wgpuUpdateFrameProof(stats, proof) {
+    proof.frameSeq = stats.frameSeq || 0;
+    proof.frameAt = stats.frameAt || 0;
+    proof.waterSystems = stats.waterSystems || 0;
+    proof.waterComputeDispatches = stats.waterComputeDispatches || 0;
+    proof.waterDrawCalls = stats.waterDrawCalls || 0;
+    proof.waterSimulationTickSeq = stats.waterSimulationTickSeq || 0;
+    proof.waterSolverSubstepSeq = stats.waterSolverSubstepSeq || 0;
+    proof.waterDroppedTicks = stats.waterDroppedTicks || 0;
+    proof.waterNormalDispatchSeq = stats.waterNormalDispatchSeq || 0;
+    proof.waterSampledStateSyncSeq = stats.waterSampledStateSyncSeq || 0;
+    proof.waterAtRestSystems = stats.waterAtRestSystems || 0;
+    proof.waterQualityTier = stats.waterQualityTier || "full";
+    proof.waterQualityRevision = stats.waterQualityRevision || 0;
+    proof.waterSurfaceResolution = stats.waterSurfaceResolution || 0;
+    proof.waterCausticsResolution = stats.waterActiveCausticsResolution || 0;
+    proof.waterObjectShadowResolution = stats.waterActiveObjectShadowResolution || 0;
+    proof.waterObjectTextureWidth = stats.waterActiveObjectTextureWidth || 0;
+    proof.waterObjectTextureHeight = stats.waterActiveObjectTextureHeight || 0;
+    proof.waterObjectTexturePixelBudget = stats.waterActiveObjectTexturePixelBudget || 0;
+    proof.waterQualityAllocationPending = stats.waterQualityAllocationPending || 0;
+    proof.waterQualityAllocationFailures = stats.waterQualityAllocationFailures || 0;
+    proof.waterQualityAllocationRetryFrame = stats.waterQualityAllocationRetryFrame || 0;
+    proof.waterDPRCap = stats.waterQualityDPRCap || 1;
+    proof.waterExpensivePassCadence = stats.waterExpensivePassCadence || 1;
+  }
+
+  function wgpuResetFrameStats(stats, proof) {
+    for (var key in stats) stats[key] = undefined;
+    // Pending pipelines retain the last submitted frame's progress.
+    stats.frameSeq = proof.frameSeq || 0;
+    stats.frameAt = proof.frameAt;
+  }
+
+  function webGPUPerformanceTelemetry() {
+    var config = typeof window !== "undefined" && window.__gosx_telemetry_config;
+    return typeof window !== "undefined" && (window.__gosx_scene3d_webgpu_telemetry === true ||
+      (config && (config.scene3dDiagnostics === true || config.scene3dPerfTelemetry === true)));
+  }
+
+  function webGPUVerboseTelemetry() {
+    return webGPUPerformanceTelemetry() || (typeof window !== "undefined" && window.__gosx_scene3d_cull_telemetry === true);
+  }
+
   function createSceneWebGPURenderer(canvas, options) {
     function sceneWebGPUFactoryFailure(reason) {
       var text = String(reason || "unknown");
@@ -7128,16 +7176,6 @@
       if (webGPUPendingAttributes[name] === value) return;
       webGPUPendingAttributes[name] = value;
       if (!webGPUAttributeFormatting) scheduleWebGPUAttributeMirror();
-    }
-
-    function webGPUPerformanceTelemetry() {
-      var config = typeof window !== "undefined" && window.__gosx_telemetry_config;
-      return typeof window !== "undefined" && (window.__gosx_scene3d_webgpu_telemetry === true ||
-        (config && (config.scene3dDiagnostics === true || config.scene3dPerfTelemetry === true)));
-    }
-
-    function webGPUVerboseTelemetry() {
-      return webGPUPerformanceTelemetry() || (typeof window !== "undefined" && window.__gosx_scene3d_cull_telemetry === true);
     }
 
     function scheduleWebGPUAttributeMirror() {
@@ -17580,30 +17618,7 @@
       lastWebGPUFrameStats = published;
       mount.__gosxScene3DWebGPUStats = published;
 
-      webGPUFrameProof.frameSeq = published.frameSeq || 0;
-      webGPUFrameProof.frameAt = published.frameAt || 0;
-      webGPUFrameProof.waterSystems = published.waterSystems || 0;
-      webGPUFrameProof.waterComputeDispatches = published.waterComputeDispatches || 0;
-      webGPUFrameProof.waterDrawCalls = published.waterDrawCalls || 0;
-      webGPUFrameProof.waterSimulationTickSeq = published.waterSimulationTickSeq || 0;
-      webGPUFrameProof.waterSolverSubstepSeq = published.waterSolverSubstepSeq || 0;
-      webGPUFrameProof.waterDroppedTicks = published.waterDroppedTicks || 0;
-      webGPUFrameProof.waterNormalDispatchSeq = published.waterNormalDispatchSeq || 0;
-      webGPUFrameProof.waterSampledStateSyncSeq = published.waterSampledStateSyncSeq || 0;
-      webGPUFrameProof.waterAtRestSystems = published.waterAtRestSystems || 0;
-      webGPUFrameProof.waterQualityTier = published.waterQualityTier || "full";
-      webGPUFrameProof.waterQualityRevision = published.waterQualityRevision || 0;
-      webGPUFrameProof.waterSurfaceResolution = published.waterSurfaceResolution || 0;
-      webGPUFrameProof.waterCausticsResolution = published.waterActiveCausticsResolution || 0;
-      webGPUFrameProof.waterObjectShadowResolution = published.waterActiveObjectShadowResolution || 0;
-      webGPUFrameProof.waterObjectTextureWidth = published.waterActiveObjectTextureWidth || 0;
-      webGPUFrameProof.waterObjectTextureHeight = published.waterActiveObjectTextureHeight || 0;
-      webGPUFrameProof.waterObjectTexturePixelBudget = published.waterActiveObjectTexturePixelBudget || 0;
-      webGPUFrameProof.waterQualityAllocationPending = published.waterQualityAllocationPending || 0;
-      webGPUFrameProof.waterQualityAllocationFailures = published.waterQualityAllocationFailures || 0;
-      webGPUFrameProof.waterQualityAllocationRetryFrame = published.waterQualityAllocationRetryFrame || 0;
-      webGPUFrameProof.waterDPRCap = published.waterQualityDPRCap || 1;
-      webGPUFrameProof.waterExpensivePassCadence = published.waterExpensivePassCadence || 1;
+      wgpuUpdateFrameProof(published, webGPUFrameProof);
       mount.__gosxScene3DWebGPUProof = webGPUFrameProof;
       mirrorWebGPUFrameAttributes();
     }
@@ -18851,10 +18866,7 @@
       var worldLineEntries = hasWorldLines && !thickLineRecord ? webGPUWorldLinePasses(bundle) : [];
       var pointStats = webGPUPlannedPointStats(bundle, computeParticleRecords);
       var customMaterialStats = webGPUCustomMaterialStats(materials);
-      for (var statKey in frameStats) frameStats[statKey] = undefined;
-      // Progress remains the last submitted frame while a new pipeline is pending.
-      frameStats.frameSeq = webGPUFrameSeq;
-      frameStats.frameAt = webGPUFrameProof.frameAt;
+      wgpuResetFrameStats(frameStats, webGPUFrameProof);
       frameStats.renderer = "webgpu";
       frameStats.pointEntries = pointStats.pointEntries;
       frameStats.pointInstances = pointStats.pointInstances;
@@ -19263,9 +19275,7 @@
 
     function dispose() { pipelineGuard.release(rawDevice);
       if (rendererResourcesDisposed) return;
-      rendererResourcesDisposed = true;
-      if (webGPUAttributeTimer !== null) clearTimeout(webGPUAttributeTimer);
-      webGPUAttributeTimer = null;
+      rendererResourcesDisposed = true; clearTimeout(webGPUAttributeTimer); webGPUAttributeTimer = null;
       if (skyResources.renderer) skyResources.renderer.dispose(); sceneCloudDispose(skyResources); if (oceanResources.renderer) oceanResources.renderer.dispose(); sceneReflectDispose(oceanResources);
       if (transmissionResources) transmissionResources.dispose(); transmissionResources = null; transmissionView = null;
       skyResources.renderer = null;
