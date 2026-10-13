@@ -4601,12 +4601,30 @@
       if (name !== "present" && outputFormat !== targetFormat) {
         fragmentSource = fragmentSource.replace(
           "@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f",
-          "fn postEffect(uv: vec2f) -> vec4f") +
-          "\n@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {" +
-          " let color = clamp(postEffect(uv), vec4f(0.0), vec4f(1.0));" +
-          " let bits = bitcast<vec4u>(color);" +
+          "fn postEffect(uv: vec2f) -> vec4f");
+        var roundSource = "\nfn postRound(color: vec4f) -> vec4f {" +
+          " let bits = bitcast<vec4u>(clamp(color, vec4f(0.0), vec4f(1.0)));" +
           " let rounded = bits + vec4u(0xfffu) + ((bits >> vec4u(13u)) & vec4u(1u));" +
           " return bitcast<vec4f>(rounded & vec4u(0xffffe000u)); }";
+        if (name === "toneMapping" || name === "colorGrade") {
+          // A pointwise effect can reproduce the removed present sampler's
+          // fractional texel blend. Mip zero is the only level on post targets;
+          // explicit LOD lets aligned texels skip neighbour work safely.
+          fragmentSource = fragmentSource.replace("textureSample(inputTex, inputSamp, uv)", "textureSampleLevel(inputTex, inputSamp, uv, 0.0)");
+          fragmentSource += roundSource +
+            "\n@fragment fn fragmentMain(@location(0) uv: vec2f, @builtin(position) position: vec4f) -> @location(0) vec4f {" +
+            " let size = vec2f(textureDimensions(inputTex)); let samplePos = uv * size - vec2f(0.5);" +
+            " let delta = floor(samplePos) - floor(position.xy); let weight = fract(samplePos);" +
+            " let dx = dpdx(uv); let dy = dpdy(uv); let start = uv + dx * delta.x + dy * delta.y;" +
+            " let a = postRound(postEffect(start));" +
+            " if (all(weight == vec2f(0.0))) { return a; }" +
+            " if (weight.y == 0.0) { return mix(a, postRound(postEffect(start + dx)), weight.x); }" +
+            " let c = postRound(postEffect(start + dy)); if (weight.x == 0.0) { return mix(a, c, weight.y); }" +
+            " let b = postRound(postEffect(start + dx)); let d = postRound(postEffect(start + dx + dy));" +
+            " return mix(mix(a, b, weight.x), mix(c, d, weight.x), weight.y); }";
+        } else {
+          fragmentSource += roundSource + "\n@fragment fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f { return postRound(postEffect(uv)); }";
+        }
       }
       var fragModule = device.createShaderModule({ label: "post-" + name, code: fragmentSource });
       var pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [layout] });
@@ -4814,6 +4832,10 @@
             (presentationFormat === "rgba8unorm" || presentationFormat === "bgra8unorm" || presentationFormat === targetFormat) &&
             (effect.kind === SCENE_POST_TONE_MAPPING || effect.kind === SCENE_POST_FXAA || effect.kind === "taa" ||
              effect.kind === SCENE_POST_VIGNETTE || effect.kind === SCENE_POST_COLOR_GRADE);
+          // Edge/UV-dependent effects retain the blit when pixel centres cannot
+          // be represented exactly: removing its sampling changes boundary pixels.
+          if ((effect.kind === SCENE_POST_FXAA || effect.kind === "taa" || effect.kind === SCENE_POST_VIGNETTE) &&
+              ((scaledW & (scaledW - 1)) !== 0 || (scaledH & (scaledH - 1)) !== 0)) directPresent = false;
           if (directPresent) outputView = finalView;
           var outputFormat = directPresent ? presentationFormat : targetFormat;
           var passW = scaledW;
@@ -7098,12 +7120,39 @@
     var webGPUAttributeSink = { setAttribute: queueWebGPUAttribute };
     var WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS = 250;
     var lastWebGPUDiagnosticAttributeAt = null;
+    var webGPUAttributeTimer: any = null;
+    var webGPUAttributeFormatting = false;
+    var webGPUFrameAttributesSeeded = false;
 
     function queueWebGPUAttribute(name, value) {
+      if (webGPUPendingAttributes[name] === value) return;
       webGPUPendingAttributes[name] = value;
+      if (!webGPUAttributeFormatting) scheduleWebGPUAttributeMirror();
+    }
+
+    function webGPUVerboseTelemetry() {
+      var config = typeof window !== "undefined" && window.__gosx_telemetry_config;
+      return typeof window !== "undefined" && (window.__gosx_scene3d_webgpu_telemetry === true ||
+        window.__gosx_scene3d_cull_telemetry === true ||
+        (config && (config.scene3dDiagnostics === true || config.scene3dPerfTelemetry === true)));
+    }
+
+    function scheduleWebGPUAttributeMirror() {
+      if (rendererResourcesDisposed || webGPUAttributeTimer !== null || typeof setTimeout !== "function") return;
+      var now = (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now();
+      var delay = webGPUVerboseTelemetry() || lastWebGPUDiagnosticAttributeAt == null ? 0 :
+        Math.max(0, WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS - (now - lastWebGPUDiagnosticAttributeAt));
+      webGPUAttributeTimer = setTimeout(function() {
+        webGPUAttributeTimer = null;
+        if (!rendererResourcesDisposed) mirrorWebGPUFrameAttributes();
+      }, delay);
+      // Node harness timers should not retain disposed or static test contexts.
+      if (webGPUAttributeTimer && typeof webGPUAttributeTimer.unref === "function") webGPUAttributeTimer.unref();
     }
 
     function mirrorWebGPUAttributes(mount) {
+      if (webGPUAttributeTimer !== null) clearTimeout(webGPUAttributeTimer);
+      webGPUAttributeTimer = null;
       if (webGPUAttributeMount !== mount) {
         webGPUAttributeMount = mount;
         webGPUEssentialAttributeCache = Object.create(null);
@@ -17556,7 +17605,24 @@
       webGPUFrameProof.waterDPRCap = published.waterQualityDPRCap || 1;
       webGPUFrameProof.waterExpensivePassCadence = published.waterExpensivePassCadence || 1;
       mount.__gosxScene3DWebGPUProof = webGPUFrameProof;
-      if (typeof mount.setAttribute !== "function") return;
+      mirrorWebGPUFrameAttributes();
+    }
+
+    function mirrorWebGPUFrameAttributes() {
+      var mount = canvas && canvas.parentNode;
+      if (!mount || typeof mount.setAttribute !== "function") return;
+      var published = lastWebGPUFrameStats;
+      var now = (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now();
+      var verboseTelemetry = webGPUVerboseTelemetry();
+      var diagnosticElapsed = (published && !webGPUFrameAttributesSeeded) || lastWebGPUDiagnosticAttributeAt == null
+        ? Infinity : now - lastWebGPUDiagnosticAttributeAt;
+      var mirrorDiagnostics = verboseTelemetry || webGPUAttributeMount !== mount || diagnosticElapsed < 0 || diagnosticElapsed >= WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS;
+      if (!mirrorDiagnostics) { scheduleWebGPUAttributeMirror(); return; }
+      lastWebGPUDiagnosticAttributeAt = now;
+      if (!published) { mirrorWebGPUAttributes(mount); return; }
+      webGPUFrameAttributesSeeded = true;
+      webGPUAttributeFormatting = true;
+      try {
       // Exact progress and simulation proof live in JS. Mirror existing
       // attributes at the diagnostic cadence for probes and E2E checks.
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-frame-seq", String(published.frameSeq || 0));
@@ -17612,18 +17678,6 @@
       } else if (webGPUEssentialAttributeCache["data-gosx-scene3d-webgpu-last-error"] !== null) {
         queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", null);
       }
-      var telemetryConfig = typeof window !== "undefined" && window.__gosx_telemetry_config && typeof window.__gosx_telemetry_config === "object"
-        ? window.__gosx_telemetry_config : null;
-      var verboseTelemetry = typeof window !== "undefined" && (
-        window.__gosx_scene3d_webgpu_telemetry === true ||
-        window.__gosx_scene3d_cull_telemetry === true ||
-        (telemetryConfig && (telemetryConfig.scene3dDiagnostics === true || telemetryConfig.scene3dPerfTelemetry === true))
-      );
-      var diagnosticElapsed = lastWebGPUDiagnosticAttributeAt == null
-        ? Infinity : published.frameAt - lastWebGPUDiagnosticAttributeAt;
-      var mirrorDiagnostics = verboseTelemetry || webGPUAttributeMount !== mount || diagnosticElapsed < 0 || diagnosticElapsed >= WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS;
-      if (!mirrorDiagnostics) return;
-      lastWebGPUDiagnosticAttributeAt = published.frameAt;
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-entries", String(published.pointEntries || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-instances", String(published.pointInstances || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-draw-entries", String(published.pointDrawEntries || 0));
@@ -17823,7 +17877,7 @@
       } else {
         queueWebGPUAttribute("data-gosx-scene3d-cull-survivors", null);
       }
-      mirrorWebGPUAttributes(mount);
+      mirrorWebGPUAttributes(mount);      } finally { webGPUAttributeFormatting = false; }
     }
 
     function isWebGPUErrorScopeLifecycleMessage(message) {
@@ -18810,6 +18864,9 @@
       var pointStats = webGPUPlannedPointStats(bundle, computeParticleRecords);
       var customMaterialStats = webGPUCustomMaterialStats(materials);
       for (var statKey in frameStats) frameStats[statKey] = undefined;
+      // Progress remains the last submitted frame while a new pipeline is pending.
+      frameStats.frameSeq = webGPUFrameSeq;
+      frameStats.frameAt = webGPUFrameProof.frameAt;
       frameStats.renderer = "webgpu";
       frameStats.pointEntries = pointStats.pointEntries;
       frameStats.pointInstances = pointStats.pointInstances;
@@ -19219,6 +19276,8 @@
     function dispose() { pipelineGuard.release(rawDevice);
       if (rendererResourcesDisposed) return;
       rendererResourcesDisposed = true;
+      if (webGPUAttributeTimer !== null) clearTimeout(webGPUAttributeTimer);
+      webGPUAttributeTimer = null;
       if (skyResources.renderer) skyResources.renderer.dispose(); sceneCloudDispose(skyResources); if (oceanResources.renderer) oceanResources.renderer.dispose(); sceneReflectDispose(oceanResources);
       if (transmissionResources) transmissionResources.dispose(); transmissionResources = null; transmissionView = null;
       skyResources.renderer = null;

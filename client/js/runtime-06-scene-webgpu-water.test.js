@@ -220,7 +220,7 @@ test("bootstrap exposes WebGPU Scene3D planned draw stats on the mount", () => {
   assert.match(source, /__gosxScene3DWebGPUProof = webGPUFrameProof/);
   assert.match(source, /WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS = 250/);
   assert.match(source, /var mirrorDiagnostics = verboseTelemetry \|\| webGPUAttributeMount !== mount \|\| diagnosticElapsed < 0 \|\| diagnosticElapsed >= WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS/);
-  assert.match(source, /if \(!mirrorDiagnostics\) return/);
+  assert.match(source, /if \(!mirrorDiagnostics\) \{ scheduleWebGPUAttributeMirror\(\); return; \}/);
   assert.match(source, /data-gosx-scene3d-webgpu-point-entries/);
   assert.match(source, /data-gosx-scene3d-webgpu-point-instances/);
   assert.match(source, /data-gosx-scene3d-webgpu-point-draw-instances/);

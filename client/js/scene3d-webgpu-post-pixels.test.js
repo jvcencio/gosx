@@ -16,6 +16,7 @@ test("direct WebGPU post output matches HDR effect plus present byte for byte", 
   timeout: 120000,
 }, async () => {
   const h = await createBoardWebGPUHarness({ fresh: true });
+  h.canvas.width = h.canvas.height = 64;
   const bundle = makePointsBundle({ id: "p", count: 1, positions: [0, 0, 0] });
   const shaders = [];
   try {
@@ -76,13 +77,27 @@ test("direct WebGPU post output matches HDR effect plus present byte for byte", 
       }
       // Half-float input includes HDR values, edges, and small values. Compare
       // the actual old two-pass path with the shipped direct shader on Chrome.
-      const values = Array.from({ length: 64 * 64 * 4 }, (_, i) =>
-        i % 4 === 3 ? 1 : ((i * 7919 % 16381) / 4096));
-      const input = Array.from(new Uint16Array(new Float16Array(values).buffer));
-      const response = await call("Runtime.evaluate", { awaitPromise: true, returnByValue: true,
-        expression: "(" + comparePixels.toString() + ")(" + JSON.stringify({ shaders, blit, input }) + ")" });
-      assert.ok(!response.result.exceptionDetails, JSON.stringify(response.result.exceptionDetails));
-      assert.deepEqual(response.result.result.value, shaders.map(s => ({ kind: s.kind, differentBytes: 0 })));
+      for (const [width, height] of [[64, 64], [63, 47], [640, 480]]) {
+        h.canvas.width = width;
+        h.canvas.height = height;
+        const values = Array.from({ length: width * height * 4 }, (_, i) =>
+          i % 4 === 3 ? 1 : ((i * 7919 % 16381) / 4096));
+        const input = Array.from(new Uint16Array(new Float16Array(values).buffer));
+        const selected = [];
+        for (const shader of shaders) {
+          bundle.postEffects = [{ kind: shader.kind }];
+          h.renderer.render(bundle, { width, height });
+          await flushAsyncWork();
+          const label = h.fake.state.renderPasses.at(-1).draws[0].pipeline.desc.label;
+          const useDirect = label === "gosx-post-" + shader.kind;
+          assert.ok(useDirect || label === "gosx-post-present");
+          selected.push({ ...shader, useDirect });
+        }
+        const response = await call("Runtime.evaluate", { awaitPromise: true, returnByValue: true,
+          expression: "(" + comparePixels.toString() + ")(" + JSON.stringify({ shaders: selected, blit, input, width, height }) + ")" });
+        assert.ok(!response.result.exceptionDetails, JSON.stringify(response.result.exceptionDetails));
+        assert.deepEqual(response.result.result.value, shaders.map(s => ({ kind: s.kind, differentBytes: 0 })), `${width}x${height}`);
+      }
     } finally {
       socket?.close();
       if (chrome && chrome.exitCode === null) {
@@ -96,14 +111,14 @@ test("direct WebGPU post output matches HDR effect plus present byte for byte", 
   } finally { h.renderer.dispose(); }
 });
 
-async function comparePixels({ shaders, blit, input }) {
+async function comparePixels({ shaders, blit, input, width, height }) {
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) throw new Error("WebGPU adapter unavailable");
   const device = await adapter.requestDevice();
-  const texture = format => device.createTexture({ size: [64, 64], format,
+  const texture = format => device.createTexture({ size: [width, height], format,
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
   const source = texture("rgba16float");
-  device.queue.writeTexture({ texture: source }, new Uint16Array(input), { bytesPerRow: 512 }, [64, 64]);
+  device.queue.writeTexture({ texture: source }, new Uint16Array(input), { bytesPerRow: width * 8 }, [width, height]);
   const sampler = device.createSampler({ minFilter: "linear", magFilter: "linear" });
   const results = [];
   device.pushErrorScope("validation");
@@ -126,10 +141,11 @@ async function comparePixels({ shaders, blit, input }) {
     const encoder = device.createCommandEncoder();
     encode(encoder, effect, source, hdr, shader.kind !== "fxaa");
     encode(encoder, present, hdr, old, false);
-    encode(encoder, final, source, direct, shader.kind !== "fxaa");
+    if (shader.useDirect) encode(encoder, final, source, direct, shader.kind !== "fxaa");
+    else encode(encoder, present, hdr, direct, false);
     const readbacks = [old, direct].map(texture => {
-      const buffer = device.createBuffer({ size: 64 * 64 * 4, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-      encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow: 256 }, [64, 64]); return buffer;
+      const buffer = device.createBuffer({ size: Math.ceil(width / 64) * 256 * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+      encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow: Math.ceil(width / 64) * 256 }, [width, height]); return buffer;
     });
     device.queue.submit([encoder.finish()]);
     await Promise.all(readbacks.map(buffer => buffer.mapAsync(GPUMapMode.READ)));

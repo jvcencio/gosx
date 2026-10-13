@@ -32,7 +32,7 @@ async function setup({ post = false, timing = false, optIn = false } = {}) {
   h.mount.setAttribute = function(name, value) { writes.push([name, value]); return set.call(this, name, value); };
   const frame = async time => { now = time; const result = h.renderer.render(bundle, { width: 640, height: 480 }, { nowMS: time, active: true }); await flushAsyncWork(); return result; };
   for (let i = 0; i < 12; i++) await frame(i * 16);
-  return { ...h, bundle, frame, resolves, writes };
+  return { ...h, bundle, frame, resolves, writes, setNow(time) { now = time; } };
 }
 
 test("WebGPU bloom and tone mapping present in seven render passes", async () => {
@@ -119,5 +119,17 @@ test("WebGPU render truth diagnostics skip unchanged attributes", async () => {
     const writes = h.writes.slice(before).filter(([name]) => name.startsWith("data-gosx-scene3d-render-"));
     assert.equal(writes.filter(([name, value]) => previous.get(name) === value).length, 0);
     assert.equal(writes.length, 1, "only the advancing uniform clock changes");
+  } finally { h.renderer.dispose(); }
+});
+
+test("WebGPU async diagnostics mirror without another render", async () => {
+  const h = await setup({ timing: true });
+  try {
+    const seq = h.mount.__gosxScene3DWebGPUStats.frameSeq;
+    h.setNow(300);
+    await new Promise(resolve => setTimeout(resolve, 270));
+    assert.equal(h.mount.getAttribute("data-gosx-scene3d-webgpu-gpu-timing"), "measured");
+    assert.equal(h.mount.getAttribute("data-gosx-scene3d-webgpu-gpu-ms"), "4.000");
+    assert.equal(h.mount.__gosxScene3DWebGPUStats.frameSeq, seq, "mirroring must not invent submitted frames");
   } finally { h.renderer.dispose(); }
 });
