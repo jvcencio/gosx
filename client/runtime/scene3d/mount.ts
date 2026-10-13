@@ -1439,7 +1439,7 @@
       if (!(interval > 0)) {
         var activeUntil = Math.max(sceneActiveInputUntil, sceneNumber(sceneState._scrollCamera?._activeInputUntil, 0));
         var ambient = /^(auto-rotate|clouds|point-spin|material-clock|(?:object|label|sprite|html)-animation)$/.test(reason);
-        if (ambient && activeUntil < sceneNowMilliseconds() && !sceneVesselEnabled(props)) interval = 1000 / 60;
+        if (ambient && activeUntil < sceneNowMilliseconds() && !(sceneState._gosxMotionController && sceneState._gosxMotionController.active)) interval = 1000 / 60;
       }
       // Scroll-driven camera scenes need to track the display while input is
       // active even when their idle animation is intentionally capped (for
