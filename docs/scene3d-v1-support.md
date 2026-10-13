@@ -186,6 +186,14 @@ blocked cases.
 
 ## Frame completion timing
 
+Renderer `render` calls return `submitted`, `pending`, `empty`, or `failed`.
+Only `submitted` advances mount readiness and requested frame receipts; water
+and world wrappers must preserve the outcome of the complete composition.
+Adapters that previously returned no value must return the outcome of their
+underlying renderer when migrating to v0.57.15. An absent return value never
+certifies submission. This contract does not certify GPU completion or display
+presentation.
+
 `window.__gosx_scene3d_debug.inspect(surfaceID).frameTiming` gives a snapshot
 for the selected surface. Get IDs from `listSurfaces()`. Reading the snapshot
 does not consume the sample used by adaptive quality.

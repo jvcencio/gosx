@@ -22,6 +22,9 @@
   joint corners, sharing immutable source work across primitives while retaining
   the bounded-work guard. Full imported rigs can use native crowd rendering
   without an inflated preprocessing estimate forcing fallback.
+- Apply packed pose frames only to their requested actor batches. Unrelated
+  props and effects retain their committed transforms and playback state;
+  membership validation and atomic declaration replacement remain intact.
 
 ## v0.57.14
 

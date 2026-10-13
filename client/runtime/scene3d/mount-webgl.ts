@@ -3778,19 +3778,58 @@
   function sceneUpdateRigidInstancePoses(state, hydrationModels) {
     // The binary bridge supplies an optional third argument with its exact
     // batches. Ordinary declaration commands omit it and retain atomic staging.
-    const pendingBatches = arguments[2];
+    const poseBatches = arguments[2];
+    const binary = Array.isArray(poseBatches);
     const records = state && state._hydratedModelRecords;
     const cache = records && records.rigidInstances;
     const pending = Boolean(state && (state._modelHydrationPromise || state._modelHydrationUncommitted));
-    if (!cache || pending && (!Array.isArray(pendingBatches) || !pendingBatches.length) || state._modelOwner && !state._modelOwner()) return false;
-    const models = Array.isArray(hydrationModels) ? hydrationModels : sceneHydrationModels(state, null);
-    if (!pending && models.length !== records.modelCount) return false;
+    if (!cache || pending && (!binary || !poseBatches.length) || state._modelOwner && !state._modelOwner()) return false;
+    let models;
+    if (binary && !Array.isArray(hydrationModels)) {
+      // The bridge has applied these poses to their declared instances. Expand
+      // only those batches: props and effects outside the frame must keep
+      // their committed transforms, playback owners and pose revisions.
+      models = [];
+      const mounted = Array.isArray(state.instancedGLBMeshes) ? state.instancedGLBMeshes : [];
+      const seenBatches = new Set();
+      for (const batch of poseBatches) {
+        if (!batch || typeof batch.id !== "string" || seenBatches.has(batch.id) || !Array.isArray(batch.instances)) return false;
+        seenBatches.add(batch.id);
+        const currentIndex = mounted.findIndex(function(candidate) { return candidate.id === batch.id; });
+        if (currentIndex < 0) { if (pending) continue; return false; }
+        const current = mounted[currentIndex];
+        if (!Array.isArray(current.instances)) return false;
+        let selected = current;
+        if (pending) {
+          const currentByID = new Map(current.instances.map(function(instance) { return [instance.id, instance]; }));
+          const instances = [];
+          const seenInstances = new Set();
+          for (const pose of batch.instances) {
+            if (!pose || seenInstances.has(pose.id)) return false;
+            seenInstances.add(pose.id);
+            const instance = currentByID.get(pose.id);
+            if (instance) instances.push(instance);
+          }
+          selected = Object.assign({}, current, { instances });
+        } else {
+          if (current.instances.length !== batch.instances.length) return false;
+          for (let index = 0; index < batch.instances.length; index++) {
+            if (!batch.instances[index] || current.instances[index].id !== batch.instances[index].id) return false;
+          }
+        }
+        const expanded = sceneInstancedGLBMeshToModels(selected, currentIndex);
+        for (const model of expanded) models.push(model);
+      }
+    } else {
+      models = Array.isArray(hydrationModels) ? hydrationModels : sceneHydrationModels(state, null);
+    }
+    if (!pending && !binary && models.length !== records.modelCount) return false;
     // Only the explicit binary frame can advance committed poses during a
     // declaration transaction. JSON membership/material replacement remains
     // atomic and does not move unrelated actors before its assets are ready.
-    const requested = pending ? new Set() : null;
+    const requested = binary ? new Set() : null;
     if (requested) {
-      for (const batch of pendingBatches) {
+      for (const batch of poseBatches) {
         for (const instance of batch.instances) requested.add(batch.id + "/" + instance.id);
       }
     }
