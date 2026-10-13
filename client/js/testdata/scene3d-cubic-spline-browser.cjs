@@ -1249,6 +1249,17 @@ window.__affineInputEvents = [];
       });
       return pipeline;
     });
+    wrap(GPUDevice.prototype, 'createRenderPipelineAsync', function (orig, args) {
+      var primitive = args[0] && args[0].primitive || {};
+      var state = {
+        frontFace: String(primitive.frontFace || 'ccw'),
+        cullMode: String(primitive.cullMode || 'none'),
+      };
+      return orig.apply(this, args).then(function (pipeline) {
+        wgPipelines.set(pipeline, state);
+        return pipeline;
+      });
+    });
   }
   if (typeof GPUCommandEncoder !== 'undefined' && GPUCommandEncoder.prototype &&
       GPUCommandEncoder.prototype.beginRenderPass) {
