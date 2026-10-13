@@ -9,7 +9,7 @@ import (
 const (
 	blackglassDiscoveriesScriptSrc = "/blackglass-discoveries.js?v=e9d25a75d914"
 	blackglassChartScriptSrc       = "/blackglass-chart.js?v=d85a3afa4595"
-	blackglassViewScriptSrc        = "/blackglass-view.js?v=a6eafa650571"
+	blackglassViewScriptSrc        = "/blackglass-view.js?v=3ae6ecfd76bc"
 	blackglassDiscoveriesStylesSrc = "/blackglass-discoveries.css?v=30dac342e0ac"
 )
 

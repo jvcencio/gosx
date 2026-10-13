@@ -5115,18 +5115,31 @@
       : null;
   }
 
-  function scenePBRNotifyTextureSettled(record) {
-    var generation = record && record.generation;
-    if (
-      !record ||
-      record.disposed ||
-      !generation ||
-      generation.disposed ||
-      typeof generation.onResourceReady !== "function"
-    ) {
-      return;
+  function scenePBRTextureLive(record) {
+    return record && !record.disposed && !(record.generation && record.generation.disposed);
+  }
+
+  function scenePBRNotifyTextureSettled(record, key: string | undefined = undefined, error: any = undefined) {
+    if (!scenePBRTextureLive(record)) return;
+    if (key !== undefined) {
+      record.failed = true;
+      record.error = error && error.message || String(error);
+      try { console.warn("[gosx] texture " + key + " failed: " + record.error); } catch (_error) {}
     }
-    generation.onResourceReady();
+    var generation = record.generation;
+    if (generation && typeof generation.onResourceReady === "function") generation.onResourceReady();
+  }
+
+  // Loading a new placeholder and settling an image both happen while another
+  // material may own the active unit. These uploads never change that unit;
+  // restore its target binding even when upload fails.
+  function scenePBRTextureUpload(gl: WebGL2RenderingContext, target: number, upload: () => void) {
+    const binding = gl.getParameter(target === gl.TEXTURE_CUBE_MAP ? gl.TEXTURE_BINDING_CUBE_MAP : gl.TEXTURE_BINDING_2D);
+    try {
+      upload();
+    } finally {
+      gl.bindTexture(target, binding);
+    }
   }
 
   // scenePBRUploadKTX2Texture fetches, decodes and uploads one KTX2 container
@@ -5147,41 +5160,26 @@
       return Promise.resolve(record);
     }
     return ktx2.load(url).then(function(image) {
-      if (record.disposed || record.generation && record.generation.disposed) {
-        return record;
-      }
-      ktx2.uploadWebGL2(gl, image, { texture: record.texture });
-      if (record.disposed || record.generation && record.generation.disposed) {
+      if (!scenePBRTextureLive(record)) {
         return record;
       }
       var target = image.faces === 6 ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
-      gl.texParameteri(target, gl.TEXTURE_MIN_FILTER,
-        image.levels.length > 1 ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
-      gl.texParameteri(target, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      // The KTX2 uploader initializes clamped sampling; restore the material sampler.
-      if (target === gl.TEXTURE_2D && record.descriptor) {
-        gl.texParameteri(target, gl.TEXTURE_WRAP_S, record.descriptor.wrapS);
-        gl.texParameteri(target, gl.TEXTURE_WRAP_T, record.descriptor.wrapT);
+      scenePBRTextureUpload(gl, target, function() {
+        ktx2.uploadWebGL2(gl, image, { texture: record.texture });
+        // The decoder starts clamped; restore the material sampler and filters.
+        var sampler = target === gl.TEXTURE_2D && record.descriptor || {};
+        scenePBRTextureParameters(gl, image.levels.length > 1 ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR,
+          sampler.wrapS, target, gl.LINEAR, sampler.wrapT);
+      });
+      if (scenePBRTextureLive(record)) {
+        Object.assign(record, { width: image.width, height: image.height, faces: image.faces,
+          levels: image.levels.length, vkFormat: image.vkFormat, target: target,
+          keyValues: image.keyValues || {}, ktx2: true, loaded: true });
+        scenePBRNotifyTextureSettled(record);
       }
-      record.width = image.width;
-      record.height = image.height;
-      record.faces = image.faces;
-      record.levels = image.levels.length;
-      record.vkFormat = image.vkFormat;
-      record.target = target;
-      record.keyValues = image.keyValues || {};
-      record.ktx2 = true;
-      record.loaded = true;
-      scenePBRNotifyTextureSettled(record);
       return record;
     }).catch(function(error) {
-      if (record.disposed || record.generation && record.generation.disposed) return record;
-      record.failed = true;
-      record.error = error && error.message ? error.message : String(error);
-      try {
-        console.warn("[gosx] KTX2 texture " + url + " failed: " + record.error);
-      } catch (_e) {}
-      scenePBRNotifyTextureSettled(record);
+      scenePBRNotifyTextureSettled(record, url, error);
       return record;
     });
   }
@@ -5208,11 +5206,7 @@
       return false;
     }
     if (typeof gl.getExtension !== "function" || !gl.getExtension("OES_texture_float_linear")) {
-      record.failed = true;
-      record.error = "this context cannot linearly filter half-float HDR textures";
-      try {
-        console.warn("[gosx] HDR environment map " + key + " fell back: " + record.error);
-      } catch (_error) {}
+      scenePBRNotifyTextureSettled(record, key, "this context cannot linearly filter half-float HDR textures");
       return true;
     }
     fetch(key)
@@ -5223,35 +5217,50 @@
         return response.arrayBuffer();
       })
       .then(function(buffer) {
-        if (record.disposed || record.generation && record.generation.disposed) return;
+        if (!scenePBRTextureLive(record)) return;
         var parsed = sceneParseRadianceHDR(buffer);
         var linear = scenePBRLinearHDRPixels(parsed);
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F || 0x881A, linear.width, linear.height, 0, gl.RGBA, gl.FLOAT, linear.pixels);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        record.loaded = true;
-        record.width = linear.width;
-        record.height = linear.height;
-        record.hdr = true;
-        record.colorSpace = "linear";
-        record.format = "rgba16f";
+        scenePBRTextureUpload(gl, gl.TEXTURE_2D, function() {
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F || 0x881A, linear.width, linear.height, 0, gl.RGBA, gl.FLOAT, linear.pixels);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        });
+        Object.assign(record, { loaded: true, width: linear.width, height: linear.height,
+          hdr: true, colorSpace: "linear", format: "rgba16f" });
         scenePBRNotifyTextureSettled(record);
       })
-      .catch(function(error) {
-        if (record.disposed || record.generation && record.generation.disposed) return;
-        record.failed = true;
-        record.error = error && error.message ? error.message : String(error || "HDR texture upload failed");
-        try {
-          console.warn("[gosx] HDR environment map " + key + " failed: " + record.error);
-        } catch (_error) {}
-        scenePBRNotifyTextureSettled(record);
-      });
+      .catch(function(error) { scenePBRNotifyTextureSettled(record, key, error); });
     return true;
   }
 
+  function scenePBRUploadImageTexture(gl, record, image) {
+    if (!scenePBRTextureLive(record)) return;
+    var srgb = record.descriptor.colorSpace === "srgb";
+    try {
+      scenePBRTextureUpload(gl, gl.TEXTURE_2D, function() {
+        gl.bindTexture(gl.TEXTURE_2D, record.texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, srgb ? (gl.SRGB8_ALPHA8 || 0x8C43) : (gl.RGBA8 || 0x8058), gl.RGBA, gl.UNSIGNED_BYTE, image);
+        // WebGL2 permits repeating and mipmapping NPOT images as well.
+        if (typeof gl.generateMipmap === "function" && gl.LINEAR_MIPMAP_LINEAR !== undefined) {
+          gl.generateMipmap(gl.TEXTURE_2D);
+          record.levels = Math.floor(Math.log2(Math.max(1, image.width, image.height))) + 1;
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        } else {
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        }
+      });
+      Object.assign(record, { colorSpace: record.descriptor.colorSpace, format: srgb ? "srgb8-alpha8" : "rgba8",
+        width: image.naturalWidth || image.width || 0, height: image.naturalHeight || image.height || 0, loaded: true });
+    } catch (error) {
+      scenePBRNotifyTextureSettled(record, record.src, error);
+      return;
+    }
+    scenePBRNotifyTextureSettled(record);
+  }
+
   function scenePBRTextureDescriptor(raw, url, fallbackRole, fallbackColorSpace) {
-    var descriptor = raw && typeof raw === "object" ? raw : {};
+    var descriptor = raw && typeof raw === "object" ? raw : {}; const wrap = (value: any) => [33071, 33648, 10497].indexOf(value) >= 0 ? value : ((descriptor.role || fallbackRole) === "normal" ? 10497 : 33071);
     return {
       uri: typeof descriptor.uri === "string" && descriptor.uri.trim() ? descriptor.uri.trim() : String(url || "").trim(),
       role: typeof descriptor.role === "string" ? descriptor.role.trim().toLowerCase() : String(fallbackRole || ""),
@@ -5264,8 +5273,8 @@
       width: Math.max(0, Math.floor(sceneNumber(descriptor.width, 0))),
       height: Math.max(0, Math.floor(sceneNumber(descriptor.height, 0))),
       faces: Math.max(0, Math.floor(sceneNumber(descriptor.faces, 0))),
-      wrapS: [33071, 33648, 10497].indexOf(descriptor.wrapS) >= 0 ? descriptor.wrapS : ((descriptor.role || fallbackRole) === "normal" ? 10497 : 33071),
-      wrapT: [33071, 33648, 10497].indexOf(descriptor.wrapT) >= 0 ? descriptor.wrapT : ((descriptor.role || fallbackRole) === "normal" ? 10497 : 33071),
+      wrapS: wrap(descriptor.wrapS),
+      wrapT: wrap(descriptor.wrapT),
     };
   }
 
@@ -5313,20 +5322,22 @@
     };
     textureMap.set(cacheKey, record);
 
-    // Initialize with a 1x1 white pixel placeholder.
-    gl.bindTexture(target, texture);
-    var placeholder = new Uint8Array([255, 255, 255, 255]);
-    if (target === gl.TEXTURE_CUBE_MAP) {
-      for (var face = 0; face < 6; face++) {
-        gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, placeholder);
+    // Initialize without replacing any sampler belonging to a live material.
+    scenePBRTextureUpload(gl, target, function() {
+      gl.bindTexture(target, texture);
+      var placeholder = new Uint8Array([255, 255, 255, 255]);
+      if (target === gl.TEXTURE_CUBE_MAP) {
+        for (var face = 0; face < 6; face++) {
+          gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, placeholder);
+        }
+      } else {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, placeholder);
       }
-    } else {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, placeholder);
-    }
-    scenePBRTextureParameters(gl, gl.LINEAR, target === gl.TEXTURE_CUBE_MAP ? gl.CLAMP_TO_EDGE : descriptor.wrapS, target, gl.LINEAR, target === gl.TEXTURE_CUBE_MAP ? gl.CLAMP_TO_EDGE : descriptor.wrapT);
-    if (target === gl.TEXTURE_CUBE_MAP && gl.TEXTURE_WRAP_R !== undefined) {
-      gl.texParameteri(target, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
-    }
+      scenePBRTextureParameters(gl, gl.LINEAR, target === gl.TEXTURE_CUBE_MAP ? gl.CLAMP_TO_EDGE : descriptor.wrapS, target, gl.LINEAR, target === gl.TEXTURE_CUBE_MAP ? gl.CLAMP_TO_EDGE : descriptor.wrapT);
+      if (target === gl.TEXTURE_CUBE_MAP && gl.TEXTURE_WRAP_R !== undefined) {
+        gl.texParameteri(target, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+      }
+    });
 
     if (scenePBRTextureLooksHDR(key) && scenePBRLoadHDRTexture(gl, key, texture, record)) {
       return record;
@@ -5342,36 +5353,13 @@
     }
 
     if (target === gl.TEXTURE_CUBE_MAP) {
-      /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ record.failed = true;
-      record.error = "cube descriptors require a KTX2 upload path";
+      Object.assign(record, { failed: true, error: "cube descriptors require a KTX2 upload path" });
     } else if (typeof Image === "function") {
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ const image = new Image();
       record.image = image;
-      image.onload = function() {
-        if (record.disposed || record.generation && record.generation.disposed) return;
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        var srgb = descriptor.colorSpace === "srgb";
-        var internalFormat = srgb ? (gl.SRGB8_ALPHA8 || 0x8C43) : (gl.RGBA8 || 0x8058);
-        gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, gl.RGBA, gl.UNSIGNED_BYTE, image);
-        // WebGL2 permits repeating and mipmapping NPOT images as well.
-        if (typeof gl.generateMipmap === "function" && gl.LINEAR_MIPMAP_LINEAR !== undefined) {
-          gl.generateMipmap(gl.TEXTURE_2D);
-          record.levels = Math.floor(Math.log2(Math.max(1, image.width, image.height))) + 1;
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-        } else {
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ }
-        /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ record.colorSpace = srgb ? "srgb" : "linear";
-        record.format = srgb ? "srgb8-alpha8" : "rgba8";
-        // @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files)
-        record.width = image.naturalWidth || image.width || 0;
-        // @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files)
-        record.height = image.naturalHeight || image.height || 0;
-        record.loaded = true;
-        scenePBRNotifyTextureSettled(record);
-      };
+      image.onload = function() { scenePBRUploadImageTexture(gl, record, image); };
       image.onerror = function() {
-        if (record.disposed || record.generation && record.generation.disposed) return;
+        if (!scenePBRTextureLive(record)) return;
         record.failed = true;
         scenePBRNotifyTextureSettled(record);
       };
@@ -8408,6 +8396,7 @@
     const textureCache = Object.assign(new Map(), { _gosxSelenaEnvironment: null as { info: number[]; [slot: string]: any } | null, _sceneTextureEpoch: 0, _gosxGeneration: {
       disposed: false,
       onResourceReady: function() {
+        textureCache._sceneTextureEpoch++;
         if (canvas && typeof canvas.dispatchEvent === "function") {
           const event = typeof CustomEvent === "function"
             ? new CustomEvent("gosx:scene3d:resource-ready")
@@ -10970,7 +10959,7 @@
       computeParticleSystems.clear();
       lastComputeParticleTimeSeconds = null;
       if (shadowState.buffer) gl.deleteBuffer(shadowState.buffer);
-      textureCache._gosxGeneration.disposed = true;
+      textureCache._gosxGeneration.disposed = true; textureCache._gosxGeneration.onResourceReady();
       for (const record of textureCache.values()) {
         if (record) {
           record.disposed = true;
@@ -11140,7 +11129,7 @@
       get supportsRigidImportedBatches() {
         return scenePBRPassReady(gl, instancedProgram) && instancedProgram.attributes.instanceMatrix >= 0;
       },
-      prepareCrowdAtlas,
+      prepareCrowdAtlas, texturePreparation: { generation: textureCache._gosxGeneration, load: (url: any, descriptor: any, role: any, colorSpace: any) => scenePBRLoadTexture(gl, url, textureCache, descriptor, role, colorSpace) },
       // prepareCrowdMotionShaders: call eagerly at hydration time, exactly
       // like prepareCrowdAtlas -- the color/shadow-pass draw dispatch reads
       // crowdMotionProgram directly (see drawPBRObjectList's rigidProgram

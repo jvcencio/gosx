@@ -7,7 +7,11 @@
     root.dataset.viewMounted='true';
     let request=0,revision=0,pending=null,vessel=null;
     const scene=()=>root.querySelector('[data-gosx-scene3d-mounted]');
-    root.addEventListener('gosx:scene3d:vessel-state',event=>{vessel=event.detail;});
+    root.addEventListener('gosx:scene3d:vessel-state',event=>{vessel=event.detail;root.dataset.coastFollowing=String(vessel.following);});
+    const controls=root.querySelector('.bgb__controls');
+    const spaceControls=()=>root.style.setProperty('--bgb-helm-bottom',(innerHeight-controls.getBoundingClientRect().top+14)+'px');
+    const observer=typeof ResizeObserver==='function'?new ResizeObserver(spaceControls):null;
+    observer?.observe(controls);window.addEventListener('resize',spaceControls);spaceControls();
     root.addEventListener('gosx:scene3d:commands-applied',event=>{
       if(Number.isSafeInteger(event.detail?.revision))revision=Math.max(revision,event.detail.revision);
     });
@@ -70,7 +74,7 @@
       const q=new URL(location.href).searchParams,view=q.get('view')||'shore';
       update(view,q.get('period')||'golden-hour',view!==root.dataset.view,false);
     });
-    window.addEventListener('pagehide',()=>{++request;pending?.abort();},{once:true});
+    window.addEventListener('pagehide',()=>{++request;pending?.abort();observer?.disconnect();},{once:true});
     refreshLinks();
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
