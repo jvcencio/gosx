@@ -144,13 +144,50 @@ test('mounted touch rudder and sail buttons retain independent pointers and clea
  const api=h.env.context.__gosx_scene3d_vessel_physics,advance=api.advance;let input;
  api.advance=(...args)=>{input=args[3];return advance(...args);};
  const panel=h.mount.querySelector('.gosx-scene3d-vessel-controls'),raise=Array.from(panel.querySelectorAll('button')).find(n=>n.textContent==='Raise sail');
- const hint=Array.from(h.mount.querySelectorAll('span')).find(n=>n.textContent==='Left: steer · right: look');assert.equal(hint.hidden,false);assert.match(panel.style.width,/50%/);
+ const pad=h.mount.querySelector('.gosx-scene3d-vessel-steering');assert.equal(pad.hidden,false);assert.match(panel.style.width,/50%/);
  h.event(h.canvas,'pointerdown',{pointerType:'touch',pointerId:11,clientX:20,clientY:200});
  h.event(h.canvas,'pointermove',{pointerType:'touch',pointerId:11,clientX:75,clientY:200});h.event(raise,'pointerdown',{pointerId:22});h.raf.flush(300);
  assert.equal(input.rudder,1);assert.equal(input.sail,1);h.event(raise,'pointerup',{pointerId:22});h.raf.flush(350);
  assert.equal(input.rudder,1);assert.equal(input.sail,0);h.event(raise,'pointerdown',{pointerId:22});
  h.event(h.canvas,'lostpointercapture',{pointerType:'touch',pointerId:11});h.raf.flush(400);assert.equal(input.rudder,0);assert.equal(input.sail,1);
- h.event(h.env.context,'blur');h.raf.flush(450);assert.equal(input.rudder,0);assert.equal(input.sail,0);h.handle.dispose();assert.equal(hint.parentElement,null);
+ h.event(h.env.context,'blur');h.raf.flush(450);assert.equal(input.rudder,0);assert.equal(input.sail,0);h.handle.dispose();assert.equal(pad.parentElement,null);
+});
+test('mobile rudder pad yields course hold, preserves the other thumb and sail, and springs to center',async()=>{
+ const h=await mountScene(true,60,false,true,false,false,{quickBoard:true,navigation:true});
+ const command=detail=>h.event(h.mount,'gosx:scene3d:vessel-command',{detail:{nodeId:'ship',...detail}});
+ command({action:'helm'});command({action:'trim',trim:.8});command({action:'course',bearing:80});h.raf.flush(250);
+ const api=h.env.context.__gosx_scene3d_vessel_physics,advance=api.advance;let input,state;
+ api.advance=(...args)=>{state=args[0];input=args[3];return advance(...args);};
+ const pad=h.mount.querySelector('.gosx-scene3d-vessel-steering'),track=pad.querySelector('[role=slider]'),b=track.getBoundingClientRect(),x=b.left+b.width/2;
+ const raise=Array.from(h.mount.querySelector('.gosx-scene3d-vessel-controls').querySelectorAll('button')).find(n=>n.textContent==='Raise sail');
+ h.event(track,'pointerdown',{pointerType:'touch',pointerId:11,clientX:x});h.event(track,'pointermove',{pointerType:'touch',pointerId:11,clientX:x+27.5});
+ const right=h.canvas.getBoundingClientRect().width*.8;
+ h.event(h.canvas,'pointerdown',{pointerType:'touch',pointerId:33,clientX:right,clientY:200});h.event(h.canvas,'pointermove',{pointerType:'touch',pointerId:33,clientX:right+30,clientY:180});
+ h.event(raise,'pointerdown',{pointerId:22});h.raf.flush(300);
+ assert.equal(input.rudder,.5);assert.equal(input.sail,1);assert.ok(state.lookYaw<0);assert.ok(Number.isNaN(state.course));assert.equal(track.getAttribute('aria-valuenow'),'50');
+ h.event(track,'pointercancel',{pointerId:11});h.raf.flush(350);assert.equal(input.rudder,0);assert.equal(input.sail,1);assert.equal(track.getAttribute('aria-valuenow'),'0');
+ const yaw=state.lookYaw;h.event(h.canvas,'pointermove',{pointerType:'touch',pointerId:33,clientX:right+60,clientY:180});h.raf.flush(400);assert.ok(state.lookYaw<yaw);
+ h.event(raise,'pointerup',{pointerId:22});h.event(h.canvas,'pointerup',{pointerId:33});h.handle.dispose();assert.equal(pad.parentElement,null);
+});
+test('mobile hold arrows release on lost capture, hidden tabs and leaving the helm',async()=>{
+ const h=await mountScene(true,60,false,true,false,false,{quickBoard:true}),api=h.env.context.__gosx_scene3d_vessel_physics,advance=api.advance;let input;
+ api.advance=(...args)=>{input=args[3];return advance(...args);};
+ const pilot=h.mount.querySelector('.gosx-scene3d-vessel-controls').querySelector('button');h.event(pilot,'click');h.raf.flush(250);
+ const pad=h.mount.querySelector('.gosx-scene3d-vessel-steering'),left=pad.querySelector('[data-gosx-rudder="-1"]');
+ h.event(left,'pointerdown',{pointerType:'touch',pointerId:9,clientX:20});h.raf.flush(300);assert.equal(input.rudder,-.7);
+ h.event(left,'lostpointercapture',{pointerId:9});h.raf.flush(350);assert.equal(input.rudder,0);
+ h.event(left,'pointerdown',{pointerType:'touch',pointerId:10,clientX:20});h.raf.flush(400);assert.equal(input.rudder,-.7);
+ h.env.document.hidden=true;h.event(h.env.document,'visibilitychange');h.env.document.hidden=false;h.event(h.env.document,'visibilitychange');h.raf.flush(450);assert.equal(input.rudder,0);
+ h.event(left,'pointerdown',{pointerType:'touch',pointerId:11,clientX:20});h.raf.flush(500);h.event(pilot,'click');h.raf.flush(550);assert.equal(pad.hidden,true);
+ h.event(pilot,'click');h.raf.flush(600);assert.equal(input.rudder,0);h.handle.dispose();
+});
+test('rudder slider keyboard controls turn the ship without panning; desktop keeps its existing controls',async()=>{
+ const h=await mountScene(true,60,false,true,false,false,{quickBoard:true}),api=h.env.context.__gosx_scene3d_vessel_physics,advance=api.advance;let input,state;
+ api.advance=(...args)=>{state=args[0];input=args[3];return advance(...args);};
+ h.event(h.mount.querySelector('.gosx-scene3d-vessel-controls').querySelector('button'),'click');h.raf.flush(250);
+ const track=h.mount.querySelector('[role=slider]');track.focus();h.event(track,'keydown',{code:'ArrowRight'});h.raf.flush(300);assert.equal(input.rudder,.7);assert.equal(state.lookYaw,0);
+ h.event(track,'keyup',{code:'ArrowRight'});h.raf.flush(350);assert.equal(input.rudder,0);h.handle.dispose();
+ const desktop=await mountScene(true,60,false,false);assert.equal(desktop.mount.querySelector('.gosx-scene3d-vessel-steering'),null);desktop.handle.dispose();
 });
 test('real clipper GLBs hydrate, sail, leave and reset through the existing renderer',async()=>{
  const h=await mountScene(true,60,true);

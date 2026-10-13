@@ -65,7 +65,9 @@ const budgets = [
   // targets move to the minimum required under the unchanged allowances.
   // Feathered age cells and retained low-detail wake history measure 27,512 raw,
   // 10,713 gzip and 9,814 Brotli bytes; only the exhausted targets move.
-  { file: "bootstrap-feature-scene3d-vessel.js", raw: 25_464, gzip: 9_689, brotli: 8_790 },
+  // Visible mobile rudder, cancellation and thumb feedback measure [30762, 11691, 10677] bytes (raw/gzip/Brotli).
+  // Only this optional chunk's exhausted targets change; allowances stay fixed.
+  { file: "bootstrap-feature-scene3d-vessel.js", raw: 28714, gzip: 10667, brotli: 9653 },
   // bootstrap.js raw bumped 806_000 -> 812_000 for 28-video-sync-fallback.ts
   // (parity-locked JS drift engine on the brain-absent video path). gzip/brotli
   // headroom unchanged.
