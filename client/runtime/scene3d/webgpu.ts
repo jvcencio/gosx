@@ -2929,7 +2929,6 @@
     "    return out;",
     "}",
   ].join("\n");
-
   var WGSL_POST_BLIT_FRAGMENT = [
     "@group(0) @binding(0) var inputTex: texture_2d<f32>;",
     "@group(0) @binding(1) var inputSamp: sampler;",
@@ -2938,7 +2937,6 @@
     "    return textureSample(inputTex, inputSamp, uv);",
     "}",
   ].join("\n");
-
   var WGSL_POST_TONEMAPPING_FRAGMENT = [
     "struct ToneMappingParams {",
     "    exposure: f32,",
@@ -2998,7 +2996,6 @@
     }
     return 1;
   }
-
   var WGSL_POST_BLOOM_BRIGHT_FRAGMENT = [
     "struct BloomBrightParams {",
     "    threshold: f32,",
@@ -3026,7 +3023,6 @@
     "    return vec4f(color * (excess / (excess + 1.0)), 1.0);",
     "}",
   ].join("\n");
-
   // -----------------------------------------------------------------------
   // shader-f16 in the post chain
   // -----------------------------------------------------------------------
@@ -3064,7 +3060,6 @@
     }
     return ["enable f16;", "alias pf = f16;", "alias pf3 = vec3h;", ""];
   }
-
   function sceneWebGPUPostShaderSource(bodyLines, useF16) {
     return sceneWebGPUPostPrecisionPreamble(useF16).concat(bodyLines).join("\n");
   }
@@ -3390,7 +3385,6 @@
       ? window.__gosx_scene3d_ktx2
       : null;
   }
-
   function wgpuNotifyTextureSettled(record) {
     if (record && typeof notifySceneTextureLoaded === "function") {
       notifySceneTextureLoaded(record.src, Boolean(record.loaded && !record.failed));
@@ -3407,7 +3401,6 @@
     }
     generation.onResourceReady();
   }
-
   // wgpuUploadKTX2Texture fetches, decodes and uploads one KTX2 container into
   // an existing cache record.
   //
@@ -3462,7 +3455,6 @@
       return record;
     });
   }
-
   function wgpuTextureDescriptor(raw, url, fallbackRole, fallbackColorSpace) {
     var descriptor = raw && typeof raw === "object" ? raw : {};
     return {
@@ -3481,7 +3473,6 @@
       wrapT: [33071, 33648, 10497].indexOf(descriptor.wrapT) >= 0 ? descriptor.wrapT : ((descriptor.role || fallbackRole) === "normal" ? 10497 : 33071),
     };
   }
-
   function wgpuTextureCacheKey(descriptor) {
     return [
       descriptor.uri,
@@ -3497,9 +3488,7 @@
       descriptor.wrapT,
     ].join("\u0000");
   }
-
   var wgpuMaterialSamplerCache = new WeakMap();
-
   function wgpuMaterialSampler(device, linearSampler, rawDescriptor, role) {
     var descriptor = wgpuTextureDescriptor(rawDescriptor, "", role, "linear");
     if (descriptor.wrapS === 33071 && descriptor.wrapT === 33071) return linearSampler;
@@ -3520,11 +3509,8 @@
     }
     return cache.get(key);
   }
-
-
   // Device ownership fences cached pipelines across device-loss recovery.
   var wgpuTextureMipCaches = new WeakMap();
-
   function wgpuGenerateTextureMips(device, texture, format, levels) {
     if (levels <= 1) return;
     var cache = wgpuTextureMipCaches.get(device);
@@ -3567,7 +3553,14 @@
     // any frame that sees the newly settled texture record.
     device.queue.submit([encoder.finish()]);
   }
-
+  function wgpuCreateImageTexture(device: any, width: number, height: number, colorSpace: string) {
+    var format = colorSpace === "srgb" ? "rgba8unorm-srgb" : "rgba8unorm";
+    var levels = Math.floor(Math.log2(Math.max(width, height))) + 1;
+    return { format: format, levels: levels, texture: device.createTexture({
+      size: [width, height, 1], format: format, mipLevelCount: levels,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+    }) };
+  }
   function wgpuLoadTexture(device, url, cache, rawDescriptor, fallbackRole, fallbackColorSpace) {
     if (!cache) return null;
     var descriptor = wgpuTextureDescriptor(rawDescriptor, url, fallbackRole, fallbackColorSpace);
@@ -3575,7 +3568,6 @@
     if (!key) return null;
     var cacheKey = wgpuTextureCacheKey(descriptor);
     if (cache.has(cacheKey)) return cache.get(cacheKey);
-
     // Placeholder: 1x1 white pixel.
     var cube = descriptor.view === "cube";
     var placeholderTex = cube ? wgpuCreatePlaceholderCubeTexture(device) : device.createTexture({
@@ -3591,7 +3583,6 @@
         [1, 1, 1]
       );
     }
-
     var record = {
       texture: placeholderTex,
       view: placeholderTex.createView({ dimension: cube ? "cube" : "2d" }),
@@ -3606,7 +3597,6 @@
       disposed: false,
     };
     cache.set(cacheKey, record);
-
     // A .ktx2 URI holds a block-compressed container, not an image an <img>
     // element can decode. Hand it to the KTX2 reader instead. Feeding it to an
     // image element produces a broken texture that still reports success, which
@@ -3615,7 +3605,6 @@
       wgpuUploadKTX2Texture(device, key, record);
       return record;
     }
-
     if (cube) {
       record.failed = true;
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ record.pending = false;
@@ -3635,14 +3624,8 @@
         var needsUnpremultipliedAlpha = ["specular-color", "base-color"].indexOf(descriptor.role) >= 0;
         var w = image.width;
         var h = image.height;
-        var levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
-        var format = descriptor.colorSpace === "srgb" ? "rgba8unorm-srgb" : "rgba8unorm";
-        var tex = device.createTexture({
-          size: [w, h, 1],
-          format: format,
-          mipLevelCount: levels,
-          usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
-        });
+        var imageTexture = wgpuCreateImageTexture(device, w, h, descriptor.colorSpace);
+        var tex = imageTexture.texture;
         // Chromium rejects an ImageBitmap made from an SVG foreignObject.
         // Drawing the Image to a canvas gives WebGPU a readable upload source.
         var isHTMLTexture = key.indexOf("data:image/svg+xml") === 0 && key.indexOf("foreignObject") >= 0;
@@ -3671,11 +3654,11 @@
               needsUnpremultipliedAlpha || isHTMLTexture ? { texture: tex, premultipliedAlpha: false } : { texture: tex },
               [w, h]
             );
-            wgpuGenerateTextureMips(device, tex, format, levels);
+            wgpuGenerateTextureMips(device, tex, imageTexture.format, imageTexture.levels);
             record.texture.destroy();
             record.texture = tex;
             record.view = tex.createView();
-            record.levels = levels;
+            record.levels = imageTexture.levels;
             record.colorSpace = descriptor.colorSpace === "srgb" ? "srgb" : "linear";
             record.loaded = true;
             record.pending = false;
@@ -3707,10 +3690,8 @@
       record.pending = false;
       wgpuNotifyTextureSettled(record);
     }
-
     return record;
   }
-
   function wgpuWaterCubeMapFaceURLs(value) {
     var base = typeof value === "string" ? value.trim() : "";
     if (!base) return null;
@@ -3724,7 +3705,6 @@
       return base + face;
     });
   }
-
   function wgpuCreatePlaceholderCubeTexture(device) {
     var tex = device.createTexture({
       size: [1, 1, 6],
@@ -3750,14 +3730,12 @@
     }
     return tex;
   }
-
   function wgpuLoadCubeTexture(device, value, cache) {
     if (!cache) return null;
     var urls = wgpuWaterCubeMapFaceURLs(value);
     if (!urls) return null;
     var key = "cube:" + urls.join("|");
     if (cache.has(key)) return cache.get(key);
-
     var placeholder = wgpuCreatePlaceholderCubeTexture(device);
     var record = {
       texture: placeholder,
@@ -3769,13 +3747,11 @@
       failed: false,
     };
     cache.set(key, record);
-
     if (typeof Image !== "function" || typeof createImageBitmap !== "function") {
       record.failed = true;
       record.pending = false;
       return record;
     }
-
     var images = new Array(6);
     var loaded = 0;
     var failed = false;
@@ -3829,14 +3805,11 @@
       image.crossOrigin = "anonymous";
       image.src = url;
     });
-
     return record;
   }
-
   // -----------------------------------------------------------------------
   // Bind Group Layout Definitions
   // -----------------------------------------------------------------------
-
   function wgpuCreateFrameBindGroupLayout(device) {
     return device.createBindGroupLayout({
       label: "gosx-frame",
@@ -3862,7 +3835,6 @@
       ],
     });
   }
-
   function wgpuCreateMaterialBindGroupLayout(device) {
     return device.createBindGroupLayout({
       label: "gosx-material",
@@ -3889,7 +3861,6 @@
       ],
     });
   }
-
   function wgpuCreatePointsBindGroupLayout(device) {
     return device.createBindGroupLayout({
       label: "gosx-points",
@@ -3899,7 +3870,6 @@
       ],
     });
   }
-
   function wgpuCreatePointsUniformBindGroupLayout(device) {
     return device.createBindGroupLayout({
       label: "gosx-points-uniform",
@@ -3908,7 +3878,6 @@
       ],
     });
   }
-
   function wgpuCreateShadowBindGroupLayout(device) {
     return device.createBindGroupLayout({
       label: "gosx-shadow-frame",
@@ -3917,7 +3886,6 @@
       ],
     });
   }
-
   function wgpuCreatePostBindGroupLayout(device) {
     return device.createBindGroupLayout({
       label: "gosx-post",
@@ -3927,7 +3895,6 @@
       ],
     });
   }
-
   function wgpuCreatePostWithParamsBindGroupLayout(device) {
     return device.createBindGroupLayout({
       label: "gosx-post-params",
@@ -3938,7 +3905,6 @@
       ],
     });
   }
-
   function wgpuCreateBloomCompositeBindGroupLayout(device) {
     return device.createBindGroupLayout({
       label: "gosx-bloom-composite",
@@ -3951,7 +3917,6 @@
       ],
     });
   }
-
   function wgpuCreateSSAOBindGroupLayout(device) {
     return device.createBindGroupLayout({
       label: "gosx-ssao",
@@ -3963,11 +3928,9 @@
       ],
     });
   }
-
   // -----------------------------------------------------------------------
   // Pipeline Creation
   // -----------------------------------------------------------------------
-
   // PBR vertex buffer layout (position, normal, uv, tangent).
   var WGPU_PBR_VERTEX_LAYOUT = [
     { arrayStride: 12, stepMode: "vertex", attributes: [{ format: "float32x3", offset: 0, shaderLocation: 0 }] },
@@ -3975,7 +3938,6 @@
     { arrayStride: 8,  stepMode: "vertex", attributes: [{ format: "float32x2", offset: 0, shaderLocation: 2 }] },
     { arrayStride: 16, stepMode: "vertex", attributes: [{ format: "float32x4", offset: 0, shaderLocation: 3 }] },
   ];
-
   var WGPU_PBR_INSTANCED_VERTEX_LAYOUT = WGPU_PBR_VERTEX_LAYOUT.concat([
     {
       arrayStride: 64,
@@ -3989,7 +3951,6 @@
     },
     { arrayStride: 16, stepMode: "instance", attributes: [{ format: "float32x4", offset: 0, shaderLocation: 8 }] },
   ]);
-
   // Cull-path instanced layout: 80-byte InstanceRecord (mat4 @ 0-63, pickData
   // uint32x4 @ 64-79). Location 8 carries pickData (vec4u) instead of the
   // non-cull layout's instanceColor (vec4f). Material color comes from the
@@ -4008,12 +3969,10 @@
       ],
     },
   ]);
-
   // Shadow vertex buffer layout (position only).
   var WGPU_SHADOW_VERTEX_LAYOUT = [
     { arrayStride: 12, stepMode: "vertex", attributes: [{ format: "float32x3", offset: 0, shaderLocation: 0 }] },
   ];
-
   var WGPU_SHADOW_INSTANCED_VERTEX_LAYOUT = WGPU_SHADOW_VERTEX_LAYOUT.concat([
     {
       arrayStride: 64,
@@ -4026,18 +3985,15 @@
       ],
     },
   ]);
-
   var WGPU_SCENE_COLOR_VERTEX_LAYOUT = [
     { arrayStride: 12, stepMode: "vertex", attributes: [{ format: "float32x3", offset: 0, shaderLocation: 0 }] },
     { arrayStride: 16, stepMode: "vertex", attributes: [{ format: "float32x4", offset: 0, shaderLocation: 1 }] },
     { arrayStride: 12, stepMode: "vertex", attributes: [{ format: "float32x3", offset: 0, shaderLocation: 2 }] },
   ];
-
   var WGPU_SURFACE_VERTEX_LAYOUT = [
     { arrayStride: 12, stepMode: "vertex", attributes: [{ format: "float32x3", offset: 0, shaderLocation: 0 }] },
     { arrayStride: 8, stepMode: "vertex", attributes: [{ format: "float32x2", offset: 0, shaderLocation: 1 }] },
   ];
-
   var WGPU_THICK_LINE_VERTEX_LAYOUT = [
     { arrayStride: 12, stepMode: "vertex", attributes: [{ format: "float32x3", offset: 0, shaderLocation: 0 }] },
     { arrayStride: 12, stepMode: "vertex", attributes: [{ format: "float32x3", offset: 0, shaderLocation: 1 }] },
@@ -4047,7 +4003,6 @@
     { arrayStride: 4, stepMode: "vertex", attributes: [{ format: "float32", offset: 0, shaderLocation: 5 }] },
     { arrayStride: 4, stepMode: "vertex", attributes: [{ format: "float32", offset: 0, shaderLocation: 6 }] },
   ];
-
   var WGPU_POINTS_INSTANCE_VERTEX_LAYOUT = [
     {
       arrayStride: 32,
@@ -4059,7 +4014,6 @@
       ],
     },
   ];
-
   function wgpuBlendState(mode) {
     if (mode === "alpha") {
       return {
@@ -4075,7 +4029,6 @@
     }
     return undefined; // opaque -- no blending
   }
-
   // The sample-count sign carries the determinant-selected front face while
   // its magnitude remains the actual MSAA count. This keeps the governed
   // factory signature at eight parameters without an allocation per variant.
@@ -4098,7 +4051,6 @@
       },
     });
   }
-
   function wgpuCreatePBRInstancedPipeline(device, pipelineLayout, vertexModule, fragmentModule, blendMode, depthWrite, targetFormat, sampleCount) {
     return wgpuCreateValidatedPipeline(device, "render", {
       label: "gosx-pbr-instanced-" + blendMode,
@@ -4118,7 +4070,6 @@
       },
     });
   }
-
   // Cull-path pipeline: uses WGPU_PBR_INSTANCED_CULL_VERTEX_LAYOUT (80-byte
   // InstanceRecord with pickData uint32x4 at location 8). The same fragment
   // module is used — no per-instance color from vertex; fragment reads the
@@ -4142,7 +4093,6 @@
       },
     });
   }
-
   // Both shadow pipelines set cullMode "front" and set no frontFace, so the
   // WebGPU default "ccw" stands. 12-scene-geometry.ts and 16c-scene-shared-pbr.ts
   // wind their solids counter-clockwise as seen from outside, so the lit face is
@@ -4170,7 +4120,6 @@
       },
     });
   }
-
   function wgpuCreateShadowInstancedPipeline(device, shadowLayout, vertexModule, fragmentModule) {
     return wgpuCreateValidatedPipeline(device, "render", {
       label: "gosx-shadow-instanced",
@@ -4189,7 +4138,6 @@
       },
     });
   }
-
   function wgpuCreateSceneColorPipeline(device, pipelineLayout, vertexModule, fragmentModule, topology, blendMode, depthWrite, targetFormat, sampleCount) {
     return wgpuCreateValidatedPipeline(device, "render", {
       label: "gosx-scene-color-" + topology + "-" + blendMode,
