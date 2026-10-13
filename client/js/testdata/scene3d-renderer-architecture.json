@@ -746,7 +746,7 @@
     "../runtime/scene3d/ocean-waves.ts": 27,
     "../runtime/scene3d/walk-surfaces.ts": 14,
     "../runtime/scene3d/vessel-physics.ts": 175,
-    "../runtime/scene3d/vessel-input.ts": 131,
+    "../runtime/scene3d/vessel-input.ts": 171,
     "../runtime/scene3d/vessel-model.ts": 103,
     "../runtime/scene3d/vessel-wake.ts": 127,
     "../runtime/scene3d/mount-vessel.ts": 106,
@@ -817,22 +817,22 @@
     {
       "source": "../runtime/scene3d/vessel-input.ts",
       "name": "anonymous@2:2",
-      "lines": 130,
-      "cyclomatic": 76,
-      "cognitive": 99,
+      "lines": 170,
+      "cyclomatic": 108,
+      "cognitive": 146,
       "maxNesting": 4,
       "parameters": 0,
-      "reason": "Measured cumulative input installer with independent rudder, sail and look pointer ownership, focused arrow controls, cancellation and disposal. Helm layout updates only on mode changes and readout text only when its displayed value changes. Dragging releases the cursor for instruments; mounted input tests cover simultaneous touch and course-preserving look."
+      "reason": "Measured cumulative input installer with independent rudder, sail and look pointer ownership, focused arrow controls, cancellation and disposal. Helm layout updates only on mode changes and readout text only when its displayed value changes. A separate bounded helper adds a spring-centered mobile rudder pad, held arrows and a value indicator. Pointer cancellation, hidden tabs and leaving the helm neutralize input; slider keyboard input remains separate from camera arrows. Dragging releases the cursor for instruments; mounted input tests cover simultaneous touch and course-preserving look."
     },
     {
       "source": "../runtime/scene3d/vessel-input.ts",
-      "name": "setup@51:3",
-      "lines": 79,
-      "cyclomatic": 54,
-      "cognitive": 77,
+      "name": "setup@90:3",
+      "lines": 80,
+      "cyclomatic": 57,
+      "cognitive": 81,
       "maxNesting": 4,
       "parameters": 4,
-      "reason": "Measured cumulative input installer with independent rudder, sail and look pointer ownership, focused arrow controls, cancellation and disposal. Helm layout updates only on mode changes and readout text only when its displayed value changes. Dragging releases the cursor for instruments; mounted input tests cover simultaneous touch and course-preserving look."
+      "reason": "Measured cumulative input installer with independent rudder, sail and look pointer ownership, focused arrow controls, cancellation and disposal. Helm layout updates only on mode changes and readout text only when its displayed value changes. A separate bounded helper adds a spring-centered mobile rudder pad, held arrows and a value indicator. Pointer cancellation, hidden tabs and leaving the helm neutralize input; slider keyboard input remains separate from camera arrows. Dragging releases the cursor for instruments; mounted input tests cover simultaneous touch and course-preserving look."
     },
     {
       "source": "../runtime/scene3d/vessel-model.ts",

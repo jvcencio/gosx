@@ -67,6 +67,15 @@
 @media (pointer: coarse) {
   :global(.bgb__instructions-desktop), :global(.bgb__discoveries) { display: none; }
   :global(.bgb__instructions-touch) { display: block; }
+  :global(.bgb[data-coast-following="true"] [data-gosx-scene3d-vessel="sailing"] > .gosx-scene3d-vessel-controls) { bottom: var(--bgb-helm-bottom, 180px) !important; }
+}
+:global(.bgb .gosx-scene3d-rudder:focus-visible) { outline: 2px solid #f2c38c; outline-offset: 3px; }
+@media (pointer: coarse) and (max-height: 420px) {
+  :global(.bgb__controls) { bottom: max(34px, calc(env(safe-area-inset-bottom) + 34px)); gap: 4px; }
+  :global(.bgb__link) { min-height: 44px; padding: 4px 8px; font-size: 11px; }
+  :global(.bgb__reveal) { bottom: max(4px, env(safe-area-inset-bottom)); font-size: 10px; }
+  :global(.bgb .gosx-scene3d-rudder) { height: 56px !important; }
+  :global(.bgb .gosx-scene3d-rudder > span) { top: 9px !important; }
 }
 @media (prefers-reduced-motion: reduce) { :global(.bgb__controls), :global(.bgb__reveal) { transition: none; transform: none; } }
 @media (scripting: none) {

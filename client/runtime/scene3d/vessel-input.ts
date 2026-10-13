@@ -47,6 +47,45 @@
       event.preventDefault();actions.look(-dx*.0028,-dy*.0028);
     });
   }
+  // @ts-ignore TS7006 -- spring-centered helm shares the existing rudder authority.
+  function steering(mount,canvas,state,input,listen) {
+    const api=window.__gosx_scene3d_vessel_input,root=document.createElement('div'),track=document.createElement('div'),knob=document.createElement('span'),caption=document.createElement('span');
+    root.className='gosx-scene3d-vessel-controls gosx-scene3d-vessel-steering';root.setAttribute('class',root.className);root.setAttribute('role','group');root.setAttribute('aria-label','Ship steering');
+    root.style.cssText='position:absolute;left:14px;bottom:110px;z-index:12;display:none;width:144px;max-width:calc(50% - 14px);padding:8px;box-sizing:border-box;border-radius:18px;background:rgba(14,20,24,.82);color:#fff;font:12px sans-serif;touch-action:none;user-select:none;text-align:center';
+    track.className='gosx-scene3d-rudder';track.setAttribute('class',track.className);track.setAttribute('role','slider');track.setAttribute('tabindex','0');track.setAttribute('aria-label','Rudder');
+    for(const [name,v] of [['aria-valuemin','-100'],['aria-valuemax','100'],['aria-valuenow','0'],['aria-valuetext','Centered']])track.setAttribute(name,v);
+    track.style.cssText='position:relative;height:72px;border:1px solid #aab5b080;border-radius:36px;background:linear-gradient(90deg,#edf3ed14 1px,transparent 1px) center/25% 100%;touch-action:none';
+    knob.style.cssText='position:absolute;left:calc(50% - 18px);top:17px;width:36px;height:36px;border-radius:50%;background:#f0c995;box-shadow:0 2px 12px #0006;pointer-events:none';track.appendChild(knob);root.appendChild(track);
+    const buttons=document.createElement('div');buttons.style.cssText='display:flex;gap:8px;margin-top:8px';root.appendChild(buttons);
+    caption.textContent='Steer · right: look';caption.style.cssText='display:block;margin-top:7px;font-size:11px;color:#e4eae6';root.appendChild(caption);mount.appendChild(root);
+    const active=()=>state.mode==='sailing'&&!state.detached;
+    // @ts-ignore TS7006 -- scoped captured pointers preserve other held controls.
+    const press=(node,event,origin)=>{if(!active()||event.button>0||!api.down(input,'rudder',event.pointerId,origin))return false;event.preventDefault();canvas.focus({preventScroll:true});node.setPointerCapture?.(event.pointerId);return true;};
+    // @ts-ignore TS7006 -- track coordinates are in the same CSS pixels as canvas gestures.
+    listen(track,'pointerdown',e=>{const b=track.getBoundingClientRect();if(press(track,e,b.left+b.width/2))api.move(input,e.pointerId,e.clientX);});
+    // @ts-ignore TS7006 -- captured drag stays owned when the thumb leaves the pad.
+    listen(track,'pointermove',e=>{if(e.pointerId===input.rudderID){e.preventDefault();api.move(input,e.pointerId,e.clientX);}});
+    for(const [direction,label] of [[-1,'Steer left'],[1,'Steer right']]) {
+      const b=document.createElement('button');b.type='button';b.textContent=Number(direction)<0?'←':'→';b.setAttribute('aria-label',String(label));b.setAttribute('data-gosx-rudder',String(direction));
+      b.style.cssText='flex:1;min-width:48px;min-height:48px;border:1px solid #aab5b080;border-radius:12px;background:#1c2b30;color:#f0c995;font:22px sans-serif;touch-action:none';buttons.appendChild(b);
+      // @ts-ignore TS7006 -- hold buttons provide a predictable gentle turn.
+      listen(b,'pointerdown',e=>{if(press(b,e,e.clientX))input.rudder=Number(direction)*.7;});
+      // @ts-ignore TS7006 -- keyboard users can hold the same steering targets.
+      listen(b,'keydown',e=>{if(active()&&input.rudderID<0&&(e.code==='Space'||e.code==='Enter')){e.preventDefault();input.rudder=Number(direction)*.7;}});
+    }
+    // @ts-ignore TS7006 -- release only this pointer, never the sail or look pointer.
+    for(const node of [track,...Array.from(buttons.children)])for(const event of ['pointerup','pointercancel','lostpointercapture'])listen(node,event,e=>api.up(input,e.pointerId));
+    // @ts-ignore TS7006 -- a focused slider maps arrows to rudder, without camera input.
+    listen(track,'keydown',e=>{if(!active()||input.rudderID>=0)return;if(['ArrowLeft','ArrowRight','Home'].includes(e.code)){e.preventDefault();input.rudder=e.code==='Home'?0:e.code==='ArrowLeft'?-.7:.7;}});
+    for(const node of [track,...Array.from(buttons.children)])for(const event of ['keyup','blur'])listen(node,event,()=>{if(input.rudderID<0)input.rudder=0;});
+    let shown=false,last=NaN;
+    // @ts-ignore TS7006 -- refreshed from the existing Boolean helm ownership state.
+    return {refresh(on) {
+      if(shown!==on){shown=on;root.hidden=!on;root.style.display=on?'block':'none';}
+      const n=Math.round(api.value(input).rudder*100);
+      if(last!==n){last=n;knob.style.transform='translateX('+n*.4+'px)';track.setAttribute('aria-valuenow',String(n));track.setAttribute('aria-valuetext',n===0?'Centered':Math.abs(n)+'% '+(n<0?'left':'right'));}
+    },dispose(){root.remove();}};
+  }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function setup(canvas,mount,state,actions) {
     const input=create(),listeners=Array();
@@ -54,17 +93,16 @@
     const helmLabels=touch?{take:'Take helm',leave:'Leave helm'}:{take:'Press E to take the helm',leave:'Leave helm · E'};
     const panel=document.createElement('div'),helm=document.createElement('button'),view=document.createElement('button');
     const readout=document.createElement('span'),raise=document.createElement('button'),lower=document.createElement('button');
-    const steerHint=document.createElement('span');steerHint.textContent='Left: steer · right: look';steerHint.hidden=true;
     let layout='',label='';
-    steerHint.style.cssText='position:absolute;left:14px;bottom:140px;z-index:12;padding:10px;border-radius:8px;background:rgba(14,20,24,.75);color:#fff;font:13px sans-serif;pointer-events:none';mount.appendChild(steerHint);
     panel.className='gosx-scene3d-vessel-controls';panel.setAttribute('class',panel.className);
     panel.style.cssText='position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:12;display:none;grid-template-columns:1fr 1fr;gap:6px;align-items:center;padding:6px;border-radius:8px;background:rgba(14,20,24,.75);color:#fff;font:13px sans-serif';
     readout.style.cssText='grid-column:1/-1;text-align:center;white-space:normal;max-width:280px';
     // @ts-ignore TS7006 -- button arguments are evaluated as plain JavaScript
-    const button=(node,label)=>{node.type='button';node.textContent=label;node.style.cssText='min-height:42px;padding:6px 12px;border:1px solid #aab5b0;border-radius:5px;background:#1c2b30;color:#fff;touch-action:none';panel.appendChild(node);};
+    const button=(node,label)=>{node.type='button';node.textContent=label;node.style.cssText='min-height:'+(touch?'48':'42')+'px;padding:6px 12px;border:1px solid #aab5b0;border-radius:5px;background:#1c2b30;color:#fff;touch-action:none';panel.appendChild(node);};
     button(helm,'Press E to take the helm');button(view,'Camera · V');button(lower,'Lower sail');button(raise,'Raise sail');panel.appendChild(readout);mount.appendChild(panel);
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     function listen(target,name,fn) {target.addEventListener(name,fn,{passive:false});listeners.push([target,name,fn]);}
+    const pad=touch?steering(mount,canvas,state,input,listen):null;
     function focused() {return document.activeElement===canvas || document.pointerLockElement===canvas;}
     bindLook(canvas,state,input,listen,actions);
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
@@ -108,6 +146,7 @@
     });
     // @ts-ignore TS7006 -- reset events are exercised as plain JS by Node.
     listen(document,'keyup',event=>input.keys.delete(event.code));listen(window,'blur',()=>clear(input));
+    listen(document,'visibilitychange',()=>{if(document.hidden)clear(input);});
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
     listen(canvas,'blur',()=>{if(!document.pointerLockElement)clear(input);});
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
@@ -116,16 +155,17 @@
     return {input,refresh(near) {
       const active=state.mode==='sailing'&&!state.detached,hidden=!active&&!near&&!state.config.quickBoard,key=active+':'+hidden+':'+state.detached;
       if(layout!==key) {
-        layout=key;panel.hidden=hidden;steerHint.hidden=!active||!touch;
+        layout=key;panel.hidden=hidden;if(!active)clear(input);
         panel.style.display=hidden?'none':'grid';panel.style.left=active?'auto':'50%';panel.style.right=active?'14px':'auto';
         panel.style.top=active?'auto':'58px';panel.style.bottom=active?'110px':'auto';panel.style.transform=active?'none':'translateX(-50%)';
         panel.style.width=active?(touch?'min(220px, calc(50% - 14px))':'280px'):'auto';panel.style.gridTemplateColumns=active?'1fr 1fr':'1fr';
         helm.textContent=active?helmLabels.leave:state.detached?'Return to helm':state.config.quickBoard?'Pilot ship':helmLabels.take;
         view.hidden=!active;raise.hidden=!active;lower.hidden=!active;readout.hidden=!active;
       }
+      pad?.refresh(active);
       const next=state.grounded?'Grounded · turn toward deeper water':window.__gosx_scene3d_vessel_physics.speedCurve(state.heading-state.wind)===0?'Into the wind · '+(touch?'steer to tack':'hold A/D to tack'):Math.round(state.trim*100)+'% sail · '+state.speed.toFixed(1)+' m/s'+(touch?'':' · drag to look · A/D steer · W/S sail');
       if(label!==next) {label=next;readout.textContent=next;}
-    },dispose() {clear(input);panel.remove();steerHint.remove();for(const [target,name,fn] of listeners)target.removeEventListener(name,fn);} };
+    },dispose() {clear(input);panel.remove();pad?.dispose();for(const [target,name,fn] of listeners)target.removeEventListener(name,fn);} };
   }
   window.__gosx_scene3d_vessel_input={create,down,move,up,clear,value,setup};
 })();
