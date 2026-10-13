@@ -4,9 +4,9 @@
   "cases": {
     "hero/desktop-full/webgl": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 4144596,
         "shadowMapPixels": 65536,
         "contextAttributes": {
@@ -50,9 +50,9 @@
     },
     "post/desktop-full/webgl": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 10360352,
         "shadowMapPixels": 65536,
         "contextAttributes": {
@@ -96,9 +96,9 @@
     },
     "dense/desktop-full/webgl": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 0,
         "shadowMapPixels": 0,
         "contextAttributes": {
@@ -154,9 +154,9 @@
     },
     "hero/desktop-full/webgpu": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 20722980,
         "shadowMapPixels": 65537,
         "contextAttributes": {
@@ -198,9 +198,9 @@
     },
     "post/desktop-full/webgpu": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 21758560,
         "shadowMapPixels": 65537,
         "contextAttributes": {
@@ -242,9 +242,9 @@
     },
     "dense/desktop-full/webgpu": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 0,
         "shadowMapPixels": 1,
         "contextAttributes": {
