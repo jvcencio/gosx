@@ -1050,6 +1050,21 @@
       scheduleRender(reason);
     };
     base = setupSceneBaseControls(canvas, props, readViewport, readSourceCamera, schedule, sceneState);
+    if (props.controlZoom && !base.controller) {
+      // Fixed cameras retain their authored angle. Opt-in navigation must not
+      // enable orbit rotation or consume single-pointer object gestures.
+      const fixed = {
+        mode: "fixed", touched: false, keys: new Set(), target: sceneControlsTarget(props),
+        camera: sceneRenderCamera(readSourceCamera()),
+        // @ts-ignore TS7006 -- plain JavaScript control adapter.
+        syncCamera: camera => { if (!fixed.touched) fixed.camera = sceneRenderCamera(camera); },
+        currentCamera: () => { fixed.syncCamera(readSourceCamera()); return fixed.camera; },
+        // @ts-ignore TS7006 -- plain JavaScript control adapter.
+        applyCamera: camera => { fixed.camera = sceneRenderCamera(camera); fixed.touched = true; },
+      };
+      base.controller = fixed;
+      if (sceneState) sceneState._gosxMotionController = fixed;
+    }
     if (sceneVesselEnabled(props)) base = window.__gosx_scene3d_vessel_api.setup(canvas, props, base, sceneState, {
       schedule, current: sceneCurrentControlCamera,
       // @ts-ignore TS7006 -- renderer-neutral creation seam for the lazy wake
@@ -1079,6 +1094,20 @@
         controller.keys.clear();
         if (controller.mode === "orbit") controller.orbit = sceneOrbitStateFromCamera(camera, controller.target, controller);
         else controller.fly = sceneFlyStateFromCamera(camera);
+      },
+      // @ts-ignore TS7006 -- screen-space pan keeps the authored camera angle.
+      pan: delta => {
+        const camera = read();
+        if (controller.mode === "orbit") {
+          for (const key of ["x", "y", "z"]) controller.orbit.target[key] += delta[key];
+          controller.target = Object.assign({}, controller.orbit.target);
+        } else if (controller.mode === "fixed") {
+          controller.camera = Object.assign({}, camera, { x: camera.x + delta.x, y: camera.y + delta.y, z: camera.z + delta.z });
+          for (const key of ["x", "y", "z"]) controller.target[key] += delta[key];
+        } else if (controller.fly) {
+          for (const key of ["x", "y", "z"]) controller.fly.position[key] += delta[key];
+        }
+        controller.touched = true;
       }, schedule: scheduleRender, requestFrame: sceneMotionRequestFrame, cancelFrame: sceneMotionCancelFrame, now: sceneNowMilliseconds,
     });
   }
