@@ -28,9 +28,9 @@ func TestBlackglassBeachInstructionsFollowView(t *testing.T) {
 	}{
 		{"shore", "shore", "WASD or arrows to walk", "Left thumb to move"},
 		{"ship", "ship", "WASD or arrows to walk", "Left thumb to move"},
-		{"glass", "glass", "arrows to orbit", "pinch to zoom"},
-		{"cliff", "cliff", "arrows to orbit", "pinch to zoom"},
-		{"pools", "pools", "arrows to orbit", "pinch to zoom"},
+		{"glass", "glass", "WASD or arrows to walk", "Left thumb to move"},
+		{"cliff", "cliff", "WASD or arrows to walk", "Left thumb to move"},
+		{"pools", "pools", "WASD or arrows to walk", "Left thumb to move"},
 		{"unknown", "shore", "WASD or arrows to walk", "Left thumb to move"},
 	} {
 		t.Run(tc.view, func(t *testing.T) {
