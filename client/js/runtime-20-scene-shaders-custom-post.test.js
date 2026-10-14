@@ -28,6 +28,7 @@ const {
   installManualTimers,
   runScript,
   flushAsyncWork,
+  renderPreparedFrame,
   createBoardWebGPUHarness,
   mainRenderPasses,
   boardBundleManyObjectsOneMaterial,
@@ -1075,7 +1076,7 @@ test("custom post WebGPU: valid fragmentWGSL+vertexWGSL builds async pipeline an
   });
 
   // Frame 1: pipeline enqueued.
-  harness.renderer.render(bundle, viewport);
+  await renderPreparedFrame(harness.renderer, bundle, viewport);
   assert.equal(renderPipelineAsyncCalls, 1, "frame 1 must trigger exactly one createRenderPipelineAsync");
 
   await flushAsyncWork();
@@ -1100,7 +1101,7 @@ test("custom post WebGPU: valid fragmentWGSL+vertexWGSL builds async pipeline an
 async function renderValidatedPostFrame(harness, bundle, viewport) {
   const before = harness.renderer.diagnostics().frameSeq;
   for (let i = 0; i < 8; i++) {
-    harness.renderer.render(bundle, viewport);
+    await renderPreparedFrame(harness.renderer, bundle, viewport);
     await flushAsyncWork();
     if (harness.renderer.diagnostics().frameSeq > before) return;
   }
@@ -1342,7 +1343,7 @@ test("custom post WebGPU: identical complete WGSL module is submitted once", asy
     "}",
   ].join("\n");
 
-  harness.renderer.render(makeBundleWithCustomPost({
+  await renderPreparedFrame(harness.renderer, makeBundleWithCustomPost({
     fragmentWGSL: completeModule,
     vertexWGSL: completeModule,
   }), viewport);
@@ -1430,7 +1431,7 @@ test("custom post WebGPU: invalid WGSL triggers async validation failure, warns 
   });
 
   // Frame 1: pipeline attempt fires.
-  harness.renderer.render(bundle, viewport);
+  await renderPreparedFrame(harness.renderer, bundle, viewport);
   assert.equal(renderPipelineAsyncCalls, 1, "frame 1 must attempt one createRenderPipelineAsync");
 
   await flushAsyncWork();
@@ -1443,7 +1444,7 @@ test("custom post WebGPU: invalid WGSL triggers async validation failure, warns 
 
   // Frame 2: failure cached — no new pipeline attempt.
   const callsBefore = renderPipelineAsyncCalls;
-  harness.renderer.render(bundle, viewport);
+  await renderPreparedFrame(harness.renderer, bundle, viewport);
   assert.equal(renderPipelineAsyncCalls, callsBefore, "failure must be cached — no re-attempt on frame 2");
 
   // Still exactly one warn.
@@ -2414,7 +2415,7 @@ test("custom post WebGPU: a module with compilation errors is refused even when 
     vertexWGSL: "BAD WGSL VERTEX",
   });
 
-  harness.renderer.render(bundle, viewport);
+  await renderPreparedFrame(harness.renderer, bundle, viewport);
   assert.equal(renderPipelineAsyncCalls, 1);
   await flushAsyncWork();
   await flushAsyncWork();

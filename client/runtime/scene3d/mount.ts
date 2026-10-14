@@ -41,6 +41,12 @@
       if (!scene3DFactoryCurrent()) return {};
     }
     const sceneAttr = name => "data-gosx-scene3d-" + name;
+    // Probe an explicit WebGPU preference before GPU classification so a
+    // usable WebGPU device needs no throwaway WebGL context.
+    if (scenePrefersWebGPU(props)) {
+      await ensurePreferredWebGPUBackend(props, null);
+      if (!scene3DFactoryCurrent()) return {};
+    }
     const capability = sceneCapabilityProfile(props);
     const viewportBase = sceneViewportBase(props);
     const adaptiveQuality = createSceneAdaptiveQualityState(props, viewportBase, capability);

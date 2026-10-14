@@ -147,3 +147,23 @@ test('matrix rejects any abort or network error alongside completed probes', () 
   const report = completedReport(); report.networkFailures.push('loadingFailed net::ERR_ABORTED');
   assert.match(reportHarness()(report).join('\n'), /networkFailures/);
 });
+
+test('browser renderer receipts retain primitive metadata for async pipelines', async () => {
+  const pipeline = {};
+  function GPUDevice() {}
+  GPUDevice.prototype.createRenderPipeline = () => pipeline;
+  GPUDevice.prototype.createRenderPipelineAsync = () => Promise.resolve(pipeline);
+  const context = vm.createContext({ GPUDevice, wgPipelines: new WeakMap(), wgBindGroups: new WeakMap(), wgBufferID: () => 0 });
+  const wrapStart = producer.indexOf('  function wrap(proto, name, handler)');
+  const wrapEnd = producer.indexOf('  function wrapGL(', wrapStart);
+  const start = producer.indexOf("  if (typeof GPUDevice !== 'undefined' && GPUDevice.prototype) {");
+  const end = producer.indexOf("  if (typeof GPUCommandEncoder !== 'undefined'", start);
+  assert.ok(wrapStart >= 0 && wrapEnd > wrapStart && start >= 0 && end > start);
+  vm.runInContext(producer.slice(wrapStart, wrapEnd) + producer.slice(start, end), context);
+  const device = new GPUDevice();
+  const pending = device.createRenderPipelineAsync({ primitive: { frontFace: 'cw', cullMode: 'none' } });
+  assert.ok(pending instanceof Promise);
+  assert.equal(await pending, pipeline, 'the hook must forward the native pipeline');
+  assert.equal(context.wgPipelines.get(pipeline)?.frontFace, 'cw');
+  assert.equal(context.wgPipelines.get(pipeline)?.cullMode, 'none');
+});

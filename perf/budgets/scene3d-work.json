@@ -168,7 +168,7 @@
       "steady": {
         "draws": 12,
         "programBinds": 0,
-        "pipelineBinds": 7,
+        "pipelineBinds": 6,
         "framebufferBinds": 0,
         "renderPasses": 4,
         "bufferUploadBytes": 3412,
@@ -183,7 +183,7 @@
       "steadyTotal": {
         "draws": 1440,
         "programBinds": 0,
-        "pipelineBinds": 840,
+        "pipelineBinds": 720,
         "framebufferBinds": 0,
         "renderPasses": 480,
         "bufferUploadBytes": 409440,
@@ -212,7 +212,7 @@
       "steady": {
         "draws": 8,
         "programBinds": 0,
-        "pipelineBinds": 9,
+        "pipelineBinds": 8,
         "framebufferBinds": 0,
         "renderPasses": 8,
         "bufferUploadBytes": 1060,
@@ -227,7 +227,7 @@
       "steadyTotal": {
         "draws": 960,
         "programBinds": 0,
-        "pipelineBinds": 1080,
+        "pipelineBinds": 960,
         "framebufferBinds": 0,
         "renderPasses": 960,
         "bufferUploadBytes": 127200,
@@ -256,7 +256,7 @@
       "steady": {
         "draws": 134,
         "programBinds": 0,
-        "pipelineBinds": 3,
+        "pipelineBinds": 2,
         "framebufferBinds": 0,
         "renderPasses": 1,
         "bufferUploadBytes": 190980,
@@ -271,7 +271,7 @@
       "steadyTotal": {
         "draws": 16080,
         "programBinds": 0,
-        "pipelineBinds": 360,
+        "pipelineBinds": 240,
         "framebufferBinds": 0,
         "renderPasses": 120,
         "bufferUploadBytes": 22917600,
@@ -462,7 +462,7 @@
       "steady": {
         "draws": 11,
         "programBinds": 0,
-        "pipelineBinds": 6,
+        "pipelineBinds": 5,
         "framebufferBinds": 0,
         "renderPasses": 3,
         "bufferUploadBytes": 3412,
@@ -477,7 +477,7 @@
       "steadyTotal": {
         "draws": 1320,
         "programBinds": 0,
-        "pipelineBinds": 720,
+        "pipelineBinds": 600,
         "framebufferBinds": 0,
         "renderPasses": 360,
         "bufferUploadBytes": 409440,
@@ -506,7 +506,7 @@
       "steady": {
         "draws": 7,
         "programBinds": 0,
-        "pipelineBinds": 8,
+        "pipelineBinds": 7,
         "framebufferBinds": 0,
         "renderPasses": 7,
         "bufferUploadBytes": 1060,
@@ -521,7 +521,7 @@
       "steadyTotal": {
         "draws": 840,
         "programBinds": 0,
-        "pipelineBinds": 960,
+        "pipelineBinds": 840,
         "framebufferBinds": 0,
         "renderPasses": 840,
         "bufferUploadBytes": 127200,
@@ -550,7 +550,7 @@
       "steady": {
         "draws": 134,
         "programBinds": 0,
-        "pipelineBinds": 3,
+        "pipelineBinds": 2,
         "framebufferBinds": 0,
         "renderPasses": 1,
         "bufferUploadBytes": 190980,
@@ -565,7 +565,7 @@
       "steadyTotal": {
         "draws": 16080,
         "programBinds": 0,
-        "pipelineBinds": 360,
+        "pipelineBinds": 240,
         "framebufferBinds": 0,
         "renderPasses": 120,
         "bufferUploadBytes": 22917600,
