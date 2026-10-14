@@ -11,7 +11,7 @@ const (
 	blackglassChartScriptSrc       = "/blackglass-chart.js?v=89743eb76148"
 	blackglassViewScriptSrc        = "/blackglass-view.js?v=2d8d7472a996"
 	blackglassSpyglassScriptSrc    = "/blackglass-spyglass.js?v=3a8b2e79412e"
-	blackglassDiscoveriesStylesSrc = "/blackglass-discoveries.css?v=f56ccbc131de"
+	blackglassDiscoveriesStylesSrc = "/blackglass-discoveries.css?v=25fc1f5e6b6e"
 )
 
 func init() {

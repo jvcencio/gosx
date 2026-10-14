@@ -87,13 +87,16 @@
 .bgb__spyglass-instruments button { display:block;width:100%;min-height:44px;border:1px solid #a89b7e70;border-radius:8px;background:#263d3b;color:#f4eee2;margin-top:10px;font:12px ui-sans-serif,system-ui;cursor:pointer; }
 .bgb__spyglass-instruments button:disabled { opacity:.45;cursor:default; }
 .bgb__spyglass :is(button,output):focus-visible,.bgb__spyglass-toggle:focus-visible { outline:2px solid #f2c38c;outline-offset:3px; }
-.bgb[data-spyglass="true"] .gosx-scene3d-vessel-controls { z-index:12!important; }
+.bgb[data-spyglass="true"] .gosx-scene3d-vessel-controls { visibility:hidden; }
+.bgb[data-spyglass="true"] .bgb__controls { z-index:12; }
 @media(max-width:640px) { .bgb__tools > details > summary { padding:12px 8px;font-size:11px; } .bgb__journal > summary::before,.bgb__journal > summary span { display:none; } .bgb__spyglass-toggle { padding:11px 9px;font-size:11px; } .bgb__spyglass { --lens:min(78vw,calc(100dvh - 300px)); } .bgb__spyglass-lens { top:50%; } .bgb__spyglass-instruments { top:68px;left:12px;width:calc(100% - 24px);padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:0 10px; } .bgb__spyglass-label,.bgb__spyglass-range { grid-column:1/-1; } .bgb__spyglass-bearing { font-size:22px; } .bgb__spyglass-instruments button { margin-top:4px; } }
 @media(max-width:640px) {
   .bgb__spyglass { --lens:min(78vw,calc(100dvh - 190px)); }
   .bgb__spyglass-label { display:none; }
   .bgb__spyglass-instruments button { position:fixed;bottom:max(20px,env(safe-area-inset-bottom));left:12px;width:calc(50% - 16px);margin:0; }
   .bgb__spyglass-instruments [data-coast-spyglass-close] { left:auto;right:12px; }
-  .bgb[data-spyglass="true"] :is(.bgb__controls,.bgb__reveal,.gosx-scene3d-vessel-controls) { visibility:hidden; }
+  .bgb[data-spyglass="true"] .bgb__reveal { visibility:hidden; }
+  .bgb[data-spyglass="true"] .bgb__controls { bottom:max(78px,calc(env(safe-area-inset-bottom) + 78px)); }
+  .bgb[data-spyglass="true"] .bgb__controls > :not([aria-label="Light"]) { display:none!important; }
 }
 @media(max-height:450px) and (min-width:641px) { .bgb__spyglass { --lens:min(60vh,300px); } .bgb__spyglass-lens { left:50%;top:50%; } .bgb__spyglass-instruments { top:66px;width:205px;padding:8px 12px; } .bgb__spyglass-bearing { font-size:22px; } .bgb__spyglass-instruments button { margin-top:5px; } }
