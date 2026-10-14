@@ -1,3 +1,9 @@
+  function wgpuEmitGPUTiming(sample: any) {
+    if (typeof window !== "undefined" && window.__gosx_scene3d_perf === true) {
+      document.dispatchEvent(new CustomEvent("gosx:scene3d:perf", { detail: sample }));
+    }
+  }
+
   function wgpuCreatePipelineGuard(canvas: any): any {
     var guard = { pending: 0, disposed: false, frameEncoder: null, framePass: null, frameCleanup: null, coreError: "", failures: [], disabled: new Set(), fail: fail, uncaptured: uncaptured, wrapFrame: wrapFrame, release: release, snapshot: snapshot, changed: changed };
     var notificationPending = false;
@@ -4405,8 +4411,8 @@
     return fragmentSource;
   }
 
-  function wgpuPostCanPresent(kind: string, width: number, height: number, canvasWidth: number, canvasHeight: number, format: string, last: boolean) {
-    if (!last) return false;
+  function wgpuPostCanPresent(kind: string, width: number, height: number, canvasWidth: number, canvasHeight: number, format: string, last: boolean, disabled: boolean = false) {
+    if (disabled || !last) return false;
     if (width !== canvasWidth || height !== canvasHeight) return false;
     if (format !== "rgba8unorm" && format !== "bgra8unorm" && format !== "rgba16float") return false;
     if (kind === SCENE_POST_TONE_MAPPING || kind === SCENE_POST_COLOR_GRADE) return true;
@@ -4416,6 +4422,16 @@
   }
 
   function wgpuPostOutput(direct: boolean, canvasOutput: any, intermediateOutput: any) { return direct ? canvasOutput : intermediateOutput; }
+  function wgpuPostPipelineName(name: string, canvasVariant: boolean) { return canvasVariant && name !== "present" ? "canvas-" + name : name; }
+
+  function wgpuWarmPostOutputs(name: string, source: string, layout: any, canvasVariant: boolean, presentation: string, target: string, getPipeline: any) {
+    // Create both variants and the blit together so resize reuses ready paths.
+    if (name !== "present") getPipeline("present", WGSL_POST_BLIT_FRAGMENT, layout);
+    if (["toneMapping", "colorGrade", "fxaa", "vignette"].includes(name) && presentation !== target) {
+      getPipeline(name, source, layout, canvasVariant ? target : presentation);
+    }
+  }
+
   function wgpuCreatePostProcessor(device, presentationFormat, onAllocationError, packSelenaUniforms) {
     var targetFormat = "rgba16float";
     let specularSource: any = null;
@@ -4635,14 +4651,16 @@
     }
 
     function getPipeline(name, fragmentSource, layout, outputFormat: string = targetFormat) {
-      if (name === "present") outputFormat = presentationFormat;
+      if (name === "present") { outputFormat = presentationFormat; layout = getPostBlitLayout(); }
       var cacheKey = name + ":" + outputFormat;
       if (pipelines[cacheKey]) return pipelines[cacheKey];
-      fragmentSource = wgpuCanvasPostShader(name, fragmentSource, outputFormat, targetFormat);
-      var fragModule = device.createShaderModule({ label: "post-" + name, code: fragmentSource });
+      var shader = wgpuCanvasPostShader(name, fragmentSource, outputFormat, targetFormat);
+      var fragModule = device.createShaderModule({ label: "post-" + name, code: shader });
       var pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [layout] });
-      var pipeline = wgpuCreatePostPipeline(device, pipelineLayout, fragModule, outputFormat, name);
+      var canvasVariant = outputFormat !== targetFormat;
+      var pipeline = wgpuCreatePostPipeline(device, pipelineLayout, fragModule, outputFormat, wgpuPostPipelineName(name, canvasVariant));
       pipelines[cacheKey] = pipeline;
+      wgpuWarmPostOutputs(name, fragmentSource, layout, canvasVariant, presentationFormat, targetFormat, getPipeline);
       return pipeline;
     }
 
@@ -4841,7 +4859,7 @@
         for (var i = 0; i < effects.length; i++) {
           var effect = effects[i];
           var outputView = currentTexView === sceneTexView ? auxTexView : sceneTexView;
-          var directPresent = wgpuPostCanPresent(effect.kind, scaledW, scaledH, canvasW, canvasH, presentationFormat, i === effects.length - 1);
+          var directPresent = wgpuPostCanPresent(effect.kind, scaledW, scaledH, canvasW, canvasH, presentationFormat, i === effects.length - 1, device.__gosxPipelineGuard.disabled.has("directOutput"));
           outputView = wgpuPostOutput(directPresent, finalView, outputView);
           var outputFormat = wgpuPostOutput(directPresent, presentationFormat, targetFormat);
           var passW = scaledW;
@@ -7146,7 +7164,7 @@
       ? window.__gosx_scene3d_api : null;
     var lastPreparedScene = null;
     var lastWebGPUFrameStats = null;
-    var frameStats: any = {};
+    var frameStats: any = {}, spareFrameStats: any = {}, webGPULastError = "";
     var webGPUFrameProof: any = {};
     var webGPUFrameSeq = 0;
     var gpuTiming = null;
@@ -7361,6 +7379,7 @@
                 gpuMS: Number(values[1] - values[0]) / 1000000,
                 atMS: (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now(),
               };
+              wgpuEmitGPUTiming(lastGPUPerformanceSample);
               // @ts-ignore TS7005 -- readback initializes the frame sample asynchronously.
               lastGPUCompletionSample = sceneLatestGPUCompletion(lastGPUCompletionSample, lastGPUPerformanceSample);
               if (telemetryMount) {
@@ -7598,11 +7617,13 @@
       var sceneBegin = slot.hasShadow ? values[0] : values[2];
       var sceneMS = toMS(sceneBegin, values[3]);
       lastGPUPassSample = {
+        source: "gpu-timestamp", scope: "passes", frameSeq: slot.frameSeq,
         shadowMS: shadowMS < 0 ? 0 : shadowMS,
         mainMS: mainMS,
         sceneMS: sceneMS < 0 ? mainMS : sceneMS,
         atMS: (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now(),
       };
+      wgpuEmitGPUTiming(lastGPUPassSample);
       if (telemetryMount) {
         queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-pass-shadow-ms", lastGPUPassSample.shadowMS.toFixed(3));
         queueWebGPUAttribute("data-gosx-scene3d-webgpu-gpu-pass-main-ms", lastGPUPassSample.mainMS.toFixed(3));
@@ -17613,6 +17634,10 @@
       if (!mount) return;
       webGPUFrameSeq += 1;
       var published = stats;
+      // Render only into the unpublished buffer, including frames that abort.
+      frameStats = lastWebGPUFrameStats || spareFrameStats;
+      published.lastError = webGPULastError || undefined;
+      published.frameErrorStreak = webGPUConsecutiveFrameErrors || undefined;
       published.frameSeq = webGPUFrameSeq;
       published.frameAt = (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now();
       lastWebGPUFrameStats = published;
@@ -17688,7 +17713,7 @@
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-passes", String(published.postDOMRegionBoundedPasses || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-skips", String(published.postDOMRegionBoundedSkips || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-post-dom-region-bounded-pixels", String(published.postDOMRegionBoundedPixels || 0));
-      queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", published.lastError ? String(published.lastError) : null);
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", webGPULastError || null);
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-entries", String(published.pointEntries || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-instances", String(published.pointInstances || 0));
       queueWebGPUAttribute("data-gosx-scene3d-webgpu-point-draw-entries", String(published.pointDrawEntries || 0));
@@ -17902,11 +17927,12 @@
       // Any error frame breaks a clean streak, however long — the mount
       // must not restore post-FX on a scene that is still failing.
       webGPUConsecutiveCleanFrames = 0;
-      var stats = frameStats;
-      stats.renderer = "webgpu";
+      webGPULastError = text;
+      var stats = lastWebGPUFrameStats || spareFrameStats;
       stats.lastError = text;
       stats.frameErrorStreak = webGPUConsecutiveFrameErrors;
-      publishWebGPUFrameStats(stats);
+      queueWebGPUAttribute("data-gosx-scene3d-webgpu-last-error", text);
+      mirrorWebGPUFrameAttributes();
       if (webGPUErrorReportCount >= 3) return;
       webGPUErrorReportCount += 1;
       try {
@@ -17935,20 +17961,21 @@
       }
     }
 
-    function endWebGPUErrorScope() {
+    function endWebGPUErrorScope(submitted: boolean = false) {
       if (!device || !pendingWebGPUErrorScope || typeof device.popErrorScope !== "function") return;
       pendingWebGPUErrorScope = false;
       try {
         device.popErrorScope().then(function(error) {
           if (error) {
             pipelineGuard.uncaptured({ error: error });
-          } else {
+          } else if (submitted) {
             webGPUConsecutiveFrameErrors = 0;
             webGPUConsecutiveCleanFrames += 1;
+            webGPULastError = "";
             if (lastWebGPUFrameStats && lastWebGPUFrameStats.lastError) {
-              frameStats.lastError = undefined;
-              frameStats.frameErrorStreak = undefined;
-              publishWebGPUFrameStats(frameStats);
+              lastWebGPUFrameStats.lastError = undefined;
+              lastWebGPUFrameStats.frameErrorStreak = undefined;
+              mirrorWebGPUFrameAttributes();
             }
           }
         }).catch(function(error) {
@@ -18921,18 +18948,7 @@
       frameStats.waterNormalDispatchSeq = waterUpdateStats.waterNormalDispatchSeq;
       frameStats.waterSampledStateCopies = waterUpdateStats.waterSampledStateCopies;
       frameStats.waterSampledStateSyncSeq = waterUpdateStats.waterSampledStateSyncSeq;
-        // P4-M1 fix (water-parity-campaign): waterAtRestSystems/
-        // waterRestSubstepsSkipped (M5 at-rest gating) and waterUniformUploads/
-        // waterUniformUploadsSkipped (M6 uniform-upload dedup) were computed
-        // and incremented on updateWaterSystems' returned stats object (see
-        // WATER_REST_ENERGY_EPSILON's comment above updateWaterSystems) but
-        // were never copied into this frameStats literal that
-        // publishWebGPUFrameStats actually reads -- so
-        // data-gosx-scene3d-webgpu-water-at-rest-systems (and the sibling
-        // rest/dedup counters) always published the `|| 0` fallback and never
-        // reflected real state, regardless of whether the underlying gating
-        // logic fired correctly. Wiring the four fields through here is the
-        // fix; the gating logic itself was already correct.
+      // Publish the at-rest and upload counters returned by updateWaterSystems.
       frameStats.waterAtRestSystems = waterUpdateStats.waterAtRestSystems;
       frameStats.waterRestSubstepsSkipped = waterUpdateStats.waterRestSubstepsSkipped;
       frameStats.waterUniformUploads = waterUpdateStats.waterUniformUploads;
@@ -19253,7 +19269,7 @@
       webGPUSweepRetainedMeshBuffers();
       Object.assign(frameStats, webGPURetainedMeshFrameStats());
       publishWebGPUFrameStats(frameStats);
-      if (scopedFrameErrors) endWebGPUErrorScope();
+      if (scopedFrameErrors) endWebGPUErrorScope(true);
 
       if (perfEnabled) {
         performance.mark("scene3d-render-end");
@@ -19574,7 +19590,7 @@
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.deviceLostInfo = lastDeviceLostInfo || (base && base.lost ? base.lost : null);
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.frameSeq = webGPUFrameSeq;
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.frameAt = lastWebGPUFrameStats && lastWebGPUFrameStats.frameAt || 0;
-      /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.lastError = lastWebGPUFrameStats && lastWebGPUFrameStats.lastError || "";
+      /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.lastError = webGPULastError;
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.waterSimulationTickSeq = lastWebGPUFrameStats && lastWebGPUFrameStats.waterSimulationTickSeq || 0;
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.waterSolverSubstepSeq = lastWebGPUFrameStats && lastWebGPUFrameStats.waterSolverSubstepSeq || 0;
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.waterDroppedTicks = lastWebGPUFrameStats && lastWebGPUFrameStats.waterDroppedTicks || 0;

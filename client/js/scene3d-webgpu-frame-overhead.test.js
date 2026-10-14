@@ -2,9 +2,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createBoardWebGPUHarness, bundleBoxes, flushAsyncWork, deviceCallSnapshot } = require("./runtime-test-harness.js");
+const { createBoardWebGPUHarness, bundleBoxes, flushAsyncWork, deviceCallSnapshot, bundleMeshScene } = require("./runtime-test-harness.js");
 
-async function setup({ post = false, timing = false, optIn = false } = {}) {
+async function setup({ post = false, timing = false, optIn = false, asyncScopes = false, perf = false, mesh = false } = {}) {
   let now = 0;
   const resolves = [];
   const writes = [];
@@ -12,6 +12,14 @@ async function setup({ post = false, timing = false, optIn = false } = {}) {
     performanceNow: () => now, fakeDeviceOptions: { timestampQuery: timing },
     configureDevice(device, state, env) {
       env.context.__gosx_scene3d_webgpu_pass_timing = optIn;
+      if (asyncScopes) device.popErrorScope = () => Promise.resolve(null);
+      if (perf) {
+        const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
+        env.context.WebSocket = class WebSocket { send() {} };
+        env.context.requestAnimationFrame = () => 0;
+        Object.assign(env.context.performance, { mark() {}, measure() {}, clearMarks() {} });
+        vm.runInContext(fs.readFileSync(path.join(__dirname, "../../perf/instrument.js"), "utf8"), env.context);
+      }
       const create = device.createCommandEncoder;
       device.createCommandEncoder = function(...args) {
         const encoder = create.apply(this, args);
@@ -22,7 +30,7 @@ async function setup({ post = false, timing = false, optIn = false } = {}) {
     },
   });
   const api = h.env.context.__gosx_scene3d_api;
-  const bundle = api.createSceneRenderBundle(640, 480, "#000",
+  const bundle = mesh ? bundleMeshScene(api, bundleBoxes(3, 1).map(o => ({ ...o, material: "m", wireframe: false }))) : api.createSceneRenderBundle(640, 480, "#000",
     { x: 0, y: 0, z: 6, fov: 60, near: 0.05, far: 128 },
     bundleBoxes(10, 1).map(o => ({ ...o, castShadow: true, receiveShadow: true })),
     [], [], [], [], {}, 0, [], [], [], [], [], 0, false);
@@ -66,12 +74,15 @@ test("WebGPU steady frames avoid DOM writes and reuse frame stats", async () => 
     let before = h.writes.length;
     await h.frame(192);
     assert.equal(h.writes.length - before, 0);
-    assert.equal(h.mount.__gosxScene3DWebGPUStats, stats);
-    assert.equal(stats.frameSeq, seq + 1);
+    const other = h.mount.__gosxScene3DWebGPUStats;
+    assert.notEqual(other, stats);
+    assert.equal(other.frameSeq, seq + 1);
+    await h.frame(208);
+    assert.equal(h.mount.__gosxScene3DWebGPUStats, stats, "two buffers cover all steady frames");
     before = h.writes.length;
     await h.frame(512);
     assert.ok(h.writes.length - before < 12, "4 Hz mirror writes only changed values");
-    assert.equal(Number(h.mount.getAttribute("data-gosx-scene3d-webgpu-frame-seq")), stats.frameSeq);
+    assert.equal(Number(h.mount.getAttribute("data-gosx-scene3d-webgpu-frame-seq")), h.mount.__gosxScene3DWebGPUStats.frameSeq);
   } finally { h.renderer.dispose(); }
 });
 
@@ -131,5 +142,64 @@ test("WebGPU async diagnostics mirror without another render", async () => {
     assert.equal(h.mount.getAttribute("data-gosx-scene3d-webgpu-gpu-timing"), "measured");
     assert.equal(h.mount.getAttribute("data-gosx-scene3d-webgpu-gpu-ms"), "4.000");
     assert.equal(h.mount.__gosxScene3DWebGPUStats.frameSeq, seq, "mirroring must not invent submitted frames");
+  } finally { h.renderer.dispose(); }
+});
+
+
+test("WebGPU pending frames leave published stats intact with async error scopes", async () => {
+  const h = await setup({ asyncScopes: true, mesh: true });
+  try {
+    let rejectScope;
+    h.fake.device.popErrorScope = () => new Promise((_resolve, reject) => { rejectScope = reject; });
+    assert.equal(await h.frame(192), "submitted");
+    h.fake.device.popErrorScope = () => Promise.resolve(null);
+    const stats = h.mount.__gosxScene3DWebGPUStats;
+    const snapshot = JSON.parse(JSON.stringify(stats));
+    const seq = h.renderer.getFrameProgress().frameSeq;
+    assert.equal(snapshot.meshDrawCalls, 3);
+    h.bundle.postEffects = [{ kind: "bloom" }, { kind: "toneMapping" }];
+    assert.equal(await h.frame(512), "pending");
+    assert.deepEqual(JSON.parse(JSON.stringify(h.mount.__gosxScene3DWebGPUStats)), snapshot);
+    assert.equal(h.renderer.getFrameProgress().frameSeq, seq);
+    assert.equal(Number(h.mount.getAttribute("data-gosx-scene3d-webgpu-mesh-draw-calls")), snapshot.meshDrawCalls);
+    assert.equal(h.renderer.diagnostics().lastError, "");
+    rejectScope(new Error("delayed frame error"));
+    await flushAsyncWork();
+    assert.equal(h.renderer.getFrameProgress().frameSeq, seq, "async errors cannot publish an aborted frame");
+    assert.equal(h.mount.__gosxScene3DWebGPUStats.meshDrawCalls, 3);
+    assert.equal(h.renderer.diagnostics().lastError, "delayed frame error");
+    h.setNow(800);
+    await new Promise(resolve => setTimeout(resolve, 270));
+    assert.equal(h.mount.getAttribute("data-gosx-scene3d-webgpu-last-error"), "delayed frame error");
+    for (let i = 0; i < 8; i++) await h.frame(816 + i * 16);
+    assert.equal(h.renderer.diagnostics().lastError, "");
+  } finally { h.renderer.dispose(); }
+});
+
+test("WebGPU direct and scaled output switches submit every frame with async pipeline validation", async () => {
+  const h = await setup({ post: true, asyncScopes: true });
+  try {
+    for (const [width, height] of [[1920, 1080], [1921, 1080], [640, 480], [64, 64], [63, 47], [64, 64]]) {
+      h.canvas.width = width; h.canvas.height = height;
+      assert.equal(await h.frame(512), "submitted", `${width}x${height}`);
+    }
+  } finally { h.renderer.dispose(); }
+});
+
+test("gosx perf collects a GPU frame sample for every measured frame and opts into pass samples", async () => {
+  const h = await setup({ post: true, timing: true, perf: true });
+  try {
+    const events = h.env.context.__gosx_perf.sceneTelemetryEvents;
+    const before = events.length;
+    const resolves = h.resolves.length;
+    for (let i = 0; i < 60; i++) assert.equal(await h.frame(512 + i * 16), "submitted");
+    const samples = events.slice(before).filter(e => e.detail?.source === "gpu-timestamp");
+    const frames = samples.filter(e => e.detail.scope === "frame");
+    const passes = samples.filter(e => e.detail.scope === "passes");
+    assert.equal(frames.length, 60);
+    assert.equal(new Set(frames.map(e => e.detail.frameSeq)).size, 60);
+    assert.equal(passes.length, 60, "delayed pass ring still yields one sample per steady frame");
+    assert.ok(h.resolves.slice(resolves).includes(4));
+    assert.ok(h.writes.filter(([name]) => name.endsWith("webgpu-gpu-ms")).length < 10);
   } finally { h.renderer.dispose(); }
 });

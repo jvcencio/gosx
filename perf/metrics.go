@@ -653,6 +653,7 @@ func BuildSceneMetric(measures []PerfEntry, snapshot SceneTelemetrySnapshot, fra
 		}
 	}
 
+	applyGPUEventSamples(gpu, snapshot)
 	if gpu.Total != nil || len(gpu.Passes) > 0 || gpu.Status != "" {
 		scene.GPU = gpu
 	}
@@ -842,6 +843,41 @@ func telemetryPhase(at, warmAt float64) string {
 
 func sceneAttributeKey(name string) string {
 	return strings.TrimPrefix(name, "data-gosx-scene3d-")
+}
+
+// Prefer per-frame timestamp events to the throttled diagnostic mirror.
+// Retain attribute series for renderers that do not emit these events.
+func applyGPUEventSamples(gpu *SceneGPUTelemetry, snapshot SceneTelemetrySnapshot) {
+	groups := map[string][]SceneTelemetrySample{}
+	for _, event := range snapshot.TelemetryEvents {
+		if event.Type != "gosx:scene3d:perf" || event.Detail["source"] != "gpu-timestamp" {
+			continue
+		}
+		keys := map[string]string{"total": "gpuMS"}
+		if event.Detail["scope"] == "passes" {
+			keys = map[string]string{"shadow": "shadowMS", "main": "mainMS", "scene": "sceneMS"}
+		} else if event.Detail["scope"] != "frame" {
+			continue
+		}
+		for name, key := range keys {
+			value, ok := event.Detail[key].(float64)
+			if !ok || !validMetricNumber(value) || value < 0 {
+				continue
+			}
+			groups[name] = append(groups[name], SceneTelemetrySample{
+				NumericValue: value, StartTime: event.StartTime, Phase: telemetryPhase(event.StartTime, snapshot.WarmAt),
+			})
+		}
+	}
+	for name, samples := range groups {
+		series := buildTelemetrySeries("event:gosx:scene3d:perf:gpu-timestamp", "ms", samples)
+		if name == "total" {
+			gpu.Total = &series
+		} else {
+			gpu.Passes[name] = series
+		}
+		gpu.Status = "measured"
+	}
 }
 
 func gpuPassKey(name string) string {

@@ -28,7 +28,7 @@ test("direct WebGPU post output matches HDR effect plus present byte for byte", 
           await flushAsyncWork();
         }
       }
-      const matching = h.fake.state.renderPipelines.filter(p => p.desc.label === "gosx-post-" + kind);
+      const matching = h.fake.state.renderPipelines.filter(p => p.desc.label === "gosx-post-" + kind || p.desc.label === "gosx-post-canvas-" + kind);
       const hdr = matching.find(p => p.desc.fragment.targets[0].format === "rgba16float");
       const direct = matching.find(p => p.desc.fragment.targets[0].format !== "rgba16float");
       assert.ok(hdr && direct, "both variants exist for " + kind);
@@ -89,7 +89,7 @@ test("direct WebGPU post output matches HDR effect plus present byte for byte", 
           h.renderer.render(bundle, { width, height });
           await flushAsyncWork();
           const label = h.fake.state.renderPasses.at(-1).draws[0].pipeline.desc.label;
-          const useDirect = label === "gosx-post-" + shader.kind;
+          const useDirect = label === "gosx-post-canvas-" + shader.kind;
           assert.ok(useDirect || label === "gosx-post-present");
           selected.push({ ...shader, useDirect });
         }
