@@ -508,7 +508,7 @@ func (r *fileProgramRenderer) writeLink(b *strings.Builder, node *ir.Node, env f
 
 func (r *fileProgramRenderer) renderLinkAttrs(b *strings.Builder, attrs []ir.Attr, env fileRenderEnv) {
 	for _, attr := range attrs {
-		if linkReservedAttr(attr.Name) || (attr.Kind != ir.AttrSpread && !htmlattr.ValidName(normalizeFileAttrName(attr.Name))) {
+		if linkReservedAttr(attr.Name) || (attr.Kind != ir.AttrSpread && !htmlattr.SafeAuthoredName(normalizeFileAttrName(attr.Name))) {
 			continue
 		}
 		switch attr.Kind {
@@ -1607,6 +1607,11 @@ const formErrorDescribedbyAttr = "data-gosx-form-error-describedby"
 func resolveFileAttrs(attrs []ir.Attr, env fileRenderEnv, excludeSpreadKey string) []RenderAttr {
 	out := make([]RenderAttr, 0, len(attrs))
 	for _, attr := range attrs {
+		// Authored dispatch names are inert data; only names introduced by a
+		// trusted AttrWriter can fail the profile render.
+		if attr.Kind != ir.AttrSpread && htmlattr.ReservedDispatchName(attr.Name) {
+			continue
+		}
 		switch attr.Kind {
 		case ir.AttrStatic:
 			out = append(out, RenderAttr{Name: attr.Name, Value: attr.Value})
@@ -1701,7 +1706,7 @@ func (r *fileProgramRenderer) renderResolvedAttrs(b *strings.Builder, tag string
 
 // validRenderAttrName applies the shared HTML name validator to profile output.
 func validRenderAttrName(name string) bool {
-	return htmlattr.ValidName(name)
+	return htmlattr.SafeAuthoredName(name)
 }
 
 // profileError records the first error a render profile hook causes,
@@ -1771,7 +1776,7 @@ func (r *fileProgramRenderer) componentHTMLAttrs(attrs []ir.Attr, env fileRender
 // change, renderFileAttr held 48.5% of the remaining allocated objects on a
 // depth-100 page. Direct writes cost none.
 func writeFileAttrPair(b *strings.Builder, name, value string) {
-	if !htmlattr.ValidName(name) {
+	if !htmlattr.SafeAuthoredName(name) {
 		return
 	}
 	b.WriteByte(' ')
@@ -1782,7 +1787,7 @@ func writeFileAttrPair(b *strings.Builder, name, value string) {
 }
 
 func writeFileAttrName(b *strings.Builder, name string) {
-	if !htmlattr.ValidName(name) {
+	if !htmlattr.SafeAuthoredName(name) {
 		return
 	}
 	b.WriteByte(' ')
@@ -1790,7 +1795,7 @@ func writeFileAttrName(b *strings.Builder, name string) {
 }
 
 func renderFileAttr(b *strings.Builder, attr ir.Attr, env fileRenderEnv, excludeSpreadKey string) {
-	if attr.Kind != ir.AttrSpread && !htmlattr.ValidName(attr.Name) {
+	if attr.Kind != ir.AttrSpread && !htmlattr.SafeAuthoredName(attr.Name) {
 		return
 	}
 	name := html.EscapeString(attr.Name)
@@ -1910,7 +1915,7 @@ func plainTextFileEvaluatedExpr(value any) string {
 }
 
 func renderFileEvaluatedAttr(b *strings.Builder, name string, value any) {
-	if !htmlattr.ValidName(name) {
+	if !htmlattr.SafeAuthoredName(name) {
 		return
 	}
 	safeName := html.EscapeString(name)
@@ -3559,7 +3564,7 @@ func isEngineReservedAttr(name string) bool {
 
 func (r *fileProgramRenderer) renderTextBlockExtraAttrs(b *strings.Builder, attrs []ir.Attr, env fileRenderEnv) {
 	for _, attr := range attrs {
-		if isTextBlockReservedAttr(attr.Name) || attr.Kind == ir.AttrSpread || !htmlattr.ValidName(attr.Name) {
+		if isTextBlockReservedAttr(attr.Name) || attr.Kind == ir.AttrSpread || !htmlattr.SafeAuthoredName(attr.Name) {
 			continue
 		}
 		switch attr.Kind {

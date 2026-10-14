@@ -643,7 +643,7 @@ func defaultRenderedComponent(tag string, attrs fileComponentHTMLAttrs, children
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if !htmlattr.SafeSpreadName(name) && !(attrs.authoredStyles[name] && strings.EqualFold(name, "style") && htmlattr.ValidName(name)) {
+		if !htmlattr.SafeSpreadName(name) && !(attrs.authoredStyles[name] && strings.EqualFold(name, "style") && htmlattr.SafeAuthoredName(name)) {
 			continue
 		}
 		value := attrs.values[name]

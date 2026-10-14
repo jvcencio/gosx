@@ -36,6 +36,7 @@ import (
 	"unicode"
 
 	gotreesitter "github.com/odvcencio/gotreesitter"
+	"m31labs.dev/gosx/internal/htmlattr"
 	"m31labs.dev/gosx/internal/strictcomponent"
 )
 
@@ -74,6 +75,9 @@ type lowerer struct {
 	strictServer bool
 
 	scalarTypeShadows map[string]bool
+	// inIsland is true while the body of a //gosx:island component is being
+	// lowered. Reserved dispatch attribute names are rejected only there.
+	inIsland bool
 
 	// legacyProps records every legacy (func-spelled) renderer's declared
 	// props type text, and typedLegacyProps the subset whose base type is a
@@ -2693,6 +2697,23 @@ func (l *lowerer) validateStrictConditionalCall(n *gotreesitter.Node, attrs []At
 	}
 }
 
+// validateReservedGosxAttrs rejects an authored dispatch-marker attribute on an
+// HTML element inside an island. HTML keeps the first of two duplicate
+// attributes and authored attributes render before the synthesized markers, so
+// an authored data-gosx-on-click would choose which handler fires.
+func (l *lowerer) validateReservedGosxAttrs(n *gotreesitter.Node, tag string, attrs []Attr) {
+	if !l.inIsland || IsComponent(tag) {
+		return
+	}
+	for _, attr := range attrs {
+		if attr.Kind == AttrSpread || !htmlattr.ReservedDispatchName(attr.Name) {
+			continue
+		}
+		l.errorf(n, "attribute %q is reserved: the island renderer generates it for event dispatch, and an authored value would override the real handler", attr.Name)
+		l.hintLast("use a non-reserved name such as data-app-" + strings.TrimPrefix(strings.ToLower(attr.Name), "data-gosx-"))
+	}
+}
+
 func (l *lowerer) validateStrictHTMLElement(n *gotreesitter.Node, tag string, attrs []Attr) {
 	if !l.strictServer || IsComponent(tag) {
 		return
@@ -2810,7 +2831,10 @@ func (l *lowerer) lowerFunctionDecl(n *gotreesitter.Node) {
 	prevLegacyPropsName := l.currentLegacyPropsName
 	l.currentLegacyComponent = name
 	l.currentLegacyPropsName = propsName
+	prevInIsland := l.inIsland
+	l.inIsland = l.hasIslandDirective(n)
 	rootID := l.lowerGSXNode(gsxRoot)
+	l.inIsland = prevInIsland
 	l.currentLegacyComponent = prevLegacyComponent
 	l.currentLegacyPropsName = prevLegacyPropsName
 
@@ -2918,7 +2942,10 @@ func (l *lowerer) lowerStrictComponentDecl(n *gotreesitter.Node) {
 	l.strictServer = !isIsland && !isEngine
 	l.currentStrictComponent = componentName
 	l.currentStrictPropsType = propsType
+	prevInIsland := l.inIsland
+	l.inIsland = isIsland
 	rootID := l.lowerGSXNode(gsxRoot)
+	l.inIsland = prevInIsland
 	l.strict = wasStrict
 	l.strictServer = wasStrictServer
 	l.currentStrictComponent = prevComponent
@@ -3799,6 +3826,7 @@ func (l *lowerer) lowerGSXElement(n *gotreesitter.Node) NodeID {
 	l.validateStrictComponentCall(n, tag, attrs, children)
 	l.validateStrictCalleeSlots(n, tag, slots)
 	l.validateStrictHTMLElement(n, tag, attrs)
+	l.validateReservedGosxAttrs(n, tag, attrs)
 	if l.strict && !IsComponent(tag) {
 		normalizeStrictHTMLAttrs(attrs)
 	} else if IsComponent(tag) {

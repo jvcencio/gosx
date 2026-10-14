@@ -389,6 +389,7 @@
     var target = targetFor(selector);
     if (!target) return false;
     var attribute = trigger.getAttribute("data-gosx-toggle-attribute") || "data-gosx-open";
+    if (gosxHost.attributes.isReservedDispatchName(attribute)) return false;
     var open = forceClose ? false : !target.hasAttribute(attribute);
     if (open) target.setAttribute(attribute, "true");
     else target.removeAttribute(attribute);
@@ -462,7 +463,7 @@
       var targetName = mapping.slice(0, split).trim();
       var sourceName = mapping.slice(split + 1).trim();
       var value = source.getAttribute(sourceName);
-      if (!targetName) return;
+      if (!targetName || gosxHost.attributes.isReservedDispatchName(targetName)) return;
       if (value === null || value === "") target.removeAttribute(targetName);
       else target.setAttribute(targetName, value);
     });
