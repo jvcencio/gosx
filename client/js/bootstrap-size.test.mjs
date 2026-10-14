@@ -1722,7 +1722,10 @@ const budgets = [
   // grew to 12900 / 5100 / 4700 for M3 controls. Lifecycle fixes in
   // rounds 1-3 add 539 / 176 / 164 over the first M3; these targets
   // and the governed allowances still cover the reviewed output.
-  { file: "bootstrap-feature-workbench.js", raw: 12900, gzip: 5100, brotli: 4700 },
+  // Studio shell S0: command.Action.Submit (owner approved 2026-10-13).
+  // Measured 13421 / 5166 / 4738; delta +445 / +159 / +140. Targets are the
+  // measurement rounded up to 100 bytes.
+  { file: "bootstrap-feature-workbench.js", raw: 13500, gzip: 5200, brotli: 4800 },
 ];
 
 const routeBudgets = [
