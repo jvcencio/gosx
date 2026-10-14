@@ -19906,7 +19906,7 @@
   // Selena's current draw record supplies uniforms; persistent owners hold
   // GPU resources. Keep this selector independent of the renderer closure.
   function sceneWebGPUMeshCacheOwner(mesh: any, material: any, ownerForID: any, namespace = "selena"): any {
-    return mesh && mesh.id ? ownerForID(mesh.id, namespace) : (mesh && mesh.resourceOwner || mesh || material);
+    return mesh && mesh.id ? ownerForID(mesh.id, undefined, namespace) : (mesh && mesh.resourceOwner || mesh || material);
   }
 
   function sceneWebGPURetainedFrameSources(objects: any[], sourceForObject: any): WeakSet<object> {
