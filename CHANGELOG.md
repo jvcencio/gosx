@@ -27,6 +27,9 @@
 - Preserve integer JSON literals in Scene3D props during hydration, including
   values above the exact float64 integer range.
 
+- Make `sky.blur` take effect on WebGPU image environment maps, matching
+  WebGL. Scenes tuned on WebGPU now look blurrier where blur is set.
+
 - Add pre-Build trusted proxy policies and one cached `ClientIP` resolver.
   Normalize genuine peers and bounded X-Forwarded-For chains without changing
   RemoteAddr or origin policies. Nested handlers and completion observers share
