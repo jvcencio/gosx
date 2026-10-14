@@ -9,7 +9,21 @@ import (
 
 	"m31labs.dev/gosx/scene"
 	"m31labs.dev/selena"
+	"m31labs.dev/selena/parse"
 )
+
+// Bind helper locals through Selena's library lowering, so an inlined hash
+// computes each intermediate once instead of expanding it at every use.
+func compileCloudSurface() (selena.Result, error) {
+	program, err := parse.Program(scene.SelenaCloudSource)
+	if err != nil {
+		return selena.Result{}, err
+	}
+	for i := range program.Funcs {
+		program.Funcs[i].BindLocals = true
+	}
+	return selena.CompileProgram(program, selena.CompileOptions{Targets: []selena.Target{selena.TargetGLSL, selena.TargetWGSL}})
+}
 
 // cloudLibrary adapts Selena's emitted post surface to the renderer's shared
 // cloud function. It removes only the entry-point ABI; scattering stays in .sel.
@@ -57,7 +71,7 @@ func generateCloudLibrary(dir string, check bool) error {
 	if len(requested) == 0 {
 		return nil
 	}
-	result, err := selena.Compile(scene.SelenaCloudSource, selena.CompileOptions{Targets: []selena.Target{selena.TargetGLSL, selena.TargetWGSL}})
+	result, err := compileCloudSurface()
 	if err != nil {
 		return fmt.Errorf("Selena clouds: %w", err)
 	}
