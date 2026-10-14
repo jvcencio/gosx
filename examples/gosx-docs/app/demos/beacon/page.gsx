@@ -102,7 +102,14 @@ func Page() Node {
 				</details>
 				<p class="bgb__journal-status" role="status" data-coast-status>Explore at your own pace.</p>
 			</details>
-			<button class="bgb__spyglass-toggle" type="button" data-coast-spyglass aria-pressed="false" aria-controls="coast-spyglass" disabled>Spyglass</button>
+			<button
+				class="bgb__spyglass-toggle"
+				type="button"
+				data-coast-spyglass
+				aria-pressed="false"
+				aria-controls="coast-spyglass"
+				disabled
+			>Spyglass</button>
 		</div>
 		<section class="bgb__spyglass" id="coast-spyglass" aria-label="Spyglass instruments" hidden>
 			<div class="bgb__spyglass-lens" aria-hidden="true"><span></span></div>
