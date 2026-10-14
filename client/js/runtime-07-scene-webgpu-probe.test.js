@@ -27,7 +27,7 @@ const {
 test("Scene3D animation loop supports foreground frame caps", () => {
   const mount = readSceneMountSrc();
 
-  assert.match(mount, /function sceneAnimationFrameIntervalMS\(\)/);
+  assert.match(mount, /function sceneAnimationFrameIntervalMS\(reason\)/);
   assert.match(mount, /props && props\.frameIntervalMS/);
   assert.match(mount, /props && props\.maxFrameRate/);
   assert.match(mount, /props && props\.maxFPS/);
