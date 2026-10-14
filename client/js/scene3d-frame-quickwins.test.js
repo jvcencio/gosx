@@ -237,3 +237,25 @@ test("settling WebGPU has no extra animation-frame boundary", async () => {
   assert.equal(prepared, 1);
   assert.equal(frames, 0);
 });
+
+test("named materials reuse the WebGL rigid key across persistent-state frames", () => {
+  const api = sceneCore();
+  sourceSection(readSceneRendererBackendSrc("webgl"), "  var sceneGLConstantCache = new WeakMap();",
+    "  function scenePBRHDRIBLTextureMinimum(", api);
+  const state = api.createSceneState({ scene: { materials: [{ id: "m", color: "#112233" }],
+    objects: [{ id: "box", kind: "box", material: "m", wireframe: false }] } }, { tier: "full" });
+  let first;
+  let hits = 0;
+  for (let frame = 0; frame < 30; frame++) {
+    const bundle = api.createSceneRenderBundle(640, 480, "#000000", { x: 0, y: 0, z: 5 },
+      api.sceneStateObjectsWithMaterials(state), [], [], [], [], {}, 0, [], [], [], [], [], 0, false,
+      { retainedGeometry: true });
+    const obj = bundle.meshObjects[0];
+    const prior = obj.resourceOwner._rigidBatchKeyCache;
+    api.sceneRigidBatchKey(obj, true);
+    if (prior === obj.resourceOwner._rigidBatchKeyCache) hits++;
+    if (!first) first = obj.resourceOwner;
+    assert.equal(obj.resourceOwner, first);
+  }
+  assert.equal(hits, 29, "29 cache hits after the initial miss");
+});
