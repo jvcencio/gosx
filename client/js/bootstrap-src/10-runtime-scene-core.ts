@@ -3439,6 +3439,7 @@
 
   function sceneApplyNamedMaterialToObject(object, material) {
     const resolved = Object.assign({}, object, {
+      resourceOwner: object.resourceOwner || object,
       // Named materials are public live state. A derived wrapper cannot keep
       // the engine-owned immutable material promise used by rigid batching.
       _rigidMaterialProfileStable: false,
@@ -5540,7 +5541,6 @@
           vertices: candidate.vertices,
           directVertices: true,
           retainedGeometry: true,
-          resourceOwner: object,
           geometryRevision: candidate.revision,
           modelMatrix: group.matrices[0],
           instanceMatrices: group.matrices,
@@ -6425,6 +6425,7 @@
     if (sceneMeshObjectEffectivelyInvisible(object, material)) {
       return;
     }
+    const resourceOwner = object.resourceOwner || object;
     const materialIndex = sceneBundleMaterialIndex(bundle, materialLookup, material);
     const outlineColor = emitsSelectionEdges ? (authoredOutlineColor || "#facc15") : "";
     const outlineWidth = emitsSelectionEdges ? Math.max(2, authoredOutlineWidth || 3) : 0;
@@ -6477,9 +6478,9 @@
         depthWrite: object.depthWrite, bounds, depthNear: depth.near, depthFar: depth.far, depthCenter: depth.center,
         viewCulled: false, doubleSided: Boolean(object.doubleSided), skin: null, _crowdSkin: object._crowdSkin,
         _crowdMotion: motion || null,
-        vertices, directVertices: true, retainedGeometry: true, resourceOwner: object, geometryRevision: 0,
+        vertices, directVertices: true, retainedGeometry: true, resourceOwner, geometryRevision: 0,
         modelMatrix, vertexOffset: 0, vertexCount: vertices.count };
-      sceneStampRetainedMeshCSSInput(meshRecord, object);
+      sceneStampRetainedMeshCSSInput(meshRecord, resourceOwner);
       bundle.meshObjects.push(meshRecord);
       bundle.retainedMeshObjectCount += 1;
       bundle.retainedMeshVertexCount += vertices.count;
@@ -6518,14 +6519,14 @@
         vertices: vertices,
         directVertices: true,
         retainedGeometry: retained,
-        resourceOwner: retained ? object : undefined,
+        resourceOwner: retained ? resourceOwner : undefined,
         geometryRevision: retained ? geometryRevision : undefined,
         modelMatrix: sceneObjectModelMatrix(object, timeSeconds),
         vertexOffset: 0,
         vertexCount: Math.max(0, Math.floor(sceneNumber(vertices.count, 0))),
       };
       if (retained) {
-        sceneStampRetainedMeshCSSInput(meshRecord, object);
+        sceneStampRetainedMeshCSSInput(meshRecord, resourceOwner);
         bundle.retainedMeshObjectCount += 1;
         bundle.retainedMeshVertexCount += meshRecord.vertexCount;
         bundle.retainedGeometryTelemetry.retained += 1;
@@ -6562,13 +6563,13 @@
           vertices,
           directVertices: true,
           retainedGeometry: true,
-          resourceOwner: object,
+          resourceOwner,
           geometryRevision,
           modelMatrix,
           vertexOffset: 0,
           vertexCount,
         };
-        sceneStampRetainedMeshCSSInput(meshRecord, object);
+        sceneStampRetainedMeshCSSInput(meshRecord, resourceOwner);
         bundle.meshObjects.push(meshRecord);
         bundle.retainedMeshObjectCount += 1;
         bundle.retainedMeshVertexCount += vertexCount;
