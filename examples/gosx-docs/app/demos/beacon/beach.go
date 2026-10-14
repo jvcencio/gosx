@@ -183,7 +183,7 @@ func blackglassBeachProgram(viewID, periodID string, interactive bool) scene.Pro
 		Graph: scene.NewGraph(append([]scene.Node{
 			scene.DirectionalLight{ID: "sun", Color: period.SunColor, Intensity: period.SunPower, Direction: scene.Vec3(-sun.X, -sun.Y, -sun.Z),
 				CastShadow: true, ShadowBias: -0.0018, ShadowSize: 2048, ShadowCascades: 3, ShadowSoftness: 1.5},
-			scene.DirectionalLight{ID: "night-fill", Color: "#a8c4e8", Direction: scene.Vec3(0, -1, 0)},
+			scene.DirectionalLight{ID: "night-fill", Color: "#a8c4e8", Intensity: .001, Direction: scene.Vec3(0, -1, 0)},
 			scene.Model{ID: "beach", Src: blackglassBeachModelRoot + "beach-v2.glb", Bounds: 90, CastShadow: true, ReceiveShadow: true, Detail: blackglassBeachDetail()},
 			scene.Model{ID: "sea-stacks", Src: blackglassBeachModelRoot + "stacks-v2.glb", Bounds: 60, CastShadow: true, ReceiveShadow: true, Detail: blackglassBeachRockDetail()},
 			scene.Model{ID: "jetty", Src: blackglassBeachModelRoot + "jetty.glb", CastShadow: true, ReceiveShadow: true},
@@ -254,7 +254,7 @@ func BlackglassBeachExperience(viewID, periodID string) scene.Experience {
 		DayCycle: &scene.DayCycle{
 			DurationSeconds: 1080, InitialHour: hour,
 			SunLightID: "sun", SunAzimuth: 90, PeakElevation: 55,
-			NightLightID: "night-fill", NightIntensity: .28, NightEnvIntensity: .075,
+			NightLightID: "night-fill", NightIntensity: 1.15, NightEnvIntensity: .18,
 			Seed: uint32(beachgen.Seed), Weather: true,
 			InputSignal: "$blackglass.timeAutomatic", OutputSignal: "$blackglass.day",
 		},
