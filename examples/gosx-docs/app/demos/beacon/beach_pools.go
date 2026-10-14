@@ -26,15 +26,27 @@ func blackglassBeachPoolLevel(x, z, radius float64) float64 {
 
 func blackglassBeachPools() []scene.Node {
 	water := scene.StandardMaterial{Color: "#183c40", Roughness: .035, Clearcoat: 1, IOR: scene.Float(1.333),
-		RimColor: &[3]float64{.55, .72, .8}, RimPower: 5, RimStrength: .3}
+		Opacity: scene.Float(.48), RimColor: &[3]float64{.55, .72, .8}, RimPower: 5, RimStrength: .3}
 	rim := scene.BufferGeometry{Immutable: true, Revision: 1}
 	nodes := make([]scene.Node, 0, 4)
 	for i, site := range blackglassBeachPoolSites() {
 		x, z, radius := site[0], site[1], site[2]
 		level := blackglassBeachPoolLevel(x, z, radius)
+		// One surface avoids blending a cylinder's top, bottom and side caps
+		// through each other. Only thirteen retained vertices are needed.
+		disc := scene.BufferGeometry{Immutable: true, Revision: 1,
+			Positions: []float64{0, 0, 0}, Normals: []float64{0, 1, 0}}
+		for s := 0; s < 12; s++ {
+			a := 2 * math.Pi * float64(s) / 12
+			disc.Positions = append(disc.Positions, momentRound(radius*math.Cos(a)), 0, momentRound(radius*math.Sin(a)))
+			disc.Normals = append(disc.Normals, 0, 1, 0)
+			disc.Indices = append(disc.Indices, 0, (s+1)%12+1, s+1)
+		}
 		nodes = append(nodes, scene.Mesh{ID: fmt.Sprintf("tide-pool-%d", i),
-			Geometry: scene.CylinderGeometry{RadiusTop: radius, RadiusBottom: radius, Height: .02, Segments: 12},
-			Position: scene.Vec3(x, level-.01, z), Material: water, ReceiveShadow: true})
+			Geometry: disc,
+			Position: scene.Vec3(x, level, z), Material: water, ReceiveShadow: true,
+			DepthWrite:  scene.Bool(true),
+			Interactive: true, Label: []string{"Inspect the starfish pool", "Inspect the anemone pool", "Inspect the limpet pool"}[i]})
 		point := func(angle, r float64, inner bool) scene.Vector3 {
 			px, pz := x+r*math.Cos(angle), z+r*math.Sin(angle)
 			y := beachgen.TerrainHeight(px, pz, beachgen.Seed) + .018

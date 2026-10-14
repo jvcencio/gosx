@@ -241,6 +241,7 @@
     },
     {
       "name": "bootstrap-feature-scene3d.js",
+      "sourceMap": "debug-only",
       "sources": [
         "bootstrap-src/26d-feature-scene3d-prefix.ts",
         "../runtime/scene3d/script-loader.ts",
@@ -286,6 +287,7 @@
     },
     {
       "name": "bootstrap-feature-scene3d-webgl.js",
+      "sourceMap": "debug-only",
       "sources": [
         "bootstrap-src/26j-feature-scene3d-webgl-prefix.ts",
         "bootstrap-src/15a1-scene-texture-budget.ts",
@@ -325,6 +327,7 @@
     },
     {
       "name": "bootstrap-feature-scene3d-webgpu.js",
+      "sourceMap": "debug-only",
       "sources": [
         "bootstrap-src/26e-feature-scene3d-webgpu-prefix.ts",
         "bootstrap-src/26e1-feature-scene3d-webgpu-compute-bridge.ts",
@@ -361,6 +364,7 @@
     {
       "name": "bootstrap-feature-scene3d-vessel.js",
       "sources": [
+        "../runtime/scene3d/vessel-navigation.ts",
         "../runtime/scene3d/vessel-physics.ts",
         "../runtime/scene3d/vessel-input.ts",
         "../runtime/scene3d/vessel-model.ts",
@@ -375,6 +379,12 @@
       ]
     },
     {
+      "name": "bootstrap-feature-scene3d-model-preparation.js",
+      "sources": [
+        "../runtime/scene3d/model-preparation.ts"
+      ]
+    },
+    {
       "name": "bootstrap-feature-scene3d-timeline.js",
       "sources": [
         "../runtime/scene3d/timeline.ts"
@@ -383,6 +393,7 @@
     {
       "name": "bootstrap-feature-scene3d-zoom.js",
       "sources": [
+        "../runtime/scene3d/mount-pan.ts",
         "../runtime/scene3d/mount-zoom.ts"
       ]
     },
@@ -390,6 +401,7 @@
       "name": "bootstrap-feature-scene3d-walk.js",
       "sources": [
         "../runtime/scene3d/walk-surfaces.ts",
+        "../runtime/scene3d/walk-input.ts",
         "../runtime/scene3d/mount-walk.ts"
       ]
     },

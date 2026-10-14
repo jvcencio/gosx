@@ -39,11 +39,15 @@ def read_regular(path):
 
 def browser_files(source, wasm_dir):
     chunks = json.loads(read_regular(source / "client/js/bootstrap-src/chunks.json"))
-    names = [entry["name"] for entry in chunks["chunks"]]
+    entries = chunks["chunks"]
+    names = [entry["name"] for entry in entries]
     if not names or len(names) != len(set(names)):
         raise ValueError("empty or duplicate browser chunk names")
     if any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.js", name) for name in names):
         raise ValueError("unsafe browser chunk name")
+    for entry in entries:
+        if entry.get("sourceMap", "") not in ("", "debug-only"):
+            raise ValueError(f"unsupported sourceMap policy for chunk {entry['name']!r}")
     files = {f"wasm/{name}": read_regular(wasm_dir / name) for name in WASM_FILES}
     # build-runtime writes these only when compression reduces transfer size.
     for name in WASM_FILES:
@@ -53,8 +57,14 @@ def browser_files(source, wasm_dir):
             sidecar = wasm_dir / (name + suffix)
             if sidecar.exists() or sidecar.is_symlink():
                 files[f"wasm/{name}{suffix}"] = read_regular(sidecar)
-    for name in names:
-        for suffix in ("", ".br", ".gz", ".map"):
+    for entry in entries:
+        name = entry["name"]
+        # The generator omits debug-only maps from release output, and the
+        # repository manifest forbids tracking them as release artifacts.
+        suffixes = ("", ".br", ".gz")
+        if entry.get("sourceMap", "") != "debug-only":
+            suffixes += (".map",)
+        for suffix in suffixes:
             files[f"client/js/{name}{suffix}"] = read_regular(source / "client/js" / (name + suffix))
     for name in EXTRA_JS:
         files[f"client/js/{name}"] = read_regular(source / "client/js" / name)

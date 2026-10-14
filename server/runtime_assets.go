@@ -1,6 +1,7 @@
 package server
 
 import (
+	"m31labs.dev/gosx/internal/filepolicy"
 	"mime"
 	"net/http"
 	"os"
@@ -427,6 +428,8 @@ func (a *App) runtimeCompatBuiltPath(root, name string) (string, bool) {
 		return runtimeManifestAssetPath(assetsDir, "runtime", manifest.Runtime.BootstrapFeatureScene3DCompute.File)
 	case "bootstrap-feature-scene3d-walk.js":
 		return runtimeManifestAssetPath(assetsDir, "runtime", manifest.Runtime.BootstrapFeatureScene3DWalk.File)
+	case "bootstrap-feature-scene3d-model-preparation.js":
+		return runtimeManifestAssetPath(assetsDir, "runtime", manifest.Runtime.BootstrapFeatureScene3DModelPreparation.File)
 	case "bootstrap-feature-scene3d-particle-burst.js":
 		return runtimeManifestAssetPath(assetsDir, "runtime", manifest.Runtime.BootstrapFeatureScene3DParticleBurst.File)
 	case "bootstrap-feature-scene3d-zoom.js":
@@ -509,6 +512,17 @@ func (a *App) runtimeBuildManifest(root string) (*buildmanifest.Manifest, bool) 
 	if a == nil {
 		return nil, false
 	}
+	runtimeMetaInitMu.Lock()
+	cache := a.runtimeMeta
+	runtimeMetaInitMu.Unlock()
+	if cache != nil && filepolicy.Immutable() {
+		cache.mu.Lock()
+		manifest, cacheRoot := cache.manifest, cache.root
+		cache.mu.Unlock()
+		if manifest != nil && cacheRoot == root {
+			return manifest, true
+		}
+	}
 	manifestPath := filepath.Join(root, "build.json")
 	info, err := os.Stat(manifestPath)
 	if err != nil || info.IsDir() {
@@ -519,7 +533,7 @@ func (a *App) runtimeBuildManifest(root string) (*buildmanifest.Manifest, bool) 
 	if a.runtimeMeta == nil {
 		a.runtimeMeta = &runtimeManifestCache{}
 	}
-	cache := a.runtimeMeta
+	cache = a.runtimeMeta
 	runtimeMetaInitMu.Unlock()
 
 	modTime := info.ModTime().UTC()

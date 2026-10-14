@@ -18,6 +18,8 @@ func init() {
 func demoLayoutBindings(ctx *route.RouteContext, page route.FilePage, _ any) route.FileTemplateBindings {
 	current, hasCurrent := currentDemoForLayout(ctx, page)
 	values := map[string]any{
+		// Blackglass has its own full-window navigation; do not ship hidden chrome.
+		"showDemoChrome":          hasCurrent && current.Slug != "beacon",
 		"currentDemoSlug":         "",
 		"demoLayoutBindingSource": nil,
 		"demoLayoutBindingAttrs":  nil,
@@ -49,6 +51,12 @@ func demoLayoutBindings(ctx *route.RouteContext, page route.FilePage, _ any) rou
 	return route.FileTemplateBindings{
 		Values: values,
 		Funcs: map[string]any{
+			"demoNativeNavigation": func(slug string) any {
+				if hasCurrent && demoNativeNavigation(current.Slug) != nil {
+					return "true"
+				}
+				return demoNativeNavigation(slug)
+			},
 			"Demos":         Demos,
 			"demoValues":    demoValues,
 			"demoSourceURL": demoSourceURL,

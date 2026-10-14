@@ -41,7 +41,9 @@ const (
 
 // TrafficEvent excludes WebSocket framing, compression and control messages.
 // Written is true only after a successful outbound write. QueueDepth is -1
-// unless a queue sample accompanies an enqueue. Count zero means one event.
+// unless a queue sample accompanies an enqueue. Snapshot samples report the
+// pending frame count after the offer; replacements have Replaced=true and do
+// not count as Dropped. Count zero means one event.
 // Broadcast queue/drop callbacks coalesce identical samples with Count and a
 // nil Client; this preserves their multiplicity outside the fanout lock.
 // Message with Dropped=true accounts for every full-queue drop. Broadcast's
@@ -49,6 +51,8 @@ const (
 type TrafficEvent struct {
 	Direction  Direction
 	Binary     bool
+	Snapshot   bool // application snapshot lane; Binary is also true
+	Replaced   bool // pending snapshot frame superseded, not a full-queue drop
 	Bytes      int
 	QueueDepth int
 	Written    bool

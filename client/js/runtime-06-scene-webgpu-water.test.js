@@ -46,6 +46,7 @@ test("bootstrap keeps WebGPU Scene3D PBR mesh attributes on packed scene GPU buf
   const bindSceneBuffer = source.slice(source.indexOf("function webGPUBindSceneMeshVertexBuffer"), source.indexOf("// -----------------------------------------------------------------------\n    // Draw list construction"));
   const shadowPass = source.slice(source.indexOf("function renderShadowPass"), source.indexOf("// -----------------------------------------------------------------------\n    // PBR object drawing"));
   const drawPBR = source.slice(source.indexOf("function drawPBRObjects"), source.indexOf("function instancedMeshCount"));
+  const bindWorld = source.slice(source.indexOf("function wgpuBindWorldMeshBuffers"), source.indexOf("function createSceneWebGPURenderer"));
   const skinnedBind = source.slice(source.indexOf("function webGPUBindElioSkinnedBuffers"), source.indexOf("// -----------------------------------------------------------------------\n    // Shadow Pass"));
 
   // wgpuStablePBRAttributeBuffer caches each attribute on a renderer-scoped,
@@ -64,10 +65,10 @@ test("bootstrap keeps WebGPU Scene3D PBR mesh attributes on packed scene GPU buf
   assert.doesNotMatch(shadowPass, /shadowPositionBuffer\s*=\s*wgpuEnsureBufferData/);
   assert.doesNotMatch(shadowPass, /sliceToFloat32/);
 
-  assert.match(drawPBR, /webGPUBindSceneMeshVertexBuffer\(pass,\s*0,\s*pbrBuffers && pbrBuffers\.positions/);
-  assert.match(drawPBR, /webGPUBindSceneMeshVertexBuffer\(pass,\s*1,\s*pbrBuffers && pbrBuffers\.normals/);
-  assert.match(drawPBR, /webGPUBindSceneMeshVertexBuffer\(pass,\s*2,\s*pbrBuffers && pbrBuffers\.uvs/);
-  assert.match(drawPBR, /webGPUBindSceneMeshVertexBuffer\(pass,\s*3,\s*pbrBuffers && pbrBuffers\.tangents/);
+  assert.match(drawPBR, /wgpuBindWorldMeshBuffers\(pass,\s*pbrBuffers\)/);
+  assert.match(drawPBR, /pass\.draw\(count,\s*1,\s*offset\)/);
+  assert.match(bindWorld, /\[buffers\.positions, buffers\.normals, buffers\.uvs, buffers\.tangents\]/);
+  assert.match(bindWorld, /pass\.setVertexBuffer\(slot,\s*record\.buffer,\s*0\)/);
   assert.doesNotMatch(drawPBR, /sliceToFloat32/);
   assert.doesNotMatch(drawPBR, /positionBuffer\s*=\s*wgpuEnsureBufferData/);
   assert.doesNotMatch(drawPBR, /normalBuffer\s*=\s*wgpuEnsureBufferData/);
@@ -1802,8 +1803,25 @@ test("Scene3D fixed-clock backend contracts skip zero-tick work and retain event
   assert.doesNotMatch(webgpu, /if \(hasSimulationTick && runWaterSim\) \{\s*var normalResult/);
   assert.match(webgpu, /Math\.floor\(Math\.max\(0, waterClock\.tickSeq \|\| 0\) \/ expensivePassCadence\)/);
 
-  assert.equal((mount.match(/sceneRenderWithTiming\([^;]*createSceneRenderFrameMeta\(/g) || []).length, 3,
-    "every mount render seam must pass frame metadata");
+  function frameSeam(name, next) {
+    const start = mount.indexOf(`function ${name}(`);
+    const end = mount.indexOf(`function ${next}(`, start);
+    assert.ok(start >= 0 && end > start, `${name} must have an inspectable render seam`);
+    return mount.slice(start, end);
+  }
+  const sharedFrame = frameSeam("renderMountedFrame", "renderFrame");
+  assert.match(sharedFrame, /const frameMeta = createSceneRenderFrameMeta\(now\);\s*const frameOutcome = sceneRenderWithTiming\(renderer, bundle, viewport, frameMeta, renderTiming\);/,
+    "shared completion captures current owning metadata for the exact bundle renderer attempt");
+  assert.match(sharedFrame, /finishSceneSubmission\(frameOutcome, frameMeta\)/,
+    "submission admission uses the same renderer outcome and captured metadata");
+  const normalFrame = frameSeam("renderFrame", "maybeEmitRenderEmpty");
+  assert.match(normalFrame, /latestBundle = effectiveBundle;[\s\S]*renderMountedFrame\(effectiveBundle, now, frameStart\);/,
+    "runtime frames preserve their effective bundle snapshot through shared completion");
+  assert.match(normalFrame, /renderMountedFrame\(latestBundle, now, frameStart, true\);/,
+    "ordinary frames pass their latest bundle and retain the native empty-frame diagnostic");
+  const restoredFrame = frameSeam("renderLatestSceneBundle", "emitRendererWarmup");
+  assert.match(restoredFrame, /const frameMeta = createSceneRenderFrameMeta\(null\);\s*const frameOutcome = sceneRenderWithTiming\(renderer, latestBundle, viewport, frameMeta, renderTiming\);\s*finishSceneSubmission\(frameOutcome, frameMeta\);/,
+    "restore captures independent owning metadata before rendering and admitting its retained bundle");
   assert.match(fs.readFileSync(path.join(__dirname, "../runtime/scene3d/mount-telemetry.ts"), "utf8"), /renderer\.render\(bundle, viewport, meta\)/);
   assert.match(mount, /renderer\.setLifecycle\(\{\s*nowMS:[\s\S]*active:[\s\S]*paused:[\s\S]*disposed:[\s\S]*reason:/);
   assert.match(mount, /if \(!active \|\| paused \|\| disposing\) lastSceneRenderNowMS = null/);

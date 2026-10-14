@@ -162,12 +162,18 @@ jobs:
   # Ordinary tests still gate all nine. A second scoped perf/ouroboros race run
   # retains every fixture-sized test plus direct concurrent coverage of its
   # mutex-protected network capture. The broad lane includes the expensive BC7
-  # and vector-search kernels omitted from pull requests and keeps a 40-minute
-  # per-package alarm inside this 50-minute job ceiling.
+  # and vector-search kernels omitted from pull requests and keeps a bounded
+  # 60-minute per-package alarm. perf/wire took 2388.913 seconds in main run
+  # 38175972851, then exhausted the 40-minute package alarm in 38182172138
+  # while starting another short loader-reference test. Main run 38170524231
+  # spent 28.5 minutes in CLI tests
+  # before the 50-minute job ceiling cancelled active IR, budget, and wire
+  # tests. Pushes get 90 minutes for the full suite and scoped second phase;
+  # pull requests keep their 50-minute ceiling.
   go-race-tests:
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: ${{ github.event_name == 'push' && 90 || 50 }}
 
     steps:
       - name: Check out repository
@@ -321,8 +327,41 @@ jobs:
       - name: JavaScript runtime contract tests
         run: make test-js NODE_TEST_GROUP=runtime
 
+      # Match the wire gate's fail-closed base fetch. The startup allowlist
+      # may only shrink; unreadable or unfetched base revisions fail the test.
+      - name: Fetch base branch for startup asset hint ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -eu
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            exit 0
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --quiet --no-tags --depth=1 origin "$BASE_SHA"
+          fi
+          echo "PERF_STARTUP_BASE_REF=$BASE_SHA" >>"$GITHUB_ENV"
+
       - name: Performance asset graph tests
         run: make test-perf-graph
+
+      # Use the same verified base-tree comparison as wire-gates. Work
+      # budgets reuse wire.Ratchet without a raise map, so they only fall.
+      - name: Fetch base branch for Scene3D work ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -eu
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            exit 0
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --quiet --no-tags --depth=1 origin "$BASE_SHA"
+          fi
+          echo "PERF_BUDGET_BASE_REF=$BASE_SHA" >>"$GITHUB_ENV"
+
+      - name: Scene3D work budget fixture and down-only ratchet
+        run: GOWORK=off go test -count=1 ./perf/budgets
 
   # js-tests-b: the Node suite's `other` group (`make test-js-node
   # NODE_TEST_GROUP=other`, every file except the runtime-NN suites, which

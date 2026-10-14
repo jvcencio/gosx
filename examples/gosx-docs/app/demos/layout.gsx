@@ -11,11 +11,16 @@ func Layout() Node {
 		data-demo-slug={currentDemoSlug}
 	>
 		<div class="demos-body">
-			<If cond={currentDemoSlug != ""}>
+			<If cond={showDemoChrome}>
 				<nav id="demo-dock" class="demo-dock" aria-label="Demos">
 					<div class="demo-dock__header">
 						<p>Explore the demos</p>
-						<a class="demo-dock__overview" href="/demos" data-gosx-link="true">
+						<a
+							class="demo-dock__overview"
+							href="/demos"
+							data-gosx-native={demoNativeNavigation("")}
+							data-gosx-link="true"
+						>
 							All studies
 							<span aria-hidden="true">↗</span>
 						</a>
@@ -25,6 +30,7 @@ func Layout() Node {
 							<li class="demo-dock__item" role="listitem">
 								<a
 									href={"/demos/" + demo.Slug}
+									data-gosx-native={demoNativeNavigation(demo.Slug)}
 									class="demo-dock__link"
 									data-gosx-link="true"
 									data-demo={demo.Slug}
@@ -53,7 +59,7 @@ func Layout() Node {
 			</If>
 			<div class="demo-viewport">
 				<Slot />
-				<If cond={currentDemoSlug != ""}>
+				<If cond={showDemoChrome}>
 					<div class="demo-meta">
 						<button
 							type="button"
@@ -66,7 +72,7 @@ func Layout() Node {
 				</If>
 			</div>
 		</div>
-		<If cond={currentDemoSlug != ""}>
+		<If cond={showDemoChrome}>
 			<div class="demo-details-backdrop" data-gosx-disclosure-backdrop="#demo-details" hidden></div>
 			<aside
 				id="demo-details"

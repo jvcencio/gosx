@@ -204,6 +204,9 @@ fi
 fetch_json "/api/site" "${tmp_dir}/site.json"
 fetch_json "/healthz" "${tmp_dir}/health.json"
 fetch_json "/readyz" "${tmp_dir}/ready.json"
+if [ -f "${dist_root}/runtime-assets/blackglass-cartridge.json" ]; then
+	"$python_cmd" scripts/blackglass-cartridge.py --root "$dist_root" --verify-base "$base_url"
+fi
 
 if ! jq -e \
 	--arg frameworkVersion "$framework_version" \

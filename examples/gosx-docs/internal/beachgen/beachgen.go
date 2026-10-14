@@ -46,11 +46,15 @@ func Generate(seed int64) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	rockColor, rockRoughness, err := makeRockSurface(noise)
+	if err != nil {
+		return nil, err
+	}
 	beach, err := terrainGeometry(noise)
 	if err != nil {
 		return nil, err
 	}
-	beachGLB, err := writeGLB(beach, terrainMaterial(), []embeddedImage{{name: "albedo", data: albedo, mime: "image/jpeg"}, {name: "metallic-roughness", data: mr}, {name: "sand-normal", data: normal, mime: "image/jpeg"}})
+	beachGLB, err := writeTerrainGLB(beach, []embeddedImage{{name: "albedo", data: albedo, mime: "image/jpeg"}, {name: "metallic-roughness", data: mr}, {name: "sand-normal", data: normal, mime: "image/jpeg"}})
 	if err != nil {
 		return nil, fmt.Errorf("beach GLB: %w", err)
 	}
@@ -58,7 +62,7 @@ func Generate(seed int64) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	stacksGLB, err := writeGLB(stacks, rockMaterial(), []embeddedImage{{name: "rock-normal", data: rockNormal, mime: "image/jpeg"}})
+	stacksGLB, err := writeGLB(stacks, rockMaterial(), []embeddedImage{{name: "rock-normal", data: rockNormal, mime: "image/jpeg"}, {name: "rock-color", data: rockColor, mime: "image/jpeg"}, {name: "rock-wetness", data: rockRoughness}})
 	if err != nil {
 		return nil, fmt.Errorf("stacks GLB: %w", err)
 	}
@@ -125,26 +129,58 @@ func Write(outDir string, seed int64) error {
 // TerrainHeight evaluates the deterministic terrain surface at x,z.
 func TerrainHeight(x, z float64, seed int64) float64 { return terrainHeight(newNoise(seed), x, z) }
 
+// A shallow cove bends around the headlands. Fade its offset in the deep
+// basin so the bathymetry keeps the same offshore depth and extent.
+func shoreDistance(x, z float64) float64 {
+	// Small beach cusps interrupt the cove's broad arc. Mesh, wetness,
+	// walking and wave run-up all sample the same changing shoreline.
+	return z - (.005*x*x+2.2*math.Sin(x/17)+.45*math.Sin(x*.37)+.18*math.Sin(x*.91))*smoothstep(-38, -12, z)
+}
+
+func headlandProfile(t float64) float64 {
+	// A talus apron meets a steep eroded face. Smooth joins avoid the long,
+	// perfectly horizontal steps of the old three-ramp profile.
+	return .12*smoothstep(0, .32, t) + .81*smoothstep(.24, .78, t) + .07*smoothstep(.74, 1, t)
+}
+
+func leftCliffEdge(n noiseField, z float64) float64 {
+	// Erosion follows unequal fault blocks, rather than a row of identical
+	// vertical flutes. Broad coves and small joints have independent scales.
+	return -31 + 3.6*n.value(z*.07, 17) + 2.1*n.value(z*.21, 9) + .65*n.value(z*.73, 31)
+}
+
 func terrainHeight(n noiseField, x, z float64) float64 {
+	shore := shoreDistance(x, z)
 	var h float64
 	switch {
-	case z < 0:
-		h = math.Max(-6, .12*z)
-	case z <= 18:
-		h = .045*z + .35*smoothstep(6, 18, z)
+	case shore < 0:
+		h = math.Max(-6, .12*shore)
+	case shore <= 18:
+		h = .055*shore + .65*smoothstep(4, 18, shore)
 	default:
-		h = 1.16 + 2.34*smoothstep(18, 50, z) + 1.2*n.fbm(x/12, z/12, 4)
+		h = 1.64 + 2.1*smoothstep(18, 50, shore) + n.fbm(x/12, z/12, 4)*smoothstep(18, 28, shore)
 	}
 	sand := n.fbm(x*.17+19, z*.17-7, 4) * .08
 	h += sand
 	zGate := smoothstep(-40, -30, z)
-	left := (1 - smoothstep(-34, -28, x)) * zGate
-	right := smoothstep(34, 40, x) * zGate
+	// Spurs, coves and narrow drainage cuts change the outline at several
+	// scales. The same surface drives the mesh, walking and bathymetry.
+	leftEdge := leftCliffEdge(n, z)
+	rightEdge := 37 + 2.6*math.Sin(z*.16+1.3) + 1.1*math.Sin(z*.47)
+	depth := clamp((leftEdge+2-x)/6, 0, 1)
+	// Faults drift across the face with height. Local shelves break up the
+	// silhouette without making continuous horizontal terraces.
+	depth = clamp(depth+.12*n.fbm(z*.17+11, depth*4.8, 3)*math.Sin(math.Pi*depth), 0, 1)
+	left := headlandProfile(depth) * zGate
+	right := headlandProfile(clamp((x-rightEdge+2)/6, 0, 1)) * zGate
 	if left > 0 {
 		base := h
-		cliff := n.fbm(x/4.8+47, z/7.2-11, 5)
+		cliff := n.fbm(x/7.2+47, z/6.2-11, 4)
 		ridge := (1 - 2*math.Abs(cliff)) * 3
-		h = lerp(base, 18+ridge, left)
+		gully := 2.6 * math.Pow(1-math.Abs(n.value(z*.23, 39)), 8) * smoothstep(0, .7, left)
+		ridge -= gully
+		ridge += 1.1 * n.fbm(z*.38, depth*8.3+7, 3) * math.Sin(math.Pi*depth)
+		h = lerp(base, 18+ridge-6*(1-smoothstep(-22, 8, z)), left)
 	}
 	if right > 0 {
 		base := h
@@ -173,12 +209,36 @@ func terrainGeometry(n noiseField) (*geometry, error) {
 	}
 	for _, z := range zs {
 		for column := 0; column < columns; column++ {
-			x := -60 + 120*float64(column)/float64(columns-1)
+			// Spend the same grid on the cliffs' cross-sections, where the
+			// former metre-wide columns reduced each face to a few triangles.
+			var x float64
+			switch {
+			case column < 16:
+				x = lerp(-60, -39, float64(column)/16)
+			case column < 48:
+				x = lerp(-39, -25, float64(column-16)/32)
+			case column < 96:
+				x = lerp(-25, 29, float64(column-48)/48)
+			case column < 120:
+				x = lerp(29, 43, float64(column-96)/24)
+			default:
+				x = lerp(43, 60, float64(column-120)/8)
+			}
 			y := terrainHeight(n, x, z)
 			dx := (terrainHeight(n, x+.2, z) - terrainHeight(n, x-.2, z)) / .4
 			dz := (terrainHeight(n, x, z+.2) - terrainHeight(n, x, z-.2)) / .4
 			normal := normalize(vec3{-dx, 1, -dz})
-			g.positions = append(g.positions, x, y, z)
+			px, pz := x, z
+			if x > -39 && x < -25 {
+				// Sculpt the inaccessible upper wall in three dimensions: broken
+				// ledges protrude across the old heightfield's vertical ribs. The
+				// walkable foot and waterline retain the exact sampled ground.
+				face := smoothstep(.8, 2.5, math.Hypot(dx, dz)) * smoothstep(3, 5, y) * (1 - smoothstep(17, 21, y)) * smoothstep(-40, -37, z) * (1 - smoothstep(46, 50, z))
+				fx, fz := cliffFracture(n, y, z)
+				px += face * fx
+				pz += face * fz
+			}
+			g.positions = append(g.positions, px, y, pz)
 			g.normals = append(g.normals, normal.x, normal.y, normal.z)
 			g.uvs = append(g.uvs, (x+60)/120, (z+40)/90)
 		}
@@ -192,6 +252,10 @@ func terrainGeometry(n noiseField) (*geometry, error) {
 			g.indices = append(g.indices, a, d, b, b, d, e)
 		}
 	}
+	// Lighting must follow the sculpted faces, not the analytic heightfield
+	// gradients used to identify them before displacement.
+	clear(g.normals)
+	averageVertexNormals(g)
 	return g, nil
 }
 
@@ -202,15 +266,21 @@ func makeAlbedo(seed int64, n noiseField) ([]byte, error) {
 		for px := 0; px < 1024; px++ {
 			x := -60 + 120*float64(px)/1023
 			h := terrainHeight(n, x, z)
+			shore := shoreDistance(x, z)
 			dx := terrainHeight(n, x+.5, z) - terrainHeight(n, x-.5, z)
 			dz := terrainHeight(n, x, z+.5) - terrainHeight(n, x, z-.5)
 			rock := math.Hypot(dx, dz) > .6 || (math.Abs(x) > 34 && h > 2)
 			ao := ambientOcclusion(n, x, z, h)
-			factor := .45 + .55*ao
-			base := [3]float64{80, 74, 68}
+			factor := .7 + .3*ao
+			base := [3]float64{68, 70, 71}
 			foam := 0.0
 			if rock {
-				base = [3]float64{58, 60, 63}
+				base = [3]float64{74, 76, 75}
+				fracture := 1 - smoothstep(.025, .12, math.Abs(n.value(x*.65+h*.12, z*.28)))
+				mineral := n.fbm(x*.9, z*.6+h*.45, 3)
+				weather := n.fbm(x*.18+h*.14, z*.16, 3)
+				wet := 1 - smoothstep(.1, 1.5, h)
+				factor *= (1 + .14*mineral + .12*weather - .14*fracture) * (1 - .4*wet)
 			} else {
 				mottle := n.fbm(x/3+float64(seed%19), z/3-float64(seed%23), 3) * .10
 				streaks := n.fbm(x/9+float64(seed%7), z*1.4, 3) * .08 // wind streaks run across the beach
@@ -218,8 +288,8 @@ func makeAlbedo(seed int64, n noiseField) ([]byte, error) {
 				factor *= 1 + mottle + streaks + grain
 				// Broken filaments left by the retreating wash. The live ocean
 				// supplies moving run-up; these narrow lines remain on sand.
-				if z > .6 && z < 6 && h < .6 {
-					contour := z + .35*n.fbm(x*.15, z*.2, 3) + .08*math.Sin(x*.8)
+				if shore > .6 && shore < 6 && h < .6 {
+					contour := shore + .35*n.fbm(x*.15, z*.2, 3) + .08*math.Sin(x*.8)
 					front := math.Exp(-math.Pow((contour-1.7)/.075, 2))
 					back := .48 * math.Exp(-math.Pow((contour-4.2)/.055, 2))
 					breakup := smoothstep(-.22, .3, n.value(x*2, z*3))
@@ -227,7 +297,7 @@ func makeAlbedo(seed int64, n noiseField) ([]byte, error) {
 				}
 				// Wet sand is darker; its roughness band makes it mirror the sky.
 				wet := smoothstep(.8, .12, h)
-				if z < 12 {
+				if shore < 12 {
 					factor *= 1 - .55*wet
 				}
 			}
@@ -277,10 +347,10 @@ func makeMetalRoughness(n noiseField) ([]byte, error) {
 			slope := math.Hypot(dx, dz)
 			roughness := .8
 			if slope > .6 || (math.Abs(x) > 34 && h > 2) {
-				roughness = .70
+				roughness = lerp(.28, .84, smoothstep(.1, 1.5, h))
 			} else if h < -.2 {
 				roughness = .25
-			} else if z < 12 {
+			} else if shoreDistance(x, z) < 12 {
 				roughness = .065 + .735*smoothstep(.12, .8, h)
 			}
 			img.SetColorIndex(px, py, uint8(math.Round(clamp(roughness, 0, 1)*15)))
@@ -377,20 +447,79 @@ func terrainMaterial() map[string]any {
 			"metallicFactor":           0.0, // sand is a dielectric; the paletted MR map repeats roughness in B
 			"roughnessFactor":          1.0,
 		},
-		"normalTexture": map[string]any{"index": 2, "scale": .6, "extensions": map[string]any{"KHR_texture_transform": transform}},
+		"normalTexture": map[string]any{"index": 2, "scale": .24, "extensions": map[string]any{"KHR_texture_transform": transform}},
 	}
+}
+
+func writeTerrainGLB(g *geometry, images []embeddedImage) ([]byte, error) {
+	ground, rock := make([]uint16, 0, len(g.indices)), make([]uint16, 0, len(g.indices)/3)
+	for i := 0; i < len(g.indices); i += 3 {
+		var normalY, height, x float64
+		for _, vertex := range g.indices[i : i+3] {
+			p := int(vertex) * 3
+			normalY += g.normals[p+1] / 3
+			height += g.positions[p+1] / 3
+			x += g.positions[p] / 3
+		}
+		if (normalY < .82 && height > .4) || (math.Abs(x) > 34 && height > 2) {
+			rock = append(rock, g.indices[i:i+3]...)
+		} else {
+			ground = append(ground, g.indices[i:i+3]...)
+		}
+	}
+	mesh := *g
+	mesh.indices = append(ground, rock...)
+	basalt := terrainMaterial()
+	basalt["name"] = "Fractured basalt headlands"
+	delete(basalt, "normalTexture") // world-space basalt detail replaces the sand ripples
+	return writeGLB(&mesh, terrainMaterial(), images,
+		geometrySection{start: 0, count: len(ground)},
+		geometrySection{start: len(ground), count: len(rock), material: basalt})
 }
 
 func rockMaterial() map[string]any {
 	return map[string]any{
 		"name": "Weathered basalt",
 		"pbrMetallicRoughness": map[string]any{
-			"baseColorFactor": []float64{srgbLinear(62.0 / 255), srgbLinear(63.0 / 255), srgbLinear(66.0 / 255), 1},
-			"metallicFactor":  0,
-			"roughnessFactor": .85,
+			"baseColorTexture":         map[string]any{"index": 1},
+			"metallicRoughnessTexture": map[string]any{"index": 2},
+			"metallicFactor":           0,
+			"roughnessFactor":          1,
 		},
-		"normalTexture": map[string]any{"index": 0, "scale": .9, "extensions": map[string]any{"KHR_texture_transform": map[string]any{"scale": []float64{3, 3}}}},
+		"normalTexture": map[string]any{"index": 0, "scale": .4, "extensions": map[string]any{"KHR_texture_transform": map[string]any{"scale": []float64{3, 9}}}},
 	}
+}
+
+// Height is stored in the rock UV, so damp feet, mineral seams and dry
+// shoulders stay attached to the actual rock instead of repeating up it.
+// These small maps carry macro variation; scanned detail supplies the grain.
+func makeRockSurface(n noiseField) ([]byte, []byte, error) {
+	const width, height = 128, 256
+	albedo := image.NewNRGBA(image.Rect(0, 0, width, height))
+	palette := make(color.Palette, 16)
+	for i := range palette {
+		palette[i] = color.NRGBA{G: uint8(i * 17), A: 255}
+	}
+	roughness := image.NewPaletted(albedo.Bounds(), palette)
+	for row := range height {
+		y := -6 + 24*float64(row)/float64(height-1)
+		for col := range width {
+			a := 2 * math.Pi * float64(col) / float64(width-1)
+			x, z := math.Cos(a)*3, math.Sin(a)*3
+			mineral := fbm3(n, x, y*.28, z, 3)
+			wet := 1 - smoothstep(.1, 1.5+.35*mineral, y)
+			seam := math.Pow(1-math.Abs(noiseValue3(n, x*2.1, y*.07, z*2.1)), 10)
+			factor := (1 + .17*mineral - .1*seam) * (1 - .5*wet)
+			albedo.SetNRGBA(col, row, color.NRGBA{R: uint8(74 * factor), G: uint8((76 + wet*3) * factor), B: uint8((75 + wet*5) * factor), A: 255})
+			roughness.SetColorIndex(col, row, uint8(math.Round(clamp((.87-.62*wet+.05*mineral)*15, 0, 15))))
+		}
+	}
+	colorMap, err := encodeJPEG(albedo, 82)
+	if err != nil {
+		return nil, nil, err
+	}
+	roughnessMap, err := encodePNG(roughness)
+	return colorMap, roughnessMap, err
 }
 
 func solidMaterial(base [4]float64, roughness, metalness float64) map[string]any {
@@ -405,13 +534,20 @@ func stackGeometry(seed int64) (*geometry, error) {
 	for _, boulder := range boulderSpecs(seed) {
 		addBoulder(g, boulder, newNoise(seed+int64(boulder.id)*101), newNoise(seed))
 	}
+	// UNORM8 UVs cannot represent negative or repeated coordinates. Store
+	// the full -6..18 m height in 0..1 and tile through KHR_texture_transform;
+	// clamping worldY/8 flattened most of each stack's normal map.
+	for vertex := range len(g.positions) / 3 {
+		g.uvs[vertex*2+1] = (g.positions[vertex*3+1] + 6) / 24
+	}
 	averageVertexNormals(g)
 	return g, nil
 }
 
 type stackSpec struct {
-	x, z, height, radius, lean float64
-	seed                       int64
+	x, z, height, radius, lean    float64
+	cleftAngle, cleftDepth, taper float64
+	seed                          int64
 }
 
 type boulderSpec struct {
@@ -420,15 +556,16 @@ type boulderSpec struct {
 }
 
 func stackSpecs(seed int64) []stackSpec {
-	values := []struct{ x, z, height, radius float64 }{
-		{-16, -32, 18, 5}, {-10, -29, 6, 2}, {-21, -36, 9, 2.6},
-		{11, -46, 12, 4}, {26, -22, 2.5, 6},
+	values := []struct{ x, z, height, radius, cleftAngle, cleftDepth, taper float64 }{
+		{-16, -32, 18, 6.1, 1.05, .38, .44}, {-7, -27, 6, 2, -.6, .18, .3}, {-21, -36, 9, 2.6, 2.6, .3, .5},
+		{8, -46, 12, 4, 1.57, .32, .36}, {26, -22, 2.5, 6, .3, .1, .65},
 	}
 	rng := newRandom(seed + 0x51ac)
 	out := make([]stackSpec, len(values))
 	for i, value := range values {
 		lean := (rng.float64()*2 - 1) * math.Tan(4*math.Pi/180)
-		out[i] = stackSpec{value.x, value.z, value.height, value.radius, lean, seed + int64(i+1)*7919}
+		out[i] = stackSpec{x: value.x, z: value.z, height: value.height, radius: value.radius, lean: lean,
+			cleftAngle: value.cleftAngle, cleftDepth: value.cleftDepth, taper: value.taper, seed: seed + int64(i+1)*7919}
 	}
 	return out
 }
@@ -436,6 +573,12 @@ func stackSpecs(seed int64) []stackSpec {
 func boulderSpecs(seed int64) []boulderSpec {
 	rng := newRandom(seed + 0xB01D3)
 	out := make([]boulderSpec, 0, 14)
+	// Reuse part of the existing rock budget for fallen blocks at the cliff
+	// toe. This breaks the wall/sea join without adding meshes or vertices.
+	n := newNoise(seed)
+	for _, z := range []float64{-25, -17, -9, -1, 6} {
+		out = append(out, boulderSpec{leftCliffEdge(n, z) + 2.6, z, 1.4 + rng.float64()*.8, len(out)})
+	}
 	for attempt := 0; len(out) < 14 && attempt < 10000; attempt++ {
 		x := -18 + rng.float64()*36
 		z := -7 + rng.float64()*9.5
@@ -517,40 +660,60 @@ func appendVertex(g *geometry, p vec3, u, v float64) uint16 {
 }
 
 func addStack(g *geometry, stack stackSpec) {
-	const sides, rings = 48, 64
-	noise := newNoise(stack.seed)
-	baseY, topY := -6.0, stack.height
+	const sides, rings, corners = 48, 64, 12
+	n := newNoise(stack.seed)
+	var rim [corners]float64
+	lo, hi := math.Inf(1), math.Inf(-1)
+	for k := range corners {
+		rim[k] = n.lattice(int64(k), 53)
+		lo, hi = math.Min(lo, rim[k]), math.Max(hi, rim[k])
+	}
+	for k := range corners {
+		rim[k] = .16 * stack.height * (rim[k] - lo) / (hi - lo)
+		a := 2*math.Pi*float64(k)/corners + .12*n.lattice(int64(k), 9)
+		rim[k] += .18 * stack.height * stackCleft(stack, a)
+	}
+	lo = math.Inf(1)
+	for _, y := range rim {
+		lo = math.Min(lo, y)
+	}
+	for k := range corners {
+		rim[k] -= lo // keep each authored crest height, including the 18 m hero
+	}
 	first := len(g.positions) / 3
+	var crown vec3
 	for row := 0; row <= rings; row++ {
 		t := float64(row) / rings
-		y := lerp(baseY, topY, t)
-		domeStart := topY - math.Min((topY-baseY)*.16, stack.radius*.45)
-		dome := smoothstep(domeStart, topY, y)
-		profile := 1 - .45*dome
-		for side := 0; side <= sides; side++ { // the last column repeats the first with u = 1
-			angle := 2 * math.Pi * float64(side%sides) / sides
-			dx, dz := math.Cos(angle), math.Sin(angle)
-			// A jagged crown: notch the top rows by noise around the circumference.
-			worldY := y - dome*stack.radius*.35*math.Abs(noiseValue3(noise, dx*1.7+stack.x, 3.3, dz*1.7+stack.z))
-			// Weathered basalt: broad lumps, sharper ridges, vertical fissures
-			// (noise stretched along Y), a gentle taper and faint irregular strata.
-			px, pz := dx*stack.radius, dz*stack.radius
-			r := stack.radius
-			lumps := fbm3(noise, px/(r*1.3), worldY/(r*1.1), pz/(r*1.3), 4)
-			ridges := ridgeFbm3(noise, px/(r*.45)+5, worldY/(r*.45), pz/(r*.45)+9, 4)
-			cracks := fbm3(noise, px/(r*.22)+11, worldY*.07, pz/(r*.22)+7, 3)
-			strata := .03 * math.Sin(worldY*1.1+2.5*noiseValue3(noise, px*.1, worldY*.05, pz*.1))
-			taper := 1 - .22*(worldY-baseY)/(topY-baseY)
-			// Bulges and waists that change with height break the bottle outline.
-			girth := noiseValue3(noise, stack.x*.31, worldY/(r*.9), stack.z*.31) + .5*noiseValue3(noise, stack.x*.7, worldY/(r*.4), stack.z*.7)
-			radius := r * profile * taper * (1 + .22*girth + .32*lumps + .16*ridges - .14*math.Abs(cracks) + strata)
-			notch := smoothstep(-1, -.6, worldY) * (1 - smoothstep(1.2, 1.6, worldY))
-			radius *= 1 - .18*notch
-			leanFactor := (worldY - baseY) * stack.lean
-			p := vec3{stack.x + dx*radius + leanFactor, worldY, stack.z + dz*radius}
-			appendVertex(g, p, float64(side)/sides, worldY/8) // v repeats through the sampler, no fract seam
+		for side := 0; side <= sides; side++ {
+			// Four samples per face include both joint endpoints. The joint
+			// shares a weathered normal and UV without spending more vertices
+			// than the former rounded tube.
+			face, u := (side%sides)/4, float64((side%sides)%4)/3
+			a := stackCorner(n, stack, face, t, rim[:])
+			b := stackCorner(n, stack, face+1, t, rim[:])
+			p := vec3{lerp(a.x, b.x, u), lerp(a.y, b.y, u), lerp(a.z, b.z, u)}
+			// Shallow chips interrupt the planes, while the broad faces and
+			// deep joints remain readable from the walking camera.
+			chip := .06 * stack.radius * fbm3(n, p.x*.65+7, p.y*.5, p.z*.65+11, 3) * math.Sin(math.Pi*u)
+			p.x += chip * math.Cos(2*math.Pi*(float64(face)+.5)/corners)
+			p.z += chip * math.Sin(2*math.Pi*(float64(face)+.5)/corners)
+			texU := (float64(face) + u) / corners
 			if side == sides {
+				texU = 1
+			}
+			appendVertex(g, p, texU, 0)
+			if row == rings && side < sides && side%4 == 0 {
+				crown.x += p.x / corners
+				crown.y += p.y / corners
+				crown.z += p.z / corners
+			}
+			if side == sides {
+				g.seams = append(g.seams, [2]int{first + row*(sides+1), first + row*(sides+1) + sides - 1})
 				g.seams = append(g.seams, [2]int{first + row*(sides+1), first + row*(sides+1) + sides})
+			} else if side > 0 && side%4 == 0 {
+				// Weathering rounds the vertical joint edge. The radius changes
+				// across beds still supply the ledges and silhouette breaks.
+				g.seams = append(g.seams, [2]int{first + row*(sides+1) + side - 1, first + row*(sides+1) + side})
 			}
 		}
 	}
@@ -558,42 +721,40 @@ func addStack(g *geometry, stack stackSpec) {
 		for side := 0; side < sides; side++ {
 			stride := sides + 1
 			a := uint16(first + row*stride + side)
-			b := uint16(first + row*stride + side + 1)
+			b := a + 1
 			c := uint16(first + (row+1)*stride + side + 1)
-			d := uint16(first + (row+1)*stride + side)
+			d := c - 1
 			g.indices = append(g.indices, a, d, c, a, c, b)
 		}
 	}
-	bottom := appendVertex(g, vec3{stack.x, baseY, stack.z}, .5, baseY/8)
-	top := appendVertex(g, vec3{stack.x + (topY-baseY)*stack.lean, topY, stack.z}, .5, topY/8)
+	bottom := appendVertex(g, vec3{stack.x, -6, stack.z}, .5, 0)
+	top := appendVertex(g, crown, .5, 1)
 	for side := 0; side < sides; side++ {
-		next := side + 1
-		firstRing := uint16(first + side)
-		secondRing := uint16(first + next)
-		lastRing := uint16(first + rings*(sides+1) + side)
-		nextLast := uint16(first + rings*(sides+1) + next)
-		g.indices = append(g.indices, bottom, firstRing, secondRing)
-		g.indices = append(g.indices, top, nextLast, lastRing)
+		firstRing, nextRing := uint16(first+side), uint16(first+side+1)
+		lastRing, nextLast := uint16(first+rings*(sides+1)+side), uint16(first+rings*(sides+1)+side+1)
+		g.indices = append(g.indices, bottom, firstRing, nextRing, top, nextLast, lastRing)
 	}
 }
 
 func addBoulder(g *geometry, boulder boulderSpec, noise, terrainNoise noiseField) {
 	const sides, rings = 16, 12
 	ground := terrainHeight(terrainNoise, boulder.x, boulder.z)
-	center := vec3{boulder.x, ground + boulder.radius*.3, boulder.z}
+	center := vec3{boulder.x, ground + boulder.radius*.15, boulder.z}
 	first := len(g.positions) / 3
 	for row := 0; row <= rings; row++ {
 		latitude := math.Pi * float64(row) / rings
 		for side := 0; side < sides; side++ {
-			longitude := 2 * math.Pi * float64(side) / sides
+			longitude := 2*math.Pi*float64(side)/sides + .7*noise.lattice(11, 17)
 			nx := math.Sin(latitude) * math.Cos(longitude)
 			ny := math.Cos(latitude)
 			nz := math.Sin(latitude) * math.Sin(longitude)
-			lumps := fbm3(noise, nx*1.6+boulder.x, ny*1.6, nz*1.6+boulder.z, 4)
-			ridges := ridgeFbm3(noise, nx*4, ny*4, nz*4, 4)
-			radius := boulder.radius * (1 + .22*lumps + .07*ridges)
+			// Wave-worn broken blocks keep broad planar shoulders. Clamping
+			// the radial envelope preserves the existing sphere colliders.
+			plane := math.Max(math.Abs(nx), math.Max(math.Abs(ny), math.Abs(nz)))
+			lumps := fbm3(noise, nx*2.6+boulder.x, ny*2.6, nz*2.6+boulder.z, 3)
+			radius := boulder.radius * math.Min(1.02, .68/math.Pow(plane, .9)+.055*lumps)
 			p := vec3{center.x + nx*radius, center.y + ny*radius*.72, center.z + nz*radius}
-			appendVertex(g, p, longitude/(2*math.Pi), latitude/math.Pi)
+			appendVertex(g, p, float64(side)/sides, latitude/math.Pi)
 		}
 	}
 	for row := 0; row < rings; row++ {
@@ -734,18 +895,25 @@ func makeBathymetry(n noiseField) ([]byte, error) {
 	img := image.NewGray(image.Rect(0, 0, BathymetrySize, BathymetrySize))
 	seed := int64(n.seed)
 	stacks := stackSpecs(seed)
+	footprints := make([]rockFootprint, len(stacks))
+	for i, stack := range stacks {
+		footprints[i] = stackWaterline(stack)
+	}
 	boulders := boulderSpecs(seed)
 	for y := 0; y < BathymetrySize; y++ {
 		z := BathymetryMinZ + (float64(y)+0.5)/BathymetrySize*(BathymetryMaxZ-BathymetryMinZ)
 		for x := 0; x < BathymetrySize; x++ {
 			wx := BathymetryMinX + (float64(x)+0.5)/BathymetrySize*(BathymetryMaxX-BathymetryMinX)
 			height := terrainHeight(n, wx, z)
-			for _, stack := range stacks {
-				centerX := stack.x + 6*stack.lean
-				// A smooth mound, not a disk: the shallow-water and foam bands
-				// then ring the rock instead of drawing texel squares.
-				d := math.Hypot(wx-centerX, z-stack.z)
-				rise := 1 - smoothstep(stack.radius*.92, stack.radius*1.08, d)
+			for i, stack := range stacks {
+				// Follow the eroded mesh's actual sea-level contour, including
+				// clefts and buttresses, rather than an unrelated circular halo.
+				footprint := &footprints[i]
+				if wx < footprint.minX-1 || wx > footprint.maxX+1 || z < footprint.minZ-1 || z > footprint.maxZ+1 {
+					continue
+				}
+				d := footprint.distance(wx, z)
+				rise := 1 - smoothstep(-.5, .65, d)
 				height = math.Max(height, lerp(height, stack.height, rise))
 			}
 			for _, boulder := range boulders {
@@ -759,6 +927,52 @@ func makeBathymetry(n noiseField) ([]byte, error) {
 		}
 	}
 	return encodePNG(img)
+}
+
+type rockFootprint struct {
+	points                 []vec3
+	minX, minZ, maxX, maxZ float64
+}
+
+func stackWaterline(stack stackSpec) rockFootprint {
+	g := &geometry{}
+	addStack(g, stack)
+	const sides, rings = 48, 64
+	outline := rockFootprint{minX: math.Inf(1), minZ: math.Inf(1), maxX: math.Inf(-1), maxZ: math.Inf(-1)}
+	for side := range sides {
+		for row := 0; row < rings; row++ {
+			a := (row*(sides+1) + side) * 3
+			b := a + (sides+1)*3
+			if g.positions[a+1] > 0 || g.positions[b+1] < 0 {
+				continue
+			}
+			t := -g.positions[a+1] / (g.positions[b+1] - g.positions[a+1])
+			p := vec3{x: lerp(g.positions[a], g.positions[b], t), z: lerp(g.positions[a+2], g.positions[b+2], t)}
+			outline.points = append(outline.points, p)
+			outline.minX, outline.minZ = math.Min(outline.minX, p.x), math.Min(outline.minZ, p.z)
+			outline.maxX, outline.maxZ = math.Max(outline.maxX, p.x), math.Max(outline.maxZ, p.z)
+			break
+		}
+	}
+	return outline
+}
+
+// Signed distance to the closed waterline polygon; negative inside the rock.
+func (f *rockFootprint) distance(x, z float64) float64 {
+	inside, nearest := false, math.Inf(1)
+	for i, a := range f.points {
+		b := f.points[(i+1)%len(f.points)]
+		dx, dz := b.x-a.x, b.z-a.z
+		t := clamp(((x-a.x)*dx+(z-a.z)*dz)/math.Max(dx*dx+dz*dz, 1e-12), 0, 1)
+		nearest = math.Min(nearest, math.Hypot(x-a.x-t*dx, z-a.z-t*dz))
+		if (a.z > z) != (b.z > z) && x < (b.x-a.x)*(z-a.z)/(b.z-a.z)+a.x {
+			inside = !inside
+		}
+	}
+	if inside {
+		return -nearest
+	}
+	return nearest
 }
 
 // BathymetryEncoding is the scene.OceanBathymetry encoding of the heightmap.

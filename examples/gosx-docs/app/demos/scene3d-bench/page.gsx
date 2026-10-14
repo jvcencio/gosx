@@ -30,15 +30,15 @@ func Page() Node {
 			<div class="scene3d-bench__overlay" id="bench3d-overlay" data-workload={data.workload}>
 				<h2 class="scene3d-bench__title">Live measurements</h2>
 				<nav class="scene3d-bench__workloads" aria-label="Switch workload">
-					<a href="?workload=static">Static</a>
-					<a href="?workload=pbr-heavy">PBR heavy</a>
-					<a href="?workload=thick-lines">Thick lines</a>
-					<a href="?workload=particles">Particles</a>
-					<a href="?workload=mesh-swarm">Mesh swarm</a>
-					<a href="?workload=particles-storm">Particle storm</a>
-					<a href="?workload=gpu-driven">GPU-driven city</a>
-					<a href="?workload=instanced-classic">Classic city</a>
-					<a href="?workload=mixed">Mixed</a>
+					<a data-gosx-native="true" href="?workload=static">Static</a>
+					<a data-gosx-native="true" href="?workload=pbr-heavy">PBR heavy</a>
+					<a data-gosx-native="true" href="?workload=thick-lines">Thick lines</a>
+					<a data-gosx-native="true" href="?workload=particles">Particles</a>
+					<a data-gosx-native="true" href="?workload=mesh-swarm">Mesh swarm</a>
+					<a data-gosx-native="true" href="?workload=particles-storm">Particle storm</a>
+					<a data-gosx-native="true" href="?workload=gpu-driven">GPU-driven city</a>
+					<a data-gosx-native="true" href="?workload=instanced-classic">Classic city</a>
+					<a data-gosx-native="true" href="?workload=mixed">Mixed</a>
 				</nav>
 				<div class="scene3d-bench__row">
 					<span>active workload</span>

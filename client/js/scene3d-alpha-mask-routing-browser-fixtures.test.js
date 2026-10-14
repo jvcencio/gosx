@@ -38,9 +38,9 @@ const TABLE = {
   'mask-c5-f5': [0.5, 0.5, 0.5, true, false, undefined, 'opaque', undefined, undefined],
   'mask-c0-f0': [0, 0, 0, true, false, undefined, 'opaque', undefined, undefined],
   'discard-c5-f25': [0.25, 0.5, 0.5, true, false, true, undefined, 'opaque', undefined],
-  'alpha-opaque': [1, undefined, -1, false, true, undefined, undefined, undefined, 'alpha'],
+  'alpha-opaque': [1, undefined, -2, false, true, undefined, undefined, undefined, 'alpha'],
   'alpha-mask-c5-f5': [0.5, 0.5, 0.5, false, true, undefined, 'alpha-opaque', undefined, 'alpha'],
-  'mask-disabled': [0.5, null, -1, false, true, undefined, undefined, undefined, undefined],
+  'mask-disabled': [0.5, null, -2, false, true, undefined, undefined, undefined, undefined],
   'mask-css-cutoff': [0.5, 'var(--mask-cutoff, 0.5)', 0.5, true, false, undefined, 'opaque', undefined, undefined],
 };
 const routeCases = () => CASES.filter((c) => String(c.name).indexOf('-maskroute-') >= 0);

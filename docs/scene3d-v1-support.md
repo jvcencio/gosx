@@ -186,6 +186,14 @@ blocked cases.
 
 ## Frame completion timing
 
+Renderer `render` calls return `submitted`, `pending`, `empty`, or `failed`.
+Only `submitted` advances mount readiness and requested frame receipts; water
+and world wrappers must preserve the outcome of the complete composition.
+Adapters that previously returned no value must return the outcome of their
+underlying renderer when migrating to v0.57.15. An absent return value never
+certifies submission. This contract does not certify GPU completion or display
+presentation.
+
 `window.__gosx_scene3d_debug.inspect(surfaceID).frameTiming` gives a snapshot
 for the selected surface. Get IDs from `listSurfaces()`. Reading the snapshot
 does not consume the sample used by adaptive quality.
@@ -281,3 +289,5 @@ pose/state replay. The API does not claim to rewind their simulation history.
 
 A host can keep the native clock paused and drive it from one presentation
 playhead. Wait for the scheduled render to settle before capturing its pixels.
+
+`Walk.Grounds` adds disjoint heightfield patches without enlarging the original grid. The highest containing patch supplies the terrain height; `OutsideHeight` sets the seabed outside all patches. Without these options, the original ground still clamps at its edges. Hull collision uses the same patches, while `Walk.Surfaces` supplies visible piers and decks above them.

@@ -18,7 +18,7 @@ func Page() Node {
 				href="https://github.com/odvcencio/gosx/blob/main/examples/gosx-docs/app/docs/compiler/page.gsx"
 				rel="noopener"
 			>View the component source</a>
-			<a href="/demos/playground" data-gosx-link="true">Open the compiler playground</a>
+			<a href="/demos/playground" data-gosx-native="true">Open the compiler playground</a>
 		</section>
 		<div class="page-topper">
 			<span class="eyebrow">Language pipeline</span>

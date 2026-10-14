@@ -18,7 +18,35 @@ func main() {
 	out := flag.String("out", "examples/gosx-docs/public/models/blackglass", "model output directory")
 	env := flag.String("env", "examples/gosx-docs/public/env/blackglass-beach", "baked IBL output directory")
 	descriptors := flag.String("descriptors", "examples/gosx-docs/app/demos/beacon/ibl-beach", "IBL descriptor directory")
+	offshore := flag.Bool("offshore-only", false, "regenerate offshore terrain, piers, depth and discovery assets")
+	wake := flag.Bool("wake-only", false, "regenerate the shared bow and stern foam texture")
 	flag.Parse()
+	if *wake {
+		data, err := beachgen.WakeFoam()
+		if err == nil {
+			err = os.WriteFile(filepath.Join(*out, "wake-foam.png"), data, 0644)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *offshore {
+		files, err := docs.BlackglassBeachOffshoreAssets()
+		if err == nil {
+			for name, data := range files {
+				if err = os.WriteFile(filepath.Join(*out, name), data, 0644); err != nil {
+					break
+				}
+			}
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*out, *env, *descriptors); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -28,6 +56,15 @@ func main() {
 func run(out, env, descriptors string) error {
 	if err := beachgen.Write(out, beachgen.Seed); err != nil {
 		return err
+	}
+	offshore, err := docs.BlackglassBeachOffshoreAssets()
+	if err != nil {
+		return err
+	}
+	for name, data := range offshore {
+		if err := os.WriteFile(filepath.Join(out, name), data, 0644); err != nil {
+			return err
+		}
 	}
 	static, err := docs.BlackglassBeachStaticAssets()
 	if err != nil {

@@ -186,6 +186,7 @@
         if (typeof ctx2d.restore === "function") {
           ctx2d.restore();
         }
+        return bundle ? "submitted" : "empty";
       },
       dispose() {},
     };

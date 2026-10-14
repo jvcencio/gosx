@@ -123,7 +123,7 @@ func ShipAssets() (map[string][]byte, error) {
 		return nil, err
 	}
 	out["jetty.glb"] = data
-	foam, err := wakeFoam()
+	foam, err := WakeFoam()
 	if err != nil {
 		return nil, err
 	}

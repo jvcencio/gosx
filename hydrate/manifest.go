@@ -5,6 +5,7 @@ package hydrate
 import (
 	"encoding/json"
 	"fmt"
+	"m31labs.dev/gosx/internal/sceneprobe"
 	"regexp"
 	"strings"
 
@@ -158,6 +159,9 @@ type ManifestVariantRef struct {
 // EngineEntry describes a single engine instance.
 // Engines are arbitrary client compute modules — separate from islands.
 type EngineEntry struct {
+	// Scene3DProbe holds server decisions for this immutable props snapshot.
+	Scene3DProbe *sceneprobe.Probe `json:"-"`
+
 	// ID is the DOM anchor ID (e.g., "gosx-engine-0").
 	ID string `json:"id"`
 

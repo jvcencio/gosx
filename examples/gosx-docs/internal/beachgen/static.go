@@ -44,6 +44,41 @@ func StaticGLB(material scene.StandardMaterial, nodes ...scene.Node) ([]byte, er
 	return writeGLB(out, solidMaterial(color, material.Roughness, material.Metalness), nil)
 }
 
+// StaticColorGLB keeps a small multi-material prop in one retained model. Each
+// group shares the quantized vertex buffers and owns one contiguous index range.
+func StaticColorGLB(groups ...[]scene.Mesh) ([]byte, error) {
+	out := &geometry{}
+	var sections []geometrySection
+	for _, group := range groups {
+		if len(group) == 0 {
+			return nil, fmt.Errorf("empty static material group")
+		}
+		material, ok := group[0].Material.(scene.StandardMaterial)
+		if !ok {
+			return nil, fmt.Errorf("static color group requires a standard material")
+		}
+		rgb, err := hex.DecodeString(strings.TrimPrefix(material.Color, "#"))
+		if err != nil || len(rgb) != 3 {
+			return nil, fmt.Errorf("static material requires an RGB hex color")
+		}
+		start := len(out.indices)
+		for _, n := range group {
+			g, err := staticGeometry(n.Geometry)
+			if err != nil {
+				return nil, err
+			}
+			appendStatic(out, g, n.Position, n.Rotation, n.Scale)
+		}
+		color := [4]float64{srgbLinear(float64(rgb[0]) / 255), srgbLinear(float64(rgb[1]) / 255), srgbLinear(float64(rgb[2]) / 255), 1}
+		sections = append(sections, geometrySection{start: start, count: len(out.indices) - start,
+			material: solidMaterial(color, material.Roughness, material.Metalness)})
+	}
+	if len(sections) == 0 {
+		return nil, fmt.Errorf("static color model requires material groups")
+	}
+	return writeGLB(out, sections[0].material, nil, sections...)
+}
+
 func staticGeometry(authored scene.Geometry) (*geometry, error) {
 	switch g := authored.(type) {
 	case scene.BufferGeometry:

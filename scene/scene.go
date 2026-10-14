@@ -169,7 +169,14 @@ type Props struct {
 	ControlRotateDirection string  `json:"controlRotateDirection,omitempty"`
 	ControlRotateSpeed     float64 `json:"controlRotateSpeed,omitempty"`
 	// ControlZoom opts into damped wheel, pinch and focused keyboard zoom in all camera modes.
-	ControlZoom        *bool   `json:"controlZoom,omitempty"`
+	ControlZoom *bool `json:"controlZoom,omitempty"`
+	// ControlPan adds two-finger screen-space panning to ControlZoom. A named
+	// handle also supports pointer drag and arrow keys without taking over
+	// single-pointer object interactions on the scene canvas.
+	ControlPan         *bool   `json:"controlPan,omitempty"`
+	ControlPanHandle   string  `json:"controlPanHandle,omitempty"`
+	ControlZoomMinFOV  float64 `json:"controlZoomMinFOV,omitempty"`
+	ControlZoomMaxFOV  float64 `json:"controlZoomMaxFOV,omitempty"`
 	ControlZoomSpeed   float64 `json:"controlZoomSpeed,omitempty"`
 	ControlLookSpeed   float64 `json:"controlLookSpeed,omitempty"`
 	ControlMoveSpeed   float64 `json:"controlMoveSpeed,omitempty"`
@@ -191,6 +198,8 @@ type Props struct {
 	MaxFrameRate    float64 `json:"maxFrameRate,omitempty"`
 	MaxFPS          float64 `json:"maxFPS,omitempty"`
 	FrameIntervalMS float64 `json:"frameIntervalMS,omitempty"`
+	// ModelPreparation advertises the opt-in Surface.PrepareModels authority.
+	ModelPreparation *bool `json:"modelPreparation,omitempty"`
 	// RenderBeforeModels lets the scene draw the first frame without waiting for models; models appear when loaded.
 	RenderBeforeModels *bool `json:"renderBeforeModels,omitempty"`
 	// FramePacing selects the render-loop pacing policy.
@@ -1950,6 +1959,12 @@ func (p Props) legacyBaseProps() map[string]any {
 	if p.ControlZoom != nil {
 		out["controlZoom"] = *p.ControlZoom
 	}
+	if p.ControlPan != nil {
+		out["controlPan"] = *p.ControlPan
+	}
+	setString(out, "controlPanHandle", p.ControlPanHandle)
+	setNumeric(out, "controlZoomMinFOV", p.ControlZoomMinFOV)
+	setNumeric(out, "controlZoomMaxFOV", p.ControlZoomMaxFOV)
 	setNumeric(out, "controlZoomSpeed", p.ControlZoomSpeed)
 	setNumeric(out, "controlLookSpeed", p.ControlLookSpeed)
 	setNumeric(out, "controlMoveSpeed", p.ControlMoveSpeed)
@@ -1970,6 +1985,7 @@ func (p Props) legacyBaseProps() map[string]any {
 	setNumeric(out, "maxFPS", p.MaxFPS)
 	setNumeric(out, "frameIntervalMS", p.FrameIntervalMS)
 	setBool(out, "renderBeforeModels", p.RenderBeforeModels)
+	setBool(out, "modelPreparation", p.ModelPreparation)
 	setString(out, "framePacing", p.FramePacing)
 	setNumeric(out, "maxDevicePixelRatio", p.MaxDevicePixelRatio)
 	if p.MaxPixels > 0 {

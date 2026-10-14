@@ -21,10 +21,11 @@
     }
     function wrapFrame(render: any, endFrame: any) {
       return function(bundle: any, viewport: any, frameMeta: any) {
-        try { render(bundle, viewport, frameMeta); }
+        try { return render(bundle, viewport, frameMeta); }
         catch (error) {
           wgpuSubmitPendingFrame(guard, error);
           if (!error || !error.pipelineValidation) fail("frame", String(error && error.message || error));
+          return error && error.pipelineValidation ? "pending" : "failed";
         } finally { guard.frameEncoder = guard.framePass = guard.frameCleanup = null; endFrame(); }
       };
     }
@@ -2025,6 +2026,7 @@
     "    let cutoff = material.alphaCutoff;",
     "    let alphaEnabled = cutoff >= 0.0;",
     "    let coverage = finalOpacity * texAlpha;",
+    "    let blendOpacity = select(finalOpacity, coverage, cutoff < -1.5);",
     "",
     "    var roughness = material.roughness;",
     "    if (material.hasRoughnessMap != 0u) {",
@@ -2075,7 +2077,7 @@
     "        let color = albedo + emissiveColor * emissiveStrength;",
     "        // Alpha-cut discard after sampling to keep derivative uniformity.",
     "        if (alphaEnabled && coverage < cutoff) { discard; }",
-    "        return vec4f(color, select(finalOpacity, 1.0, alphaEnabled));",
+    "        return vec4f(color, select(blendOpacity, 1.0, alphaEnabled));",
     "    }",
     "",
     // Resolve per-pixel normal via TBN matrix.
@@ -2338,7 +2340,7 @@
     "    }",
     "",
     "    if (alphaEnabled && coverage < cutoff) { discard; }",
-    "    return vec4f(color, select(finalOpacity, 1.0, alphaEnabled));",
+    "    return vec4f(color, select(blendOpacity, 1.0, alphaEnabled));",
     "}",
     "@fragment fn fragmentMain(in: VertexOutput) -> @location(0) vec4f { return gosxPBRColor(in); }",
     "struct GosxSpecularOutput { @location(0) color: vec4f, @location(1) specular: vec4f };",
@@ -2396,9 +2398,10 @@
       "    let cutoff = material.alphaCutoff;",
       "    let alphaEnabled = cutoff >= 0.0;",
       "    let coverage = unmaskedOpacity * texAlpha;",
+      "    let blendOpacity = select(unmaskedOpacity, coverage, cutoff < -1.5);",
       "    // Alpha-cut discard after sampling; equality survives the cut.",
       "    if (alphaEnabled && coverage < cutoff) { discard; }",
-      "    return vec4f(color, select(unmaskedOpacity, 1.0, alphaEnabled));",
+      "    return vec4f(color, select(blendOpacity, 1.0, alphaEnabled));",
       "}",
     ].join("\n");
   }
@@ -6668,6 +6671,39 @@
     };
   }
 
+  function wgpuArrayContentsMatch(a: ArrayLike<unknown> | null | undefined, b: ArrayLike<unknown> | null | undefined): boolean {
+    if (!a || !b) return !a && !b;
+    if (a.length !== b.length) return false;
+    if (!a.length) return true;
+    if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b) && a.byteLength === b.byteLength && !(a.byteLength % 4 || a.byteOffset % 4 || b.byteOffset % 4)) {
+      a = new Uint32Array(a.buffer, a.byteOffset, a.byteLength / 4);
+      b = new Uint32Array(b.buffer, b.byteOffset, b.byteLength / 4);
+    }
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  function wgpuIsPackedInstanceColors(data: any, count: number): boolean { return data instanceof Float32Array && data.length >= count * 4; }
+  function wgpuShadowFrameBindGroup(device: any, groups: any[], layout: any, buffer: any) {
+    var cached = groups[0];
+    if (!cached || cached.buffer !== buffer) {
+      cached = groups[0] = { buffer: buffer, group: device.createBindGroup({
+        layout: layout, entries: [{ binding: 0, resource: { buffer: buffer, offset: 0, size: 64 } }],
+      }) };
+    }
+    return cached.group;
+  }
+
+  function wgpuBindWorldMeshBuffers(pass: any, buffers: any): boolean {
+    if (!buffers) return false;
+    var attributes = [buffers.positions, buffers.normals, buffers.uvs, buffers.tangents];
+    for (var slot = 0; slot < 4; slot++) {
+      var record = attributes[slot];
+      if (!record || !record.buffer) return false;
+      pass.setVertexBuffer(slot, record.buffer, 0);
+    }
+    return true;
+  }
+
   function createSceneWebGPURenderer(canvas, options) {
     function sceneWebGPUFactoryFailure(reason) {
       var text = String(reason || "unknown");
@@ -7725,45 +7761,30 @@
       return buffer;
     }
 
-    // wgpuStablePBRAttributeBuffer backs ensurePBRSceneAttributeBuffers: one
-    // GPU buffer per attribute `slot`, cached on the renderer-scoped
-    // pbrSceneAttributeCache (bundle can't be the owner -- see its comment
-    // above). Skips BOTH the buffer (re)allocation and the queue.writeBuffer
-    // call whenever `typedArray`'s CONTENT matches the last upload -- not
-    // just its identity, which is never stable across frames even for scene
-    // geometry that never moves (createSceneRenderBundle hands back a fresh
-    // Float32Array every call). Every water-demo float-* object has zero
-    // drift/bob/spin (program.go), so once placed this collapses "4 buffer
-    // allocs + 4 full uploads every frame forever" to "once" -- a scene with
-    // genuinely animating mesh geometry still uploads whenever content changes.
-    function wgpuStablePBRAttributeBuffer(slot, typedArray) {
-      // Reuse the cached snapshot's IDENTITY (not typedArray's, which is
-      // fresh every frame) once content-equal, so the delegated
-      // wgpuCachedTrackedBuffer call below (identity-based) naturally skips
-      // its own writeBuffer -- see this function's comment above.
-      var snap = pbrSceneAttributeCache[slot];
-      var same = snap && snap.length === typedArray.length;
-      for (var i = 0; same && i < snap.length; i++) if (snap[i] !== typedArray[i]) same = false;
-      if (!same) pbrSceneAttributeCache[slot] = snap = typedArray.slice();
-      return wgpuCachedTrackedBuffer(pbrSceneAttributeCache, slot + "B", snap, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, false);
+    // Owned snapshots compare once per frame/input, reusing storage on edits.
+    // Fresh equal arrays and repeated passes skip allocation and uploads.
+    function wgpuStablePBRAttributeBuffer(slot, typedArray, owner = pbrSceneAttributeCache, bufferSlot = slot + "B") {
+      var frame = owner[slot + "Frame"] || (owner[slot + "Frame"] = { epoch: -1, data: null });
+      if (frame.epoch === instancedCacheOwnerEpoch && frame.data === typedArray && pointsEntryGPUBuffers.has(owner[bufferSlot])) return owner[bufferSlot];
+      var snap = owner[slot];
+      var changed = !wgpuArrayContentsMatch(snap, typedArray);
+      if (changed) {
+        if (snap && snap.length === typedArray.length) snap.set(typedArray);
+        else owner[slot] = snap = typedArray.slice();
+      }
+      var buffer = wgpuCachedTrackedBuffer(owner, bufferSlot, snap, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, changed);
+      frame.epoch = instancedCacheOwnerEpoch; frame.data = typedArray;
+      return buffer;
     }
-
     function wgpuCachedTrackedBuffer(owner, slot, typedArray, usage, dynamic) {
       if (!owner || !typedArray) return null;
-      // Cross-renderer staleness guard: if the buffer cached at owner[slot] was
-      // created by a prior renderer (not in this renderer's pointsEntryGPUBuffers
-      // set), the underlying GPU resource was destroyed when that renderer was
-      // disposed or lost its device. Clear the stale JS reference so that the
-      // alloc path below creates a fresh buffer on the current device.  Without
-      // this, sceneCachedSlotBuffer would blindly reuse the dead buffer (its .size
-      // property survives .destroy()), causing "Buffer with '' label is invalid"
-      // errors on every frame after device-loss recovery until the page is reloaded.
+      // Foreign buffers can still report a size after device-loss disposal.
+      // Retire them and their bind-group caches so recovery allocates resources
+      // tracked by this renderer's device.
       var staleCandidate = owner[slot];
       if (staleCandidate && !pointsEntryGPUBuffers.has(staleCandidate)) {
         owner[slot] = null;
-        // Clearing the pool that caches bind groups built around this uniform
-        // buffer removes any stale entries that reference the dead buffer object.
-        // The pool key is "_gosxWGPUSBGC" + slot (see createSelenaBindGroup).
+        // Drop bind-group pools referencing this foreign buffer.
         var staleBGPool = "_gosxWGPUSBGC" + slot;
         if (Array.isArray(owner[staleBGPool])) owner[staleBGPool] = [];
         // Clear the material bind-group single-entry caches that key on the
@@ -14747,7 +14768,7 @@
       var alphaCutoff = sceneNormalizeMaterialAlphaCutoff(mat.alphaCutoff, null);
       f[42] = (typeof alphaCutoff === "number" && Number.isFinite(alphaCutoff) && alphaCutoff >= 0)
         ? (alphaCutoff <= 1 ? Math.fround(alphaCutoff) : 2)
-        : -1; // alphaCutoff, normalized the same way as the WebGL renderer
+        : (["alpha", "additive"].includes(mat.renderPass || mat.blendMode) ? -2 : -1); // -2 preserves texel alpha for BLEND; -1 keeps OPAQUE semantics.
       f[43] = mat.normalUVScale ? sceneNumber(mat.normalUVScale[1], 1) : 1; // normalUVScaleV
       var specular = sceneWebGPUSpecularFactors(mat);
       f[44] = specular.f0[0];
@@ -15994,10 +16015,11 @@
       return Boolean(shadowFrameBuffer);
     }
 
+    var shadowFrameBindGroups = [];
+
     /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ function renderShadowPass(encoder, lightMatrix, bundle, shadowResource, pbrBuffers) {
       var sp = getShadowPipeline();
       if (!sp) return;
-
       var objects = Array.isArray(bundle.meshObjects) ? bundle.meshObjects : [];
       // Each light owns a base matrix followed by its retained caster matrices.
       // Reserve both regions before encoding so the second light cannot grow
@@ -16005,16 +16027,8 @@
       var baseSlot = Math.max(0, Math.floor(sceneNumber(shadowResource.lightSlot, 0))) * (objects.length + 1);
       var baseMatrixOffset = baseSlot * shadowFrameBufferStride;
       if (!ensureShadowFrameBufferCapacity(Math.max(2 * (objects.length + 1), baseSlot + objects.length + 1))) return;
-
       device.queue.writeBuffer(shadowFrameBuffer, baseMatrixOffset, lightMatrix, 0, 16);
-
-      var shadowBG = device.createBindGroup({
-        layout: shadowBindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: shadowFrameBuffer, offset: 0, size: 64 } },
-        ],
-      });
-
+      var shadowBG = wgpuShadowFrameBindGroup(device, shadowFrameBindGroups, shadowBindGroupLayout, shadowFrameBuffer);
       var shadowPassDescriptor = {
         colorAttachments: [],
         depthStencilAttachment: {
@@ -16027,17 +16041,14 @@
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ var shadowStamps = gpuPassTimestampWrites("shadow");
       if (shadowStamps) shadowPassDescriptor.timestampWrites = shadowStamps;
       var pass = encoder.beginRenderPass(shadowPassDescriptor);
-
       pass.setBindGroup(0, shadowBG, [baseMatrixOffset]);
       var currentShadowPipeline = "";
       var retainedShadowMatrixSlot = baseSlot + 1;
-
       for (var i = 0; i < objects.length; i++) {
         var obj = objects[i];
         if (!obj || obj.viewCulled) continue;
         if (!obj.castShadow) continue;
         if (!Number.isFinite(obj.vertexOffset) || !Number.isFinite(obj.vertexCount) || obj.vertexCount <= 0) continue;
-
         if (webGPUObjectIsSkinned(obj)) {
           var skinnedPositionBuffer = obj._gosxWGPUElioSkinOutputBuffer;
           if (!skinnedPositionBuffer) continue;
@@ -16113,13 +16124,12 @@
     // PBR object drawing
     // -----------------------------------------------------------------------
 
-    function drawPBRObjects(pass, objectList, bundle, materials, frameBindGroup, blendMode, depthWrite, pbrBuffers, stats) {
+    function drawPBRObjects(pass, objectList, bundle, materials, frameBindGroup, blendMode, depthWrite, pbrBuffers, stats, frameRequest = null) {
       var lastMaterialIndex = -1;
       var lastReceiveShadow = null;
       var lastMaterialOwner = null;
       var currentPipelineKind = "";
-      var objectDepthWrite = depthWrite;
-
+      var objectDepthWrite = depthWrite, worldBuffersBound = false;
       function bindMeshAttribute(attr, obj, offset, count) {
         var computedRecord = webGPUObjectComputedMorphDrawRecord(obj);
         if (attr.source === "positions") {
@@ -16145,7 +16155,6 @@
         }
         return false;
       }
-
       function bindPBRPipeline(reflected, material = Object.create(null)) {
         var hasDetail = Boolean(material && material.detail);
         var kind = hasDetail ? sceneDetailVariantKey(sceneWebGPUPipelineKind(reflected, "pbr"), true) : sceneWebGPUPipelineKind(reflected, "pbr");
@@ -16158,17 +16167,17 @@
         lastReceiveShadow = null;
         lastMaterialOwner = null;
       }
-
       for (var i = 0; i < objectList.length; i++) {
         var obj = objectList[i];
         var matIndex = sceneNumber(obj.materialIndex, 0);
         var mat = materials[matIndex] || null;
         objectDepthWrite = sceneTransmissionDepthWrite(obj, mat, depthWrite);
         var receiveShadow = !!obj.receiveShadow;
-        var offset = obj.vertexOffset;
+        var offset = Math.max(0, Math.floor(obj.vertexOffset));
         var count = obj.vertexCount;
         var isSkinned = webGPUObjectIsSkinned(obj);
         var computedMorphRecord = !isSkinned ? webGPUObjectComputedMorphDrawRecord(obj) : null;
+        if (isSkinned || computedMorphRecord || obj.retainedGeometry) worldBuffersBound = false;
         // cullMode: "back" is getSelenaPipeline's own default (every OTHER
         // caller passes no options and relies on it -- see the comment on
         // pipelineCullMode there). obj.doubleSided opts a single mesh object
@@ -16212,6 +16221,7 @@
           ? getSelenaSkinnedPipeline(mat, blendMode, depthWrite, selenaPipelineOptions)
           : getSelenaPipeline(mat, blendMode, depthWrite, selenaPipelineOptions);
         if (selenaResource) {
+          worldBuffersBound = false;
           var selenaKey = "selena:" + (isSkinned ? "skin:" : "") + (mat && mat.key || matIndex) + sceneWebGPUSelenaPipelineSuffix(obj, reflectedDirect);
           if (currentPipelineKind !== selenaKey) {
             pass.setPipeline(wgpuRequirePipeline(selenaResource.pipeline));
@@ -16227,6 +16237,7 @@
                 var selenaSkinIndexCount = webGPUBindRetainedMeshIndexBuffer(pass, obj);
                 if (selenaSkinIndexCount > 0) pass.drawIndexed(selenaSkinIndexCount);
                 else pass.draw(count);
+                if (frameRequest) frameRequest.record(obj.id);
                 if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
               }
               continue;
@@ -16244,13 +16255,12 @@
             var selenaIndexCount = webGPUBindRetainedMeshIndexBuffer(pass, obj);
             if (selenaIndexCount > 0) pass.drawIndexed(selenaIndexCount);
             else pass.draw(count);
+            if (frameRequest) frameRequest.record(obj.id);
             if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
             continue;
           }
         }
-
         if (mat && mat.detail) pass.setBindGroup(2, sceneWebGPUUploadDetail(device, detailResources, mat, detailEnabled));
-
         if (isSkinned) {
           bindPBRPipeline(reflectedDirect, mat);
           var skinnedOwner = mat || obj;
@@ -16265,13 +16275,12 @@
             var skinnedPBRIndexCount = webGPUBindRetainedMeshIndexBuffer(pass, obj);
             if (skinnedPBRIndexCount > 0) pass.drawIndexed(skinnedPBRIndexCount);
             else pass.draw(count);
+            if (frameRequest) frameRequest.record(obj.id);
             if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
           }
           continue;
         }
-
         bindPBRPipeline(reflectedDirect, mat);
-
         // Recreate material bind group when material or receiveShadow changes.
         var materialOwner = obj.retainedGeometry ? webGPURetainedMaterialOwner(obj) : (mat || obj);
         if (matIndex !== lastMaterialIndex || receiveShadow !== lastReceiveShadow || materialOwner !== lastMaterialOwner) {
@@ -16286,17 +16295,16 @@
           lastReceiveShadow = receiveShadow;
           lastMaterialOwner = materialOwner;
         }
-
         if (computedMorphRecord) {
           if (!webGPUBindComputedMorphBuffer(pass, 0, computedMorphRecord.positionBuffer, count, 3)) continue;
           if (!webGPUBindComputedMorphBuffer(pass, 1, computedMorphRecord.normalBuffer, count, 3)) continue;
           if (!webGPUBindSceneMeshVertexBuffer(pass, 2, pbrBuffers && pbrBuffers.uvs, offset, count)) continue;
           if (!webGPUBindComputedMorphBuffer(pass, 3, computedMorphRecord.tangentBuffer, count, 4)) continue;
           pass.draw(count);
+          if (frameRequest) frameRequest.record(obj.id);
           if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
           continue;
         }
-
         if (obj.retainedGeometry) {
           if (!webGPUBindRetainedMeshAttribute(pass, 0, obj, "positions", 3)) continue;
           if (!webGPUBindRetainedMeshAttribute(pass, 1, obj, "normals", 3)) continue;
@@ -16308,25 +16316,21 @@
           } else {
             pass.draw(count);
           }
+          if (frameRequest) frameRequest.record(obj.id);
           if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
           continue;
         }
-
-        if (!webGPUBindSceneMeshVertexBuffer(pass, 0, pbrBuffers && pbrBuffers.positions, offset, count)) continue;
-        if (!webGPUBindSceneMeshVertexBuffer(pass, 1, pbrBuffers && pbrBuffers.normals, offset, count)) continue;
-        if (!webGPUBindSceneMeshVertexBuffer(pass, 2, pbrBuffers && pbrBuffers.uvs, offset, count)) continue;
-        if (!webGPUBindSceneMeshVertexBuffer(pass, 3, pbrBuffers && pbrBuffers.tangents, offset, count)) continue;
-
-        pass.draw(count);
+        if (!worldBuffersBound) worldBuffersBound = wgpuBindWorldMeshBuffers(pass, pbrBuffers);
+        if (!worldBuffersBound) continue;
+        pass.draw(count, 1, offset);
+        if (frameRequest) frameRequest.record(obj.id);
         if (stats) stats.meshDrawCalls = (stats.meshDrawCalls || 0) + 1;
       }
     }
-
     function instancedMeshCount(mesh) {
       if (!mesh) return 0;
       return Math.max(0, Math.floor(sceneNumber(mesh.instanceCount, sceneNumber(mesh.count, 0))));
     }
-
     function instancedMeshMaterial(mesh, materials) {
       var mat = materials[sceneNumber(mesh && mesh.materialIndex, 0)] || null;
       if (mat) return mat;
@@ -16340,7 +16344,6 @@
         renderPass: mesh && mesh.renderPass,
       };
     }
-
     function instancedMeshTransformData(mesh, count) {
       if (!mesh || count <= 0 || !mesh.transforms) return null;
       if (!mesh._cachedTransforms) {
@@ -16353,19 +16356,17 @@
       var data = mesh._cachedTransforms;
       return data && data.length >= count * 16 ? data : null;
     }
-
     function instancedMeshColorData(mesh, count) {
       if (!mesh || count <= 0) return null;
       var rawColors = mesh.colors;
-      var source = rawColors || null;
-      if (
-        mesh._cachedWGPUInstanceColors &&
-        mesh._cachedWGPUInstanceColorCount === count &&
-        mesh._cachedWGPUInstanceColorSource === source
+      if (wgpuIsPackedInstanceColors(rawColors, count)) return rawColors;
+      var owner = webGPUInstancedCacheOwner(mesh.id, mesh);
+      if (owner._cachedWGPUInstanceColors &&
+        owner._cachedWGPUInstanceColorCount === count &&
+        wgpuArrayContentsMatch(owner._cachedWGPUInstanceColorSource, rawColors)
       ) {
-        return mesh._cachedWGPUInstanceColors;
+        return owner._cachedWGPUInstanceColors;
       }
-
       var data = null;
       if (rawColors && typeof rawColors.length === "number" && rawColors.length > 0) {
         if (Array.isArray(rawColors) && typeof rawColors[0] === "string") {
@@ -16378,7 +16379,7 @@
             data[ci * 4 + 3] = rgba[3];
           }
         } else if (rawColors.length >= count * 4) {
-          data = rawColors instanceof Float32Array ? rawColors : new Float32Array(rawColors);
+          data = new Float32Array(rawColors);
         } else if (rawColors.length >= count * 3) {
           data = new Float32Array(count * 4);
           for (var ni = 0; ni < count; ni++) {
@@ -16389,7 +16390,6 @@
           }
         }
       }
-
       if (!data) {
         data = new Float32Array(count * 4);
         for (var di = 0; di < count; di++) {
@@ -16399,13 +16399,11 @@
           data[di * 4 + 3] = 1;
         }
       }
-
-      mesh._cachedWGPUInstanceColors = data;
-      mesh._cachedWGPUInstanceColorCount = count;
-      mesh._cachedWGPUInstanceColorSource = source;
+      owner._cachedWGPUInstanceColors = data;
+      owner._cachedWGPUInstanceColorCount = count;
+      owner._cachedWGPUInstanceColorSource = rawColors ? Array.prototype.slice.call(rawColors) : null;
       return data;
     }
-
     function getInstancedGeometry(mesh) {
       if (typeof generateInstancedGeometry !== "function") return null;
       var kind = typeof normalizeInstancedGeometryKind === "function"
@@ -16450,8 +16448,8 @@
     // renderer a fresh shallow copy of every instanced mesh each frame, so
     // caching on that copy created a uniform buffer and a bind group per mesh
     // per frame and kept render bundles from replaying. Key by mesh id.
-    function webGPUInstancedCacheOwner(meshId = "") {
-      if (!meshId) return null;
+    function webGPUInstancedCacheOwner(meshId = "", fallback?: any) {
+      if (!meshId) return fallback;
       var owner = instancedCacheOwners.get(meshId);
       if (!owner) {
         owner = { meshId: meshId, seenEpoch: 0 };
@@ -16508,12 +16506,13 @@
       return host;
     }
 
+    // Share content snapshots across all passes and fresh per-frame mesh copies.
     function ensureInstancedTransformGPUBuffer(mesh, data) {
-      return wgpuCachedTrackedBuffer(webGPUInstancedCacheOwner(mesh && mesh.id) || mesh, "_gosxWGPUInstanceTransformBuffer", data, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, true);
+      return wgpuStablePBRAttributeBuffer("_gosxWGPUInstanceTransformSnapshot", data, webGPUInstancedCacheOwner(mesh && mesh.id) || mesh, "_gosxWGPUInstanceTransformBuffer");
     }
 
     function ensureInstancedColorGPUBuffer(mesh, data) {
-      return wgpuCachedTrackedBuffer(webGPUInstancedCacheOwner(mesh && mesh.id) || mesh, "_gosxWGPUInstanceColorBuffer", data, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, true);
+      return wgpuStablePBRAttributeBuffer("_gosxWGPUInstanceColorSnapshot", data, webGPUInstancedCacheOwner(mesh && mesh.id) || mesh, "_gosxWGPUInstanceColorBuffer");
     }
 
     function buildInstancedDrawList(bundle, materials) {
@@ -18393,9 +18392,11 @@
       adaptOrtho2DBoardBundle(bundle);
       if (!device) {
         startInit();
-        return;
+        return "pending";
       }
-      if (initFailed || pipelineGuard.coreError || pipelineGuard.pending || !bundle) return;
+      if (initFailed || pipelineGuard.coreError) return "failed";
+      if (pipelineGuard.pending) return "pending";
+      if (!bundle) return "empty";
 
       var hasPBRData = Boolean(
         bundle.worldMeshPositions &&
@@ -18471,12 +18472,12 @@
       webGPUSweepInstancedCacheOwners();
       if (!hasPBRData && !hasPointsData && !hasInstancedData && !hasWorldLines && !hasScreenLines && !hasSurfaces && !hasLabels && !hasWaterData && !(bundle.environment && (bundle.environment.sky || bundle.environment.ocean)) && !skyResources.renderer && !oceanResources.renderer) {
         webGPUSweepRetainedMeshBuffers();
-        return;
+        return "empty";
       }
 
       var width = canvas.width;
       var height = canvas.height;
-      if (width <= 0 || height <= 0) return;
+      if (width <= 0 || height <= 0) return "empty";
 
       // Opt-in perf instrumentation. Mirrors the WebGL renderer: when
       // window.__gosx_scene3d_perf is truthy, emit performance.mark +
@@ -18944,7 +18945,7 @@
       var bundleReason = sceneWebGPUBundleIneligibleReason({
         // Both halves must exist. An implementation that can build a bundle but
         // not replay one would leave the frame blank.
-        disabled: selectiveBloom || hasTransmission || !webGPURenderBundlesEnabled() ||
+        disabled: Boolean(frameMeta && frameMeta.frameRequest) || selectiveBloom || hasTransmission || !webGPURenderBundlesEnabled() ||
           typeof device.createRenderBundleEncoder !== "function" ||
           typeof mainPass.executeBundles !== "function",
         gpuDrivenSplit: gpuDriven.splitsMainPass(),
@@ -19018,7 +19019,7 @@
           var opaquePipeline = getPBRPipeline("opaque", true);
           mainPass.setPipeline(wgpuRequirePipeline(opaquePipeline));
           mainPass.setBindGroup(0, frameBindGroup);
-          drawPBRObjects(mainPass, drawList.opaque, bundle, materials, frameBindGroup, "opaque", true, pbrSceneBuffers, frameStats);
+          drawPBRObjects(mainPass, drawList.opaque, bundle, materials, frameBindGroup, "opaque", true, pbrSceneBuffers, frameStats, frameMeta && frameMeta.frameRequest);
         }
         if (instancedDrawList.opaque.length > 0) {
           mainPass.setBindGroup(0, frameBindGroup);
@@ -19063,7 +19064,7 @@
           var alphaPipeline = getPBRPipeline("alpha", false);
           mainPass.setPipeline(wgpuRequirePipeline(alphaPipeline));
           mainPass.setBindGroup(0, frameBindGroup);
-          drawPBRObjects(mainPass, drawList.alpha, bundle, materials, frameBindGroup, "alpha", false, pbrSceneBuffers, frameStats);
+          drawPBRObjects(mainPass, drawList.alpha, bundle, materials, frameBindGroup, "alpha", false, pbrSceneBuffers, frameStats, frameMeta && frameMeta.frameRequest);
         }
         if (instancedDrawList.alpha.length > 0) {
           mainPass.setBindGroup(0, frameBindGroup);
@@ -19083,7 +19084,7 @@
           var additivePipeline = getPBRPipeline("additive", false);
           mainPass.setPipeline(wgpuRequirePipeline(additivePipeline));
           mainPass.setBindGroup(0, frameBindGroup);
-          drawPBRObjects(mainPass, drawList.additive, bundle, materials, frameBindGroup, "additive", false, pbrSceneBuffers, frameStats);
+          drawPBRObjects(mainPass, drawList.additive, bundle, materials, frameBindGroup, "additive", false, pbrSceneBuffers, frameStats, frameMeta && frameMeta.frameRequest);
         }
         if (instancedDrawList.additive.length > 0) {
           mainPass.setBindGroup(0, frameBindGroup);
@@ -19168,6 +19169,7 @@
         performance.clearMarks("scene3d-render-start");
         performance.clearMarks("scene3d-render-end");
       }
+      return "submitted";
     }
 
     // -----------------------------------------------------------------------
@@ -19238,7 +19240,7 @@
       destroyRendererGPUResource(shadowPositionBuffer);
       shadowPositionBuffer = null;
       destroyRendererGPUResource(shadowFrameBuffer);
-      shadowFrameBuffer = null;
+      shadowFrameBuffer = null; shadowFrameBindGroups.length = 0;
       pointsEntryGPUBuffers.forEach(function(buffer) {
         destroyRendererGPUResource(buffer);
       });
@@ -19289,7 +19291,7 @@
         shadowSlots[si] = null;
       }
 /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */
-      textureCache._gosxGeneration.disposed = true;
+      textureCache._gosxGeneration.disposed = true; textureCache._gosxGeneration.onResourceReady();
       for (var record of textureCache.values()) {
         if (record) {
           record.disposed = true;
@@ -19532,7 +19534,7 @@
       kind: "webgpu",
       type: "webgpu",
       supportsRetainedGeometry: true,
-      supportsBundle: supportsBundle,
+      supportsBundle: supportsBundle, texturePreparation: { generation: textureCache["_gosxGeneration"], load: (url: any, descriptor: any, role: any, colorSpace: any) => wgpuLoadTexture(device, url, textureCache, descriptor, role, colorSpace) },
       queuePick: queuePick,
       setLifecycle: setLifecycle,
       pollPerformanceSample: pollPerformanceSample,

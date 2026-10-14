@@ -18,6 +18,12 @@ import (
 
 const blackglassBeachModelRoot = "/models/blackglass/"
 
+// Raster assets are cached longer than models. Fingerprint changed content
+// so returning visitors get the new preview and matching ocean depth field.
+const blackglassBeachPosterSrc = "/demos/posters/beacon.webp?v=03f3c71ad727"
+const blackglassBeachHeightSrc = blackglassBeachModelRoot + "beach-v2-height.png?v=df420d015fd8"
+const blackglassOffshoreHeightSrc = blackglassBeachModelRoot + "offshore-depth.png?v=0d4d5ed24b44"
+
 type blackglassBeachPeriod struct {
 	ID, Name string
 	SunColor string
@@ -32,7 +38,7 @@ func blackglassBeachPeriodFor(raw string) blackglassBeachPeriod {
 	case beachgen.PeriodNoon:
 		return blackglassBeachPeriod{beachgen.PeriodNoon, "Midday", "#fff4e6", 9, 0.5}
 	default:
-		return blackglassBeachPeriod{beachgen.PeriodGolden, "Golden hour", "#ffc690", 6.5, 0.62}
+		return blackglassBeachPeriod{beachgen.PeriodGolden, "Golden hour", "#ffc58d", 6.4, 0.68}
 	}
 }
 
@@ -43,15 +49,23 @@ type blackglassBeachView struct {
 
 func blackglassBeachViewFor(raw string) blackglassBeachView {
 	switch raw {
+	case "beacon":
+		p := scene.Vec3(beaconX+4, beachgen.TerrainHeight(beaconX+4, beaconZ+4, beachgen.Seed)+1.7, beaconZ+4)
+		return blackglassBeachView{"beacon", "The lighthouse", p, scene.Vec3(beaconX, p.Y+4, beaconZ)}
+	case "hollow":
+		p := scene.Vec3(grottoFrontX+3, beachgen.TerrainHeight(grottoFrontX+3, grottoZ, beachgen.Seed)+1.7, grottoZ)
+		return blackglassBeachView{"hollow", "The sun hollow", p, scene.Vec3(grottoBackX, p.Y, grottoZ)}
+	case "pools":
+		return blackglassBeachView{"pools", "The tide pools", scene.Vec3(10.8, 3.6, 10.6), scene.Vec3(11.1, .5, 5.3)}
 	case "glass":
-		return blackglassBeachView{"glass", "The glass", scene.Vec3(-3.4, 1.65, 7.8), scene.Vec3(-6.2, 1.7, 2.6)}
+		return blackglassBeachView{"glass", "The glass", scene.Vec3(-10.8, beachgen.TerrainHeight(-10.8, 8.8, beachgen.Seed)+1.7, 8.8), scene.Vec3(-6.2, 1.7, 2.6)}
 	case "ship":
 		// On the jetty deck beside the clipper's helm: press E to take it.
 		return blackglassBeachView{"ship", "At the helm", scene.Vec3(21, 4.2, -33.5), scene.Vec3(17, 5, -60)}
 	case "cliff":
-		return blackglassBeachView{"cliff", "From the cliff", scene.Vec3(-27, 15, 18), scene.Vec3(-1, 1, -29)}
+		return blackglassBeachView{"cliff", "From the cliff", scene.Vec3(-33, beachgen.TerrainHeight(-33, 6, beachgen.Seed)+2.5, 6), scene.Vec3(-8, 1, -25)}
 	default:
-		return blackglassBeachView{"shore", "The shore", scene.Vec3(-3.8, 1.7, 11), scene.Vec3(-7.8, 1.95, -30)}
+		return blackglassBeachView{"shore", "The shore", scene.Vec3(3.2, beachgen.TerrainHeight(3.2, 17, beachgen.Seed)+1.7, 17), scene.Vec3(-18.8, .6, -28)}
 	}
 }
 
@@ -118,35 +132,36 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 	period := blackglassBeachPeriodFor(periodID)
 	view := blackglassBeachViewFor(viewID)
 	sky := beachgen.PeriodSky(period.ID)
-	sky.Clouds = &scene.SkyClouds{Coverage: 0.28, Opacity: 0.68, Direction: 20}
+	sky.Clouds = &scene.SkyClouds{Coverage: 0.50, Altitude: 1100, Scale: 4800, Opacity: 0.72, Direction: 20}
 	sun := sky.SunDirection
 	horizon := blackglassBeachHorizon(sky, period.Exposure)
-	return scene.Props{
+	program := scene.Props{
 		Width: 1280, Height: 720,
 		Label:       "Blackglass Beach — " + view.Name + " at " + period.Name,
-		AriaLabel:   "A black sand beach at " + period.Name + ": footprints lead to an obsidian monolith, tide pools glint on the eastern shore, wreck ribs rise in the western dunes, a hollow catches the low sun, and a lighthouse sweeps the eastern headland. A three-masted clipper waits at the jetty.",
+		AriaLabel:   "A black-sand coast at " + period.Name + ": basalt cliffs, sea stacks, footprints to black glass, tide pools with marine life, a wreck and a lighthouse. A violet handheld rests beside the pools; a clipper waits at the jetty. Three offshore islands have piers, a letter cache, a tide bell and a star dial.",
 		ControlZoom: scene.Bool(true), ControlTarget: view.Target, ControlMinDistance: 2, ControlMaxDistance: 240,
 		Background: horizon, Controls: blackglassBeachControls(view.ID), Walk: blackglassBeachWalk(), Vessel: blackglassBeachVessel(), PointerLock: scene.Bool(true),
 		AutoRotate: scene.Bool(false), Responsive: scene.Bool(true), FillHeight: scene.Bool(true),
 		PreferWebGPU: scene.Bool(true), CanvasAlpha: scene.Bool(false), Stats: scene.Bool(false),
 		UnsupportedMessage: "Interactive 3D is unavailable in this browser.",
 		MaxFPS:             120, MaxDevicePixelRatio: 2, MaxPixels: scene.PostFXMaxPixels1440p,
+		FramePacing:        "vsync-divisor",
 		RenderBeforeModels: scene.Bool(true),
 		AdaptiveQuality:    scene.Bool(true), AdaptiveTargetFrameMS: 16.7, AdaptiveWarmupFrames: 24, AdaptivePostFX: scene.Bool(true),
-		Camera: scene.PerspectiveCamera{Position: view.Position, Rotation: blackglassBeachLookRotation(view.Position, view.Target), FOV: 42, PortraitFOV: 70, Near: 0.1, Far: 900},
+		Camera: scene.PerspectiveCamera{Position: view.Position, Rotation: blackglassBeachLookRotation(view.Position, view.Target), FOV: 50, PortraitFOV: 70, Near: 0.1, Far: 900},
 		Environment: scene.Environment{
-			IBL: blackglassBeachPeriodIBL(period.ID), EnvIntensity: 0.7,
+			IBL: blackglassBeachPeriodIBL(period.ID), EnvIntensity: 0.85,
 			Sky:      &sky,
-			FogColor: horizon, FogDensity: 0.0018,
-			Haze: &scene.Haze{Density: 0.0032, HeightFalloff: 0.07, SunScatter: 0.32},
+			FogColor: horizon, FogDensity: 0.0008,
+			Haze: &scene.Haze{Density: 0.0011, HeightFalloff: 0.07, SunScatter: 0.32},
 			Ocean: &scene.Ocean{
-				WindDirection: 8, WaveHeight: 0.9, WaveLength: 17, Choppiness: 0.7, Speed: 1,
-				DeepColor: "#021019", ShallowColor: "#1b5d63", ScatterColor: "#1f8f7c", FoamColor: "#eef3f2",
-				Clarity: 3.5, Roughness: 0.05, Foam: 0.7, Surf: 0.6, Extent: 4000,
+				WindDirection: -28, WaveHeight: 0.95, WaveLength: 38, Choppiness: 0.32, Speed: 0.85,
+				DeepColor: "#03121b", ShallowColor: "#123b43", ScatterColor: "#16695e", FoamColor: "#dde9e5",
+				Clarity: 2.8, Roughness: 0.13, Foam: 0.48, Surf: 0.65, Extent: 4000,
 				Reflections: &scene.OceanReflections{Mode: "ssr+planar", Resolution: 0.5, Strength: 1},
 				Bathymetry: &scene.OceanBathymetry{
-					Src:  blackglassBeachModelRoot + "beach-v2-height.png",
-					MinX: beachgen.BathymetryMinX, MinZ: beachgen.BathymetryMinZ, MaxX: beachgen.BathymetryMaxX, MaxZ: beachgen.BathymetryMaxZ,
+					Src:  blackglassOffshoreHeightSrc,
+					MinX: beachgen.OffshoreMinX, MinZ: beachgen.OffshoreMinZ, MaxX: beachgen.OffshoreMaxX, MaxZ: beachgen.OffshoreMaxZ,
 					MinHeight: beachgen.BathymetryMinHeight, MaxHeight: beachgen.BathymetryMaxHeight, Encoding: beachgen.BathymetryEncoding,
 				},
 			},
@@ -173,16 +188,37 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 			scene.Model{ID: "tideline-wrack", Src: blackglassBeachModelRoot + "tideline-wrack.glb", CastShadow: true, ReceiveShadow: true},
 			blackglassBeachGulls(),
 			scene.Model{ID: "monolith", Src: blackglassBeachModelRoot + "monolith-v2.glb", Bounds: 4,
-				Position: scene.Vec3(-6.2, 0.05, 2.6), Rotation: scene.Euler{Y: -1.16}, CastShadow: true, ReceiveShadow: true,
-				Material: scene.StandardMaterial{Color: "#8aaca9", Roughness: 0.065, Metalness: 0, Clearcoat: 0.75, Transmission: 0.88, IOR: scene.Float(1.48)}},
-		}, blackglassBeachBakedMoments(period.ID)...)...),
+				Position: scene.Vec3(beachgen.MonolithX, beachgen.MonolithY, beachgen.MonolithZ), Rotation: scene.Euler{Y: beachgen.MonolithYaw}, CastShadow: true, ReceiveShadow: true,
+				Material: scene.StandardMaterial{Color: "#596f6b", Roughness: 0.065, Metalness: 0, Clearcoat: 0.95, Transmission: 0.88, IOR: scene.Float(1.48),
+					Thickness: .45, AttenuationDistance: .3, AttenuationColor: &[3]float64{.12, .24, .21}}},
+		}, append(append(blackglassBeachBakedMoments(period.ID), blackglassBeachPoolRipple()), blackglassIslandModels()...)...)...),
 	}
+	// Scenery is not a pick target: keep pointer queries bounded to the three
+	// pools and the collectible, rather than ray-testing the entire coastline.
+	for i, node := range program.Graph.Nodes {
+		switch n := node.(type) {
+		case scene.Model:
+			if !n.Interactive {
+				n.Pickable = scene.Bool(false)
+				program.Graph.Nodes[i] = n
+			}
+		case scene.Mesh:
+			if !n.Interactive {
+				n.Pickable = scene.Bool(false)
+				program.Graph.Nodes[i] = n
+			}
+		case scene.InstancedMesh:
+			n.Pickable = scene.Bool(false)
+			program.Graph.Nodes[i] = n
+		}
+	}
+	if view.ID == "pools" {
+		program.Camera.PortraitFOV = 95
+	}
+	return program
 }
 
 // Scenic presets dolly around their subject; shore and ship remain walkable.
-func blackglassBeachControls(viewID string) string {
-	if viewID == "glass" || viewID == "cliff" {
-		return scene.ControlOrbit
-	}
-	return scene.ControlFirstPerson
-}
+// All viewpoints are starting positions in the same walkable world. A visitor
+// who boards from the pools can step ashore without inheriting orbit controls.
+func blackglassBeachControls(view string) string { return scene.ControlFirstPerson }

@@ -301,6 +301,48 @@ for (const extension of [false, true]) {
     assert.ok(h.gl.ops.some(op => op[0] === "deleteProgram"), "compiled program records release their shaders");
   });
 }
+for (const compiled of [false, true]) {
+  test(`${compiled ? "release bundle" : "fresh source"} Selena meshes wait for compiled attribute metadata`, t => {
+    const h = parallelRendererHarness(true, compiled);
+    t.after(() => h.renderer.dispose());
+    h.setComplete(true);
+    h.raf.flush(16);
+    let variantComplete = false;
+    const getParameter = h.gl.getProgramParameter.bind(h.gl);
+    h.gl.getProgramParameter = (program, parameter) => parameter === 91 && program.attached.some(shader => shader.source.includes("selenaVariantReadinessProbe"))
+      ? variantComplete : getParameter(program, parameter);
+    const getExtension = h.gl.getExtension.bind(h.gl);
+    h.gl.getExtension = name => name === "EXT_color_buffer_float" ? {} : getExtension(name);
+    h.gl.clearBufferfv = (...args) => h.gl.ops.push(["clearBufferfv", ...args]);
+    h.gl.deleteRenderbuffer = (...args) => h.gl.ops.push(["deleteRenderbuffer", ...args]);
+    const bundle = synchronousPBRBundle("custom", vm.runInContext("Float32Array", h.env.context));
+    Object.assign(bundle.materials[0], {
+      shaderBackend: "selena",
+      customVertex: "in vec3 position; void main() { float selenaReadinessProbe = 0.125; gl_Position = vec4(position, 1.0); }",
+      customFragment: "out vec4 fragColor; void main() { fragColor = vec4(1.0); }",
+      specularFragmentGLSL: "layout(location=0) out vec4 fragColor; layout(location=1) out vec4 specularColor; void main() { float selenaVariantReadinessProbe = 0.125; fragColor = vec4(1.0); specularColor = vec4(selenaVariantReadinessProbe); }",
+      shaderLayout: { attributes: [{ name: "position", type: "vec3" }], uniformBlock: { fields: [] } },
+    });
+    bundle.postEffects = [{ kind: "bloom", source: "specular", intensity: 0.1 }];
+    const drawn = [], draw = h.gl.drawArrays.bind(h.gl);
+    h.gl.drawArrays = (...args) => { drawn.push(h.gl._activeProgram); return draw(...args); };
+    const viewport = { width: 320, height: 180 };
+    assert.doesNotThrow(() => h.renderer.render(bundle, viewport));
+    h.raf.flush(24);
+    assert.doesNotThrow(() => h.renderer.render(bundle, viewport));
+    const program = h.gl.programMatching("selenaVariantReadinessProbe");
+    assert.ok(program, "the authored material submits its shader");
+    assert.ok(!drawn.includes(program), "the pending shader never reaches binding or drawing");
+    h.raf.flush(32);
+    assert.doesNotThrow(() => h.renderer.render(bundle, viewport));
+    assert.ok(!drawn.includes(program), "cached pending metadata stays deferred");
+    variantComplete = true;
+    h.raf.flush(48);
+    assert.doesNotThrow(() => h.renderer.render(bundle, viewport));
+    assert.ok(drawn.includes(program), "the authored material draws after metadata initializes");
+  });
+}
+
 test("detail meshes wait for parallel linking before uploading lights and drawing", t => {
   const h = parallelRendererHarness();
   t.after(() => h.renderer.dispose());
@@ -494,16 +536,16 @@ test("authored compute-particle shaders prepare before readiness and never draw 
     renderFragment: "precision mediump float; uniform float brightness; void main() { gl_FragColor = vec4(brightness); }",
     renderUniforms: { brightness: 1.25 },
   });
-  h.renderer.render(bundle, viewport);
+  assert.equal(h.renderer.render(bundle, viewport), "pending");
   assert.ok(h.gl.programMatching("uniform float brightness"), "the authored shader is submitted before the frame check");
   assert.equal(h.gl.ops.filter(op => op[0] === "useProgram" || op[0] === "drawArrays").length, 0);
   assert.equal(h.gl.ops.filter(op => op[0] === "getUniformLocation" || op[0] === "getAttribLocation").length, 0);
   h.raf.flush(48);
-  h.renderer.render(bundle, viewport);
+  assert.equal(h.renderer.render(bundle, viewport), "pending");
   assert.equal(h.gl.ops.filter(op => op[0] === "drawArrays").length, 0, "unfinished programs keep the frame parked");
   h.setComplete(true);
   h.raf.flush(64);
-  h.renderer.render(bundle, viewport);
+  assert.equal(h.renderer.render(bundle, viewport), "submitted");
   assert.ok(h.gl.ops.some(op => op[0] === "drawArrays" && op[1] === h.gl.POINTS && op[3] === 4));
   assert.ok(h.gl.ops.some(op => op[0] === "uniform1f" && op[1] === "brightness" && op[2] === 1.25));
   h.renderer.dispose();
@@ -788,6 +830,7 @@ test("points draw skips a late authored program until completion without queryin
 function importedBatchCapabilityHarness(h) {
   Object.assign(h.context, {
     gl: h.gl, instancedProgram: null, instancedProgramFailed: false,
+    textureCache: Object.assign(new Map(), { _gosxGeneration: { disposed: false } }),
     createSceneWebGLFrameTimer: () => ({}),
     prepareCrowdAtlas() {}, prepareCrowdMotionShaders() {}, diagnostics() {}, textureVariantContext: {},
   });

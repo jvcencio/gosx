@@ -7,6 +7,7 @@ import (
 	"go/constant"
 	"go/parser"
 	"html"
+	"m31labs.dev/gosx/internal/sceneprobe"
 	"math"
 	"net/http"
 	"reflect"
@@ -975,27 +976,10 @@ func (r *fileProgramRenderer) renderScene3D(node *ir.Node, env fileRenderEnv) st
 
 func (r *fileProgramRenderer) renderEngineComponent(node *ir.Node, env fileRenderEnv, kind engine.Kind, defaults fileEngineDefaults) string {
 	cfg, fallback := r.engineComponentConfig(node, env, kind, defaults)
-	if kind == engine.KindSurface && cfg.Name == "GoSXScene3D" {
-		cfg.Props = normalizeScene3DScalarProps(cfg.Props)
-		cfg.Props = r.applyScene3DComposableChildren(cfg.Props, node, env)
-		cfg.Props = defaultScene3DProps(cfg.Props, cfg.WASMPath)
-		cfg.Props = r.applyScene3DStyles(cfg.Props, node, env)
-		cfg.RequiredCapabilities = scene3DRequiredCapabilities(cfg.Props, cfg.RequiredCapabilities)
-		if err := validateScene3DCompilerCapabilities(cfg.Props, mergedEngineCapabilities(cfg.Capabilities, cfg.RequiredCapabilities)); err != nil {
-			return r.renderError(err)
-		}
-	}
 	return gosx.RenderHTML(env.engine(cfg, fallback))
 }
 
-func normalizeScene3DScalarProps(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 {
-		return raw
-	}
-	props := map[string]any{}
-	if err := json.Unmarshal(raw, &props); err != nil {
-		return raw
-	}
+func normalizeScene3DScalarValues(props map[string]any) {
 	if _, exists := props["controlTarget"]; !exists {
 		_, hasX := props["controlTargetX"]
 		_, hasY := props["controlTargetY"]
@@ -1011,11 +995,6 @@ func normalizeScene3DScalarProps(raw json.RawMessage) json.RawMessage {
 	delete(props, "controlTargetX")
 	delete(props, "controlTargetY")
 	delete(props, "controlTargetZ")
-	encoded, err := json.Marshal(props)
-	if err != nil {
-		return raw
-	}
-	return encoded
 }
 
 func (r *fileProgramRenderer) renderError(err error) string {
@@ -1037,8 +1016,37 @@ func (r *fileProgramRenderer) engineComponentConfig(node *ir.Node, env fileRende
 		mountAttrs = withDefaultMountAttrs(mountAttrs, defaults.MountAttrs)
 	}
 
-	cfg := engineComponentConfigValue(node.Attrs, env, kind, defaults, transport, name, mountID, props, mountAttrs)
-	if cfg.Runtime == engine.RuntimeNone && kind == engine.KindSurface && cfg.Name == "GoSXScene3D" && cfg.WASMPath != "" {
+	scene3D := kind == engine.KindSurface && name == "GoSXScene3D"
+	wireProps := props
+	if scene3D {
+		wireProps = nil
+	}
+	cfg := engineComponentConfigValue(node.Attrs, env, kind, defaults, transport, name, mountID, wireProps, mountAttrs)
+	if scene3D {
+		props = canonicalizeEnginePropsMap(props)
+		if props == nil {
+			props = map[string]any{}
+		}
+		normalizeScene3DScalarValues(props)
+		props = r.applyScene3DComposableValues(props, node, env)
+		defaultScene3DValues(props, cfg.WASMPath)
+		cfg.Props = marshalEngineProps(props)
+		cfg.Props = r.applyScene3DStyles(cfg.Props, node, env)
+		cfg.Scene3DProbe = sceneprobe.Decode(cfg.Props)
+		if cfg.Scene3DProbe.Err == nil {
+			cfg.RequiredCapabilities = scene3DRequiredCapabilitiesValue(cfg.Scene3DProbe.RequireWebGL, cfg.RequiredCapabilities)
+			if err := validateScene3DProbeCapabilities(cfg.Scene3DProbe, mergedEngineCapabilities(cfg.Capabilities, cfg.RequiredCapabilities)); err != nil {
+				r.renderError(err)
+			}
+		} else {
+			// Preserve permissive legacy props and validation on malformed probe fields.
+			cfg.RequiredCapabilities = scene3DRequiredCapabilities(cfg.Props, cfg.RequiredCapabilities)
+			if err := validateScene3DCompilerCapabilities(cfg.Props, mergedEngineCapabilities(cfg.Capabilities, cfg.RequiredCapabilities)); err != nil {
+				r.renderError(err)
+			}
+		}
+	}
+	if cfg.Runtime == engine.RuntimeNone && scene3D && cfg.WASMPath != "" {
 		cfg.Runtime = engine.RuntimeShared
 	}
 
@@ -4576,14 +4584,7 @@ func scene3DStyleAttrString(value any) string {
 	}
 }
 
-func defaultScene3DProps(raw json.RawMessage, programRef string) json.RawMessage {
-	props := map[string]any{}
-	if len(raw) > 0 {
-		_ = json.Unmarshal(raw, &props)
-	}
-	if props == nil {
-		props = map[string]any{}
-	}
+func defaultScene3DValues(props map[string]any, programRef string) {
 	if _, ok := lookupTemplatePropValue(props, "width"); !ok {
 		props["width"] = 720
 	}
@@ -4621,7 +4622,6 @@ func defaultScene3DProps(raw json.RawMessage, programRef string) json.RawMessage
 			},
 		}
 	}
-	return marshalEngineProps(props)
 }
 
 func scene3DRequiredCapabilities(raw json.RawMessage, existing []engine.Capability) []engine.Capability {
@@ -4633,6 +4633,10 @@ func scene3DRequiredCapabilities(raw json.RawMessage, existing []engine.Capabili
 	if value, ok := lookupTemplatePropValue(props, "requireWebGL"); ok {
 		requireWebGL = truthy(value)
 	}
+	return scene3DRequiredCapabilitiesValue(requireWebGL, existing)
+}
+
+func scene3DRequiredCapabilitiesValue(requireWebGL bool, existing []engine.Capability) []engine.Capability {
 	if !requireWebGL {
 		return existing
 	}
@@ -4743,21 +4747,13 @@ func scene3DCapabilityNodes(values map[string]any) []gosxscene.IRNode {
 	return nodes
 }
 
-func (r *fileProgramRenderer) applyScene3DComposableChildren(raw json.RawMessage, node *ir.Node, env fileRenderEnv) json.RawMessage {
+func (r *fileProgramRenderer) applyScene3DComposableValues(props map[string]any, node *ir.Node, env fileRenderEnv) map[string]any {
 	if node == nil || len(node.Children) == 0 {
-		return raw
+		return props
 	}
 	childProps := r.lowerScene3DComposableChildren(node.Children, env)
 	if len(childProps) == 0 {
-		return raw
-	}
-
-	props := map[string]any{}
-	if len(raw) > 0 {
-		_ = json.Unmarshal(raw, &props)
-	}
-	if props == nil {
-		props = map[string]any{}
+		return props
 	}
 	if camera, ok := childProps["camera"]; ok {
 		if mapped := mapStringAnyValue(camera); mapped != nil {
@@ -4767,7 +4763,7 @@ func (r *fileProgramRenderer) applyScene3DComposableChildren(raw json.RawMessage
 		}
 	}
 	if sceneValue, ok := childProps["scene"].(map[string]any); ok {
-		sceneMap := mapStringAnyValue(props["scene"])
+		sceneMap := scene3DMergeMapValue(props["scene"])
 		if sceneMap == nil {
 			sceneMap = map[string]any{}
 		}
@@ -4775,7 +4771,7 @@ func (r *fileProgramRenderer) applyScene3DComposableChildren(raw json.RawMessage
 		annotateScene3DComposableBackendCaps(sceneMap)
 		props["scene"] = sceneMap
 	}
-	return marshalEngineProps(props)
+	return props
 }
 
 func annotateScene3DComposableBackendCaps(sceneMap map[string]any) {
@@ -5443,17 +5439,7 @@ func appendScene3DSceneRecord(sceneMap map[string]any, key string, record map[st
 	if sceneMap == nil || record == nil {
 		return
 	}
-	current, _ := sceneMap[key].([]map[string]any)
-	if current == nil {
-		if values, ok := sceneMap[key].([]any); ok {
-			current = make([]map[string]any, 0, len(values)+1)
-			for _, value := range values {
-				if mapped := mapStringAnyValue(value); mapped != nil {
-					current = append(current, mapped)
-				}
-			}
-		}
-	}
+	current := scene3DRecordList(sceneMap[key])
 	sceneMap[key] = append(current, cloneStringAnyMap(record))
 }
 
@@ -5475,24 +5461,73 @@ func mergeScene3DSceneMap(dst, src map[string]any) {
 }
 
 func scene3DRecordList(value any) []map[string]any {
+	if value == nil {
+		return nil
+	}
 	switch items := value.(type) {
 	case []map[string]any:
 		return items
 	case []any:
 		out := make([]map[string]any, 0, len(items))
 		for _, item := range items {
-			if mapped := mapStringAnyValue(item); mapped != nil {
+			if mapped := scene3DMergeMapValue(item); mapped != nil {
 				out = append(out, mapped)
 			}
 		}
 		return out
 	default:
-		return nil
+		rv := reflect.ValueOf(value)
+		for rv.Kind() == reflect.Pointer {
+			if rv.IsNil() {
+				return nil
+			}
+			rv = rv.Elem()
+		}
+		if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+			return nil
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil
+		}
+		var out []map[string]any
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return nil
+		}
+		for i, record := range out {
+			out[i] = canonicalizeEnginePropsMap(record)
+		}
+		return out
 	}
 }
 
+// Materialize typed JSON objects only when a child must merge into them.
+// This preserves their JSON field names and custom marshalers without putting
+// the full props tree back through JSON on every request.
+func scene3DMergeMapValue(value any) map[string]any {
+	if mapped := mapStringAnyValue(value); mapped != nil {
+		return mapped
+	}
+	if value == nil {
+		return nil
+	}
+	raw, ok := value.(json.RawMessage)
+	if !ok {
+		var err error
+		raw, err = json.Marshal(value)
+		if err != nil {
+			return nil
+		}
+	}
+	var mapped map[string]any
+	if err := json.Unmarshal(raw, &mapped); err != nil {
+		return nil
+	}
+	return canonicalizeEnginePropsMap(mapped)
+}
+
 func mergeStringAnyMapValue(target map[string]any, key string, values map[string]any) {
-	current := mapStringAnyValue(target[key])
+	current := scene3DMergeMapValue(target[key])
 	if current == nil {
 		current = map[string]any{}
 	}
@@ -5599,4 +5634,41 @@ func cloneSpreadProps(values map[string]any) map[string]any {
 		out[key] = value
 	}
 	return out
+}
+
+func validateScene3DProbeCapabilities(probe *sceneprobe.Probe, capabilities []engine.Capability) error {
+	var nodes []gosxscene.IRNode
+	add := func(p *sceneprobe.Probe) {
+		if p == nil {
+			return
+		}
+		appendNode := func(record sceneprobe.Record, kind, capability string) {
+			nodes = append(nodes, gosxscene.IRNode{Kind: kind, ID: strings.TrimSpace(fmt.Sprint(record.ID)), Capabilities: []string{capability}, Compute: &gosxscene.IRComputeNode{}})
+		}
+		for _, record := range p.ComputeParticles {
+			appendNode(record, "compute-particles", "compute")
+		}
+		for _, record := range p.WaterSystems {
+			appendNode(record, "water-system", "webgpu")
+		}
+		for _, record := range p.Nodes {
+			kind := strings.TrimSpace(record.Kind)
+			if kind == "compute-particles" {
+				appendNode(record, kind, "compute")
+			}
+		}
+	}
+	add(probe)
+	add(probe.Scene)
+	if len(nodes) == 0 {
+		return nil
+	}
+	caps := make([]string, len(capabilities))
+	for i, cap := range capabilities {
+		caps[i] = string(cap)
+	}
+	if err := gosxscene.ValidateCapabilities(gosxscene.IR{Version: gosxscene.IRVersion, Nodes: nodes}, caps); err != nil {
+		return fmt.Errorf("Scene3D capability validation failed: %w", err)
+	}
+	return nil
 }

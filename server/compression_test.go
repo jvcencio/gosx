@@ -557,21 +557,86 @@ func (w *compressionTakeoverWriter) Hijack() (net.Conn, *bufio.ReadWriter, error
 func TestCompressionFailedHijackContinuesStream(t *testing.T) {
 	for _, encoding := range []string{"gzip", "br"} {
 		for _, supported := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/supported=%t", encoding, supported), func(t *testing.T) {
+			for _, shareable := range []bool{false, true} {
+				for _, earlyHeader := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/supported=%t/shareable=%t/earlyHeader=%t", encoding, supported, shareable, earlyHeader), func(t *testing.T) {
+						recorder := httptest.NewRecorder()
+						var sink http.ResponseWriter = recorder
+						if supported {
+							sink = &compressionTakeoverWriter{recorder: recorder, failure: errors.New("takeover failed")}
+						}
+						prefix := bytes.Repeat([]byte("compressed prefix\n"), 200)
+						tail := []byte("fallback tail")
+						handler := CompressionMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Set("Content-Type", "text/plain")
+							if shareable {
+								w.Header().Set("Content-Type", "text/html; charset=utf-8")
+								w.Header().Set("Cache-Control", "public, max-age=60")
+								w.Header().Set("ETag", `"fallback"`)
+							}
+							if earlyHeader {
+								w.WriteHeader(http.StatusOK)
+							}
+							if _, err := w.Write(prefix); err != nil {
+								t.Fatal(err)
+							}
+							if _, _, err := http.NewResponseController(w).Hijack(); err == nil {
+								t.Fatal("expected takeover error")
+							}
+							if _, err := w.Write(tail); err != nil {
+								t.Fatal(err)
+							}
+						}))
+						req := httptest.NewRequest("GET", "/", nil)
+						req.Header.Set("Accept-Encoding", encoding)
+						handler.ServeHTTP(sink, req)
+						if got := recorder.Result().Header.Get("Content-Encoding"); got != encoding {
+							t.Fatalf("fallback encoding = %q, want %q", got, encoding)
+						}
+						if got := decodeCompressedResponse(t, encoding, recorder.Body.Bytes()); !bytes.Equal(got, append(prefix, tail...)) {
+							t.Fatal("fallback changed the compressed body")
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestCompressionCacheableHTMLFallbackOperations(t *testing.T) {
+	for _, encoding := range []string{"br", "gzip"} {
+		for _, operation := range []string{"flush", "unsupported-flush", "push", "ignored-header"} {
+			t.Run(encoding+"/"+operation, func(t *testing.T) {
 				recorder := httptest.NewRecorder()
 				var sink http.ResponseWriter = recorder
-				if supported {
-					sink = &compressionTakeoverWriter{recorder: recorder, failure: errors.New("takeover failed")}
+				if operation == "unsupported-flush" {
+					sink = struct{ http.ResponseWriter }{recorder}
 				}
-				prefix := bytes.Repeat([]byte("compressed prefix\n"), 200)
-				tail := []byte("fallback tail")
-				handler := CompressionMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.Header().Set("Content-Type", "text/plain")
+				prefix := bytes.Repeat([]byte("<p>buffered prefix</p>"), 100)
+				tail := []byte("<p>fallback tail</p>")
+				handler := CompressionMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Type", "text/html; charset=utf-8")
+					w.Header().Set("Cache-Control", "public, max-age=60")
+					w.Header().Set("ETag", `"fallback"`)
+					w.WriteHeader(http.StatusOK)
 					if _, err := w.Write(prefix); err != nil {
 						t.Fatal(err)
 					}
-					if _, _, err := http.NewResponseController(w).Hijack(); err == nil {
-						t.Fatal("expected takeover error")
+					switch operation {
+					case "flush":
+						if err := http.NewResponseController(w).Flush(); err != nil {
+							t.Fatal(err)
+						}
+					case "unsupported-flush":
+						if err := http.NewResponseController(w).Flush(); !errors.Is(err, http.ErrNotSupported) {
+							t.Fatalf("unsupported flush error = %v", err)
+						}
+					case "push":
+						if _, ok := w.(http.Pusher); ok {
+							t.Fatal("compression wrapper unexpectedly exposes Push")
+						}
+					case "ignored-header":
+						w.WriteHeader(http.StatusCreated)
 					}
 					if _, err := w.Write(tail); err != nil {
 						t.Fatal(err)
@@ -580,6 +645,9 @@ func TestCompressionFailedHijackContinuesStream(t *testing.T) {
 				req := httptest.NewRequest("GET", "/", nil)
 				req.Header.Set("Accept-Encoding", encoding)
 				handler.ServeHTTP(sink, req)
+				if recorder.Code != http.StatusOK || recorder.Result().Header.Get("Content-Encoding") != encoding || recorder.Result().Header.Get("ETag") != `W/"fallback"` {
+					t.Fatalf("fallback response: status=%d headers=%v", recorder.Code, recorder.Result().Header)
+				}
 				if got := decodeCompressedResponse(t, encoding, recorder.Body.Bytes()); !bytes.Equal(got, append(prefix, tail...)) {
 					t.Fatal("fallback changed the compressed body")
 				}
@@ -587,6 +655,7 @@ func TestCompressionFailedHijackContinuesStream(t *testing.T) {
 		}
 	}
 }
+
 func TestCompressionHijackWithoutFlushing(t *testing.T) {
 	sink := &compressionTakeoverWriter{recorder: httptest.NewRecorder()}
 	CompressionMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

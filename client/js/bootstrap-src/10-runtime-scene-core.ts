@@ -4731,6 +4731,15 @@
         geometry: current.kind,
         props: patch || {},
       }, current);
+      if (next.vertices === current.vertices) {
+        // Normalization produces a new record even for a label/turn change.
+        // Carry geometry-only caches forward; their own revision/matrix
+        // checks still invalidate changed poses, topology and source buffers.
+        for (const cache of [_sceneObjectModelMatrixCache, _sceneObjectMeshBakeLinearStateCache, _sceneWorldBakedGeometryCache]) {
+          const record = cache.get(current);
+          if (record) cache.set(next, record);
+        }
+      }
       if (next) {
         // A direct object/material command replaces an imported wrapper with
         // a public mutable record. Never carry the internal rigid snapshot
@@ -4780,6 +4789,10 @@
     const props = payload && payload.props && typeof payload.props === "object" ? payload.props : {};
     const geometry = payload && typeof payload.geometry === "string" && payload.geometry ? payload.geometry : current.kind;
     const merged = Object.assign({}, current, props);
+    // The fallback already owns normalized streams. Passing those back as
+    // authored input creates another snapshot (and another GPU buffer set) on
+    // every transform/state patch. Geometry changes still normalize explicitly.
+    if (!Object.prototype.hasOwnProperty.call(props, "vertices")) delete merged.vertices;
     merged.id = current.id || merged.id || ("scene-object-" + objectID);
     merged.kind = normalizeSceneKind(merged.kind || geometry);
     // Route provenance: a route value authored in the incoming props must
@@ -5125,12 +5138,21 @@
     builder.length = offset + 4;
   }
 
+  function sceneAppendFloat32Stream(builder, values) {
+    builder.buffer.set(values, builder.length);
+    builder.length += values.length;
+  }
+
   function sceneFinishFloat32Builder(builder) {
     if (!builder || builder.length <= 0 || !builder.buffer) return new Float32Array(0);
-    // Consumers may retain a completed bundle, so expose only its exact owned
-    // payload rather than a view backed by spare builder capacity.
-    if (builder.length === builder.buffer.length) return builder.buffer;
-    return builder.buffer.slice(0, builder.length);
+    // Transfer this build's storage to the completed bundle. Its exact-length
+    // view avoids copying large attribute streams at every animation frame.
+    // Detach the builder so a later reserve/append cannot mutate that bundle.
+    const buffer = builder.buffer;
+    const length = builder.length;
+    builder.buffer = null;
+    builder.length = 0;
+    return length === buffer.length ? buffer : buffer.subarray(0, length);
   }
 
   function sceneReserveWorldMeshAttributes(bundle, vertexCount) {
@@ -5149,8 +5171,18 @@
       const vertices = object && object.vertices;
       if (!vertices || !vertices.count || object.visible === false || object.skin) continue;
       const wire = bundle.meshWireframeFallback || object.wireframe || object.selected;
-      if (sceneMeshHasStableLocalGeometry(bundle, object, vertices, wire)) continue;
-      count += vertices.indices ? vertices.indices.length : vertices.count;
+      // Immutability alone does not put an authored shader on the retained
+      // GPU path. Its transformed vertices may still need a world bake.
+      // Inspect descriptors without invoking a registered material factory a
+      // second time; unknown registered profiles conservatively reserve.
+      const registered = sceneRegisteredMaterialProfile(
+        normalizeSceneMaterialKind(sceneObjectMaterialKindValue(object)));
+      if (!registered &&
+          sceneMeshCanRetainLocalGeometry(bundle, object, object, vertices, wire, bundle.timeSeconds)) continue;
+      const indices = vertices.indices;
+      const drawnCount = indices instanceof Uint32Array && indices.length >= 3 && indices.length % 3 === 0
+        ? indices.length : vertices.count;
+      count += drawnCount - drawnCount % 3;
     }
     // Reserve the complete dynamic payload once. Growing each of its five
     // attributes after every sail otherwise copies the earlier sails again.
@@ -6587,25 +6619,17 @@
       : null;
     if (!cacheEligible) sceneDropWorldBakedGeometryCache(object);
     if (cachedGeometry) {
+      // Cached attributes already have the final Float32 representation.
+      // Copy each stream once instead of unpacking every vertex through the
+      // scalar append helpers on every frame. Bundle storage remains owned,
+      // so later transforms cannot mutate a previously completed frame.
+      sceneAppendFloat32Stream(bundle.worldMeshPositions, cachedGeometry.positions);
+      sceneAppendFloat32Stream(bundle.worldMeshNormals, cachedGeometry.normals);
+      sceneAppendFloat32Stream(bundle.worldMeshUVs, cachedGeometry.uvs);
+      sceneAppendFloat32Stream(bundle.worldMeshTangents, cachedGeometry.tangents);
+      // Colour belongs to the current material, not the geometry cache.
       for (let index = 0; index < cachedGeometry.vertexCount; index += 1) {
-        const positionOffset = index * 3;
-        const uvOffset = index * 2;
-        const tangentOffset = index * 4;
-        sceneAppendFloat32Triple(bundle.worldMeshPositions,
-          cachedGeometry.positions[positionOffset],
-          cachedGeometry.positions[positionOffset + 1],
-          cachedGeometry.positions[positionOffset + 2]);
         sceneAppendFloat32Quad(bundle.worldMeshColors, flatMeshColor[0], flatMeshColor[1], flatMeshColor[2], flatMeshColor[3]);
-        sceneAppendFloat32Triple(bundle.worldMeshNormals,
-          cachedGeometry.normals[positionOffset],
-          cachedGeometry.normals[positionOffset + 1],
-          cachedGeometry.normals[positionOffset + 2]);
-        sceneAppendFloat32Pair(bundle.worldMeshUVs, cachedGeometry.uvs[uvOffset], cachedGeometry.uvs[uvOffset + 1]);
-        sceneAppendFloat32Quad(bundle.worldMeshTangents,
-          cachedGeometry.tangents[tangentOffset],
-          cachedGeometry.tangents[tangentOffset + 1],
-          cachedGeometry.tangents[tangentOffset + 2],
-          cachedGeometry.tangents[tangentOffset + 3]);
       }
       meshVertexCount = cachedGeometry.vertexCount;
       bounds = {

@@ -16,7 +16,7 @@ interface SceneWalkHelpers {
   now: () => number;
 }
 interface SceneWalkState {
-  config: Record<string, any>; ground: SceneWalkField | null;
+  config: Record<string, any>; ground: SceneWalkField | null; grounds: SceneWalkField[];
   camera: Record<string, any>; start: Record<string, any>;
   x: number; z: number; yaw: number; pitch: number; eyeY: number; velocityY: number;
   grounded: boolean; distance: number; bobWeight: number; bob: number;
@@ -27,6 +27,7 @@ interface SceneWalkState {
 
 (function() {
   const mounts = new Map<HTMLElement, () => void>();
+  const surfaceHeight = window.__gosx_scene3d_walk_surfaces.height;
   function number(value: any, fallback: number): number {
     const n = Number(value);
     return value == null || !Number.isFinite(n) ? fallback : n;
@@ -49,8 +50,9 @@ interface SceneWalkState {
     for (let i = 0; i < count; i++) samples[i] = bytes.charCodeAt(i * 2) | bytes.charCodeAt(i * 2 + 1) << 8;
     return Object.assign({}, ground, { samples });
   }
-  function sampleGround(ground: SceneWalkField | null, x: number, z: number): number {
+  function sampleGround(ground: SceneWalkField | null, x: number, z: number, outsideHeight?: number): number {
     if (!ground) return 0;
+    if (outsideHeight !== undefined && (x < ground.minX || x > ground.minX + ground.sizeX || z < ground.minZ || z > ground.minZ + ground.sizeZ)) return outsideHeight;
     const col = clamp((x - ground.minX) / ground.sizeX, 0, 1) * (ground.cols - 1);
     const row = clamp((z - ground.minZ) / ground.sizeZ, 0, 1) * (ground.rows - 1);
     const x0 = Math.floor(col), z0 = Math.floor(row);
@@ -61,11 +63,19 @@ interface SceneWalkState {
     return ground.minHeight + (a * (1 - tz) + b * tz) / 65535 * (ground.maxHeight - ground.minHeight);
   }
   function groundHeight(s: SceneWalkState, x: number, z: number): number {
-    return window.__gosx_scene3d_walk_surfaces.height(s.config.surfaces, x, z, sampleGround(s.ground, x, z));
+    const deck = surfaceHeight(s.config.surfaces, x, z, -Infinity);
+    return Math.max(deck, sampleGrounds(s.ground, s.grounds, x, z, Number.isFinite(deck) ? -Infinity : s.config.outsideHeight));
+  }
+  // Sparse patches retain local walking detail without a continent-sized grid.
+  function sampleGrounds(ground: SceneWalkField | null, grounds: SceneWalkField[], x: number, z: number, outsideHeight?: number): number {
+    if (!grounds.length) return sampleGround(ground, x, z, outsideHeight);
+    let y = ground ? sampleGround(ground, x, z, -Infinity) : -Infinity;
+    for (const patch of grounds) y = Math.max(y, sampleGround(patch, x, z, -Infinity));
+    return Number.isFinite(y) ? y : outsideHeight ?? sampleGround(ground, x, z);
   }
   function createState(camera: Record<string, any>, config: Record<string, any>, reduced: boolean): SceneWalkState {
     return {
-      config, ground: decodeGround(config.ground || null), camera: Object.assign({}, camera), start: Object.assign({}, camera),
+      config, ground: decodeGround(config.ground || null), grounds: (config.grounds || []).map(decodeGround), camera: Object.assign({}, camera), start: Object.assign({}, camera),
       x: number(camera.x, 0), z: number(camera.z, 0), yaw: number(camera.rotationY, 0), pitch: number(camera.rotationX, 0),
       eyeY: number(camera.y, 0), velocityY: 0, grounded: false, distance: 0, bobWeight: 0, bob: 0,
       zoomScale: 1, reduced, settling: false, moving: false,
@@ -98,7 +108,7 @@ interface SceneWalkState {
   }
   function candidateAllowed(s: SceneWalkState, x: number, z: number): boolean {
     const bounds = s.config.bounds;
-    if (bounds && (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ)) return false;
+    if (bounds && (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ) && !Number.isFinite(surfaceHeight(s.config.surfaces, x, z, -Infinity))) return false;
     const height = groundHeight(s, x, z), water = s.config.water;
     if (water && height < number(water.level, 0) - positive(water.maxDepth, 0.55)) return false;
     const rise = height - groundHeight(s, s.x, s.z), distance = Math.hypot(x - s.x, z - s.z);
@@ -120,7 +130,7 @@ interface SceneWalkState {
   }
   function slideStep(s: SceneWalkState, dx: number, dz: number): void {
     const bounds = s.config.bounds;
-    if (bounds) {
+    if (bounds && !Number.isFinite(surfaceHeight(s.config.surfaces, s.x, s.z, -Infinity))) {
       dx = clamp(s.x + dx, bounds.minX, bounds.maxX) - s.x;
       dz = clamp(s.z + dz, bounds.minZ, bounds.maxZ) - s.z;
     }
@@ -148,7 +158,7 @@ interface SceneWalkState {
     s.camera.rotationY = s.yaw; s.camera.rotationX = s.pitch; s.camera.rotationZ = 0;
   }
   function advance(s: SceneWalkState, dt: number, strafe: number, forward: number, sprint: boolean): boolean {
-    dt = clamp(dt, 0, 0.1);
+    dt = clamp(dt, 0, 0.5);
     const oldY = s.camera.y, oldX = s.x, oldZ = s.z;
     const length = Math.max(1, Math.hypot(strafe, forward)), speed = s.speed * s.zoomScale * (sprint ? s.sprint : 1) * dt / length;
     const sin = Math.sin(s.yaw), cos = Math.cos(s.yaw);
@@ -196,9 +206,9 @@ interface SceneWalkState {
     const style = document.createElement("style");
     style.setAttribute(WALK_STYLE_ATTR, "true"); style.setAttribute("data-gosx-css-layer", "runtime");
     style.setAttribute("data-gosx-css-owner", "gosx-bootstrap"); style.setAttribute("data-gosx-css-source", "gosx-runtime");
-    style.textContent = ":where(.gosx-scene3d-walk-joystick){display:none;position:absolute;width:110px;height:110px;border-radius:50%;background:rgba(20,25,30,.35);border:1px solid rgba(255,255,255,.5);pointer-events:none;z-index:10}"
-      + ":where(.gosx-scene3d-walk-knob){position:absolute;left:31px;top:31px;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.6);pointer-events:none}"
-      + ":where(.gosx-scene3d-walk-hint){position:absolute;left:50%;bottom:12px;transform:translateX(-50%);max-width:90%;padding:6px 10px;border-radius:6px;background:rgba(20,25,30,.65);color:white;font:12px/1.4 sans-serif;text-align:center;pointer-events:none;z-index:9}";
+    style.textContent = ":where(.gosx-scene3d-walk-joystick){display:none;position:absolute;width:110px;height:110px;border-radius:50%;background:#14191e59;border:1px solid #ffffff80;pointer-events:none;z-index:10}"
+      + ":where(.gosx-scene3d-walk-knob){position:absolute;left:31px;top:31px;width:48px;height:48px;border-radius:50%;background:#ffffff99;pointer-events:none}"
+      + ":where(.gosx-scene3d-walk-hint){position:absolute;left:50%;bottom:12px;transform:translateX(-50%);max-width:90%;padding:6px 10px;border-radius:6px;background:#14191ea6;color:white;font:12px/1.4 sans-serif;text-align:center;pointer-events:none;z-index:9}";
     head.appendChild(style);
   }
   function joystick(mount: HTMLElement): { base: HTMLDivElement; knob: HTMLDivElement } {
@@ -215,7 +225,7 @@ interface SceneWalkState {
     const hint = document.createElement("div");
     hint.setAttribute("class", "gosx-scene3d-walk-hint"); hint.setAttribute("role", "note");
     const touch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
-    hint.textContent = config.hint || (touch ? "Left thumb to move · drag right side to look" : "Click to walk · WASD or arrows to move · mouse to look · Shift to sprint · Esc to release");
+    hint.textContent = config.hint || (touch ? "Left thumb to move · drag right side to look" : "Click or drag to look · WASD or arrows to move · Shift to sprint · Esc to release");
     mount.appendChild(hint);
     return hint;
   }
@@ -234,21 +244,22 @@ interface SceneWalkState {
     if (sceneState) sceneState._gosxMotionController = controller;
     const stick = joystick(mount), hint = hintElement(mount, props.walk), pads = new Set<number>();
     let frame = 0, last = 0, disposed = false;
-    let moveID = -1, lookID = -1, originX = 0, originY = 0, lookX = 0, lookY = 0, stickX = 0, stickY = 0;
     const listeners: Array<[any, string, EventListener, any]> = [];
     canvas.style.touchAction = "none"; canvas.style.cursor = "crosshair";
     canvas.setAttribute("tabindex", "0");
-    canvas.setAttribute("aria-label", (props.ariaLabel || props.label || "3D scene") + ". Walk with WASD or up/down arrows; left/right arrows turn; PageUp/PageDown look up/down; Shift sprints; Home resets.");
+    canvas.setAttribute("aria-label", (props.ariaLabel || props.label || "3D scene") + ". WASD/up/down walk; left/right turn; PageUp/PageDown look; Shift runs; Home resets.");
     canvas.setAttribute("aria-keyshortcuts", "W A S D ArrowUp ArrowDown ArrowLeft ArrowRight PageUp PageDown Shift Home");
     function listen(target: any, name: string, callback: any): void {
       const options = { passive: !["pointerdown", "pointermove", "pointerup", "pointercancel", "lostpointercapture", "keydown", "keyup"].includes(name) };
       target.addEventListener(name, callback, options); listeners.push([target, name, callback, options]);
     }
+    const input = window.__gosx_scene3d_walk_input(canvas, mount, stick, controller, helpers, listen, [wake, (dx: number, dy: number) => {
+      look(state, -dx * state.lookSpeed, -dy * state.lookSpeed); controller.touched = true; schedule("controls");
+    }, showHint], props.pointerLock !== false);
     function focused(): boolean { return document.activeElement === canvas || helpers.locked(canvas); }
-    function showHint(): void { if (hint) hint.hidden = controller.suspended || helpers.locked(canvas) || state.moving || stickX !== 0 || stickY !== 0; }
+    function showHint(): void { if (hint) hint.hidden = controller.suspended || helpers.locked(canvas) || state.moving || input.x !== 0 || input.y !== 0; }
     function clearInput(): void {
-      controller.keys.clear(); moveID = -1; lookID = -1; stickX = 0; stickY = 0;
-      stick.base.style.display = "none"; controller.active = false; state.moving = false;
+      input.clear(); controller.keys.clear(); state.moving = false;
     }
     function reset(): void {
       clearInput(); controller.touched = true; resetState(state, state.start);
@@ -259,9 +270,8 @@ interface SceneWalkState {
       if (disposed || frame) return;
       last = helpers.now(); frame = helpers.requestFrame(tick);
     }
-    // When scene content already animates (an ocean, particles), its paced
-    // loop renders every frame and reads the walk camera; scheduling more
-    // renders would draw out of phase with it and exceed MaxFPS.
+    // Animated scenes already read the walk camera each paced frame;
+    // additional renders would draw out of phase and exceed MaxFPS.
     let loopHost: any = null;
     function sceneAnimates(): boolean {
       if (!loopHost && typeof canvas.closest === "function") loopHost = canvas.closest("[data-gosx-scene3d-render-loop]");
@@ -273,8 +283,8 @@ interface SceneWalkState {
     function tick(now: number): void {
       frame = 0;
       if (disposed || controller.suspended) return;
-      const dt = clamp((now - last) / 1000, 0, 0.1); last = now;
-      let strafe = stickX, forward = -stickY, yaw = 0, pitch = 0, sprint = Math.hypot(stickX, stickY) > 0.9;
+      const dt = clamp((now - last) / 1000, 0, 0.5); last = now;
+      let strafe = input.x, forward = -input.y, yaw = 0, pitch = 0, sprint = Math.hypot(input.x, input.y) > 0.9;
       if (focused()) {
         const k = controller.keys;
         strafe += Number(k.has("right")) - Number(k.has("left")); forward += Number(k.has("forward")) - Number(k.has("back"));
@@ -294,8 +304,7 @@ interface SceneWalkState {
       if (yaw || pitch) { look(state, yaw, pitch); controller.touched = true; }
       if (strafe || forward) controller.touched = true;
       const changed = advance(state, dt, strafe, forward, sprint);
-      // Movement integrates every display frame, but renders honour the
-      // scene's MaxFPS: a 120 Hz display must not double an authored 60 fps cap.
+      // Integrate each display frame; render at the scene's MaxFPS.
       if (changed || yaw || pitch) renderDue = true;
       if (renderDue && sceneAnimates()) renderDue = false;
       else if (renderDue && now - lastRender >= minRenderMS - 1) { renderDue = false; lastRender = now; schedule("controls"); }
@@ -303,45 +312,9 @@ interface SceneWalkState {
       const navigating = Math.abs(strafe) + Math.abs(forward) + Math.abs(yaw) + Math.abs(pitch) > 0;
       if (navigating || renderDue || state.settling || state.bobWeight > 0 || pads.size) frame = helpers.requestFrame(tick);
     }
-    function pointerDown(event: PointerEvent): void {
-      if (controller.suspended) return;
-      if (event.defaultPrevented && event.pointerType !== "touch") return;
-      canvas.focus({ preventScroll: true });
-      if (event.pointerType !== "touch") return;
-      event.preventDefault();
-      const rect = canvas.getBoundingClientRect();
-      if (event.clientX - rect.left < rect.width / 2 && moveID < 0) {
-        moveID = event.pointerId; originX = event.clientX; originY = event.clientY;
-        const parent = mount.getBoundingClientRect();
-        stick.base.style.left = (originX - parent.left - 55) + "px"; stick.base.style.top = (originY - parent.top - 55) + "px";
-        stick.knob.style.transform = "translate(0px,0px)"; stick.base.style.display = "block";
-      } else if (event.clientX - rect.left >= rect.width / 2 && lookID < 0) {
-        lookID = event.pointerId; lookX = event.clientX; lookY = event.clientY;
-      }
-      if (typeof canvas.setPointerCapture === "function") canvas.setPointerCapture(event.pointerId);
-      controller.active = moveID >= 0 || lookID >= 0;
-    }
-    function pointerMove(event: PointerEvent): void {
-      if (event.pointerType !== "touch") return;
-      event.preventDefault();
-      if (event.pointerId === moveID) {
-        const dx = event.clientX - originX, dy = event.clientY - originY, scale = Math.max(55, Math.hypot(dx, dy));
-        stickX = dx / scale; stickY = dy / scale;
-        stick.knob.style.transform = "translate(" + stickX * 55 + "px," + stickY * 55 + "px)";
-        wake();
-      } else if (event.pointerId === lookID) {
-        look(state, -(event.clientX - lookX) * state.lookSpeed, -(event.clientY - lookY) * state.lookSpeed);
-        lookX = event.clientX; lookY = event.clientY; controller.touched = true; schedule("controls");
-      }
-    }
-    function pointerUp(event: PointerEvent): void {
-      if (event.pointerType === "touch") event.preventDefault();
-      if (event.pointerId === moveID) { moveID = -1; stickX = 0; stickY = 0; stick.base.style.display = "none"; wake(); }
-      if (event.pointerId === lookID) lookID = -1;
-      controller.active = moveID >= 0 || lookID >= 0; showHint();
-    }
     function keyDown(event: KeyboardEvent): void {
       if (controller.suspended || !focused()) return;
+      if (event.code === "Escape") { helpers.exitLock(canvas); clearInput(); showHint(); return; }
       const key = keys[event.code] || keys[event.key]; if (!key) return;
       event.preventDefault();
       if (key === "reset") { reset(); return; }
@@ -351,17 +324,10 @@ interface SceneWalkState {
       const key = keys[event.code] || keys[event.key]; if (!key) return;
       controller.keys.delete(key); if (focused()) event.preventDefault();
     }
-    listen(canvas, "pointerdown", pointerDown); listen(canvas, "pointermove", pointerMove);
-    listen(canvas, "pointerup", pointerUp); listen(canvas, "pointercancel", pointerUp); listen(canvas, "lostpointercapture", pointerUp);
-    listen(canvas, "click", (event: PointerEvent) => { if (event.pointerType !== "touch") { helpers.requestLock(canvas); showHint(); } });
-    listen(document, "mousemove", (event: MouseEvent) => {
-      if (controller.suspended || !helpers.locked(canvas)) return;
-      look(state, -event.movementX * state.lookSpeed, -event.movementY * state.lookSpeed);
-      controller.touched = true; schedule("controls");
-    });
     listen(document, "keydown", keyDown); listen(document, "keyup", keyUp);
     listen(canvas, "blur", () => { if (!helpers.locked(canvas)) clearInput(); });
     listen(window, "blur", clearInput);
+    listen(document, "visibilitychange", clearInput);
     listen(document, "pointerlockchange", () => { if (!helpers.locked(canvas)) clearInput(); showHint(); });
     listen(document, "click", (event: MouseEvent) => {
       const target = event.target as Element;
@@ -389,7 +355,7 @@ interface SceneWalkState {
     if (!reset) return false;
     reset(); return true;
   }
-  window.__gosx_scene3d_walk_api = { setup, decodeGround, sampleGround, createState, candidateAllowed, move, advance, look, resetCamera };
+  window.__gosx_scene3d_walk_api = { setup, decodeGround, sampleGround, sampleGrounds, createState, candidateAllowed, move, advance, look, resetCamera };
   const api = (window.__gosx = window.__gosx || {}).scene3d || (window.__gosx.scene3d = {});
   api.resetCamera = resetCamera;
 })();

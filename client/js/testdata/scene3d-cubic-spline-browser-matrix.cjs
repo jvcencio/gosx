@@ -873,6 +873,17 @@ function checkWG(failures, value, mode) {
   }
 }
 
+function checkClientEventCompletion(failures, report) {
+  exact(failures, report.networkFailures, [], 'report.networkFailures');
+  exact(failures, report.clientEventResponses, EXPECTED_CASE_NAMES.map(() =>
+    ({ method: 'POST', path: '/_gosx/client-events', status: 204 })),
+  'report.clientEventResponses');
+  exact(failures, report.clientEventCompletions, EXPECTED_CASE_NAMES.map((caseName) =>
+    ({ caseName, method: 'POST', path: '/_gosx/client-events', status: 204,
+      cdpTerminal: 'loadingFinished' })),
+  'report.clientEventCompletions');
+}
+
 function checkTopLevel(failures, report, mode, browser) {
   exact(failures, report.mutation, mode.mutation || null, 'report.mutation');
   exact(failures, report.restoreAtomicGapMS, mode.gapMS, 'report.restoreAtomicGapMS');
@@ -887,14 +898,7 @@ function checkTopLevel(failures, report, mode, browser) {
   exact(failures, report.warnings, [], 'report.warnings');
   exact(failures, report.notFound, [], 'report.notFound');
   exact(failures, report.unexpectedRequests, [], 'report.unexpectedRequests');
-  exact(failures, report.networkFailures, [], 'report.networkFailures');
-  exact(failures, report.clientEventResponses, EXPECTED_CASE_NAMES.map(() =>
-    ({ method: 'POST', path: '/_gosx/client-events', status: 204 })),
-  'report.clientEventResponses');
-  exact(failures, report.intentionalNoContent, EXPECTED_CASE_NAMES.map(() =>
-    ({ method: 'POST', path: '/_gosx/client-events', status: 204,
-      cdpTerminal: 'loadingFailed:net::ERR_ABORTED' })),
-  'report.intentionalNoContent');
+  checkClientEventCompletion(failures, report);
   check(failures, !Object.prototype.hasOwnProperty.call(report, 'fatal'),
     'report unexpectedly contains fatal: ' + JSON.stringify(report.fatal));
 

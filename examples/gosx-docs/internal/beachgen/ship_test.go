@@ -4,9 +4,58 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"image/png"
 	"math"
 	"testing"
 )
+
+func TestWakeFoamCellsFeatherDissolveAndRemainBounded(t *testing.T) {
+	data, err := WakeFoam()
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) > 16384 || img.Bounds().Dx() != 128 || img.Bounds().Dy() != 128 {
+		t.Fatal("foam texture exceeds its bounded resolution or byte budget")
+	}
+	alpha := func(x, y int) uint32 { _, _, _, a := img.At(x, y).RGBA(); return a }
+	var coverage uint32
+	var occupied [8]int
+	for stage := 0; stage < 8; stage++ {
+		for x := 0; x < 128; x++ {
+			if alpha(x, stage*16) != 0 || alpha(x, stage*16+15) != 0 {
+				t.Fatal("every foam cell needs transparent leading and trailing edges")
+			}
+		}
+		for y := 0; y < 16; y++ {
+			if alpha(0, stage*16+y) != 0 || alpha(127, stage*16+y) != 0 {
+				t.Fatal("foam must feather at both sides")
+			}
+			for x := 1; x < 127; x++ {
+				coverage += alpha(x, stage*16+y)
+				if alpha(x, stage*16+y) > 0 {
+					occupied[stage]++
+				}
+				if stage > 0 && alpha(x, stage*16+y) > alpha(x, (stage-1)*16+y) {
+					t.Fatal("foam aging must dissolve its existing pattern without brightening")
+				}
+			}
+		}
+	}
+	if coverage == 0 || alpha(64, 8) <= alpha(64, 120)*8 {
+		t.Fatal("foam needs visible fresh coverage and a faint dissolving tail")
+	}
+	if occupied[6] >= occupied[0]/2 {
+		t.Fatal("aging foam must break into smaller patches as well as fading")
+	}
+	again, err := WakeFoam()
+	if err != nil || !bytes.Equal(data, again) {
+		t.Fatal("wake generation is not reproducible")
+	}
+}
 
 func TestClipperLODsMaterialsAndBudget(t *testing.T) {
 	assets, err := ShipAssets()

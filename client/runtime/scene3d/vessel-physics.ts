@@ -5,6 +5,18 @@
   const radians = Math.PI / 180;
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   const angle = v => Math.atan2(Math.sin(v), Math.cos(v));
+  const poses=new WeakMap(),poseKeys=['x','y','z','heading','pitch','roll'],tick=1/60;
+  // @ts-ignore TS7006 -- a reusable render pose leaves authoritative physics untouched.
+  function presentation(s,reset=false) {
+    let frame=poses.get(s);
+    if(!frame||reset) {frame={previous:{},pose:Object.create(s)};for(const key of poseKeys)frame.previous[key]=s[key];poses.set(s,frame);}
+    const alpha=clamp(s.accumulator/tick,0,1);
+    for(const key of poseKeys) {
+      const delta=s[key]-frame.previous[key];
+      frame.pose[key]=frame.previous[key]+(key==='heading'?angle(delta):delta)*alpha;
+    }
+    return frame.pose;
+  }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function speedCurve(offWind) {
     const a = Math.abs(angle(offWind));
@@ -18,11 +30,11 @@
     return { config: c, collision: collision || {}, ocean: ocean || {}, x: p.x || 0, y: p.y || 0, z: p.z || 0,
       heading: c.heading || 0, pitch: 0, roll: 0, vy: 0, vp: 0, vr: 0, vx: 0, vz: 0, yawVelocity: 0,
       length: c.length || 22, beam: c.beam || 5, draft: c.draft || 1.4, deck: c.deckHeight || 2.5,
-      helm: { x: helm.x == null ? .65 : helm.x, y: helm.y || 4.2, z: helm.z || 8 }, trim: c.sailTrim == null ? .55 : c.sailTrim, rudder: 0,
-      wind: (c.windDirection == null ? (ocean.windDirection || 0) : c.windDirection) * radians,
+      helm: { x: helm.x ?? .65, y: helm.y || 4.2, z: helm.z || 8 }, trim: c.sailTrim ?? .55, rudder: 0,
+      wind: (c.windDirection ?? ocean.windDirection ?? 0) * radians,
       strength: c.windStrength || 8, maxSpeed: c.maxSpeed || 10, mode: "moored", cameraMode: "stern",
       pressure: 0, luff: 1, bowImpact: 0, bowWater: NaN, reduced: false,
-      grounded: false, accumulator: 0, speed: 0, tack: 0, cameraReady: false, camera: {x:0,y:0,z:0,rotationX:0,rotationY:0,rotationZ:0} };
+      grounded: false, accumulator: 0, speed: 0, tack: 0, course: NaN, distance: 0, detached: false, lookYaw:0,lookPitch:0,cameraReady: false, camera: {x:0,y:0,z:0,rotationX:0,rotationY:0,rotationZ:0} };
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function localPoint(s, x, y, z) {
@@ -38,13 +50,18 @@
     return Math.hypot(camera.x-h.x,camera.y-h.y,camera.z-h.z) <= (s.config.boardRadius || 4);
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-  function helm(s, camera) {
-    if (s.mode === "sailing") { s.mode = "deck"; s.trim = 0; s.rudder = 0; return "leave"; }
-    if (!canBoard(s,camera)) return "far";
+  function helm(s, camera, quick=false) {
+    if (s.mode === "sailing") { s.mode = "deck"; s.trim = 0; s.rudder = 0; s.course = NaN; return "leave"; }
+    if (!canBoard(s,camera) && !(quick && s.config.quickBoard)) return "far";
     s.mode = "sailing"; s.rudder = 0; return "take";
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function toggleCamera(s) { s.cameraMode = s.cameraMode === "stern" ? "wheel" : "stern"; return s.cameraMode; }
+  // @ts-ignore TS7006 -- camera input never changes the vessel's course or pose.
+  function look(s,yaw,pitch) {
+    if(s.mode!=='sailing'||s.detached||!Number.isFinite(yaw)||!Number.isFinite(pitch))return;
+    s.lookYaw=angle(s.lookYaw+yaw);s.lookPitch=clamp(s.lookPitch+pitch,-1.25,1.25);
+  }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function spring(s, key, velocity, goal, dt, frequency) {
     s[velocity] += ((goal-s[key])*frequency*frequency-2*frequency*s[velocity])*dt;
@@ -100,7 +117,7 @@
   function allowed(s, x, z, heading, floor) {
     const co=Math.cos(heading),si=Math.sin(heading), radius=s.beam*.38;
     for (const along of [-s.length*.36,0,s.length*.36]) {
-      const px=x+si*along,pz=z+co*along,b=s.config.bounds || s.collision.bounds;
+      const px=x+si*along,pz=z+co*along,b=s.config.bounds || (s.config.openWater ? null : s.collision.bounds);
       if (b && (px-radius<b.minX || px+radius>b.maxX || pz-radius<b.minZ || pz+radius>b.maxZ)) return false;
       if (floor(px,pz) > (s.ocean.level||0)-s.draft+.15) {
         // A grounded hull can turn or retreat across equal/deeper seabed.
@@ -118,7 +135,7 @@
     if (s.mode === "moored") return;
     const sailing = s.mode === "sailing";
     s.trim=clamp(s.trim+(sailing ? (input.sail||0)*dt*.4 : -dt*.8),0,1);
-    s.rudder += ((sailing ? clamp(input.rudder||0,-1,1) : 0)-s.rudder)*(1-Math.exp(-dt*7));
+    s.rudder += ((sailing ? window.__gosx_scene3d_vessel_navigation.rudder(s,input) : 0)-s.rudder)*(1-Math.exp(-dt*7));
     const off=angle(s.heading-s.wind), curve=speedCurve(off), fx=-Math.sin(s.heading),fz=-Math.cos(s.heading);
     const target=s.maxSpeed*Math.min(1.5,s.strength/8)*curve*s.trim*(s.grounded ? .03 : 1);
     const forward=s.vx*fx+s.vz*fz, side=s.vx*fz-s.vz*fx;
@@ -133,29 +150,34 @@
     s.yawVelocity+=(turn-s.yawVelocity)*(1-Math.exp(-dt*3.5));
     const heading=angle(s.heading+s.yawVelocity*dt);
     if (allowed(s,s.x,s.z,heading,floor)) s.heading=heading; else s.yawVelocity*=.3;
-    const nx=s.x+s.vx*dt,nz=s.z+s.vz*dt;
+    const beforeX=s.x,beforeZ=s.z,nx=s.x+s.vx*dt,nz=s.z+s.vz*dt;
     if (allowed(s,nx,nz,s.heading,floor)) { s.x=nx;s.z=nz; }
     else {
       if (allowed(s,nx,s.z,s.heading,floor)) s.x=nx; else s.vx*=Math.exp(-dt*12);
       if (allowed(s,s.x,nz,s.heading,floor)) s.z=nz; else s.vz*=Math.exp(-dt*12);
       s.trim=Math.max(0,s.trim-dt*.1);
     }
+    s.distance+=Math.hypot(s.x-beforeX,s.z-beforeZ);
     s.tack=Math.sign(Math.sin(off));
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function advance(s, dt, time, input, sample, floor) {
+    if(!poses.has(s))presentation(s);
+    const previous=poses.get(s).previous;
     s.accumulator+=Math.max(0,Math.min(.1,dt));
-    const tick=1/60;
-    while(s.accumulator>=tick-1e-9) { s.accumulator-=tick;step(s,tick,time-s.accumulator,input,sample,floor); }
+    while(s.accumulator>=tick-1e-9) {
+      for(const key of poseKeys)previous[key]=s[key];
+      s.accumulator-=tick;step(s,tick,time-s.accumulator,input,sample,floor);
+    }
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-  function camera(s, previous, dt, seconds=0) {
-    const wheel=s.cameraMode === "wheel", h=s.helm;
-    const p=localPoint(s,wheel?h.x:0,wheel?h.y:(s.followDistance||s.length*1.8)*.25,wheel?h.z:(s.followDistance||s.length*1.8));
-    const target=localPoint(s,wheel?h.x:0,wheel?s.deck:s.length*.4,wheel?-s.length*.35: -s.length*.15);
-    const yaw=Math.atan2(-(target.x-p.x),-(target.z-p.z)), pitch=Math.atan2(target.y-p.y,Math.hypot(target.x-p.x,target.z-p.z));
+  function camera(s, previous, dt, seconds=0,pose=s) {
+    const wheel=s.cameraMode === "wheel", h=s.helm,distance=s.followDistance||s.length*1.8;
+    const p=localPoint(pose,wheel?h.x:Math.sin(s.lookYaw)*distance,wheel?h.y:distance*.25,wheel?h.z:Math.cos(s.lookYaw)*distance);
+    const target=localPoint(pose,wheel?h.x:0,wheel?s.deck:s.length*.4,wheel?-s.length*.35: -s.length*.15);
+    const yaw=Math.atan2(-(target.x-p.x),-(target.z-p.z))+(wheel?s.lookYaw:0), pitch=clamp(Math.atan2(target.y-p.y,Math.hypot(target.x-p.x,target.z-p.z))+s.lookPitch,-1.45,1.45);
     const bob=deckBob(s,seconds);
-    const result=Object.assign({},previous,{x:p.x,y:p.y+(wheel?bob:0),z:p.z,rotationX:pitch,rotationY:yaw,rotationZ:wheel&&!s.reduced?s.roll*.35:0,fov:65,near:wheel?.05:previous.near});
+    const result=Object.assign({},previous,{x:p.x,y:p.y+(wheel?bob:0),z:p.z,rotationX:pitch,rotationY:yaw,rotationZ:wheel&&!s.reduced?pose.roll*.35:0,fov:65,near:wheel?.05:previous.near});
     if (!wheel && s.cameraReady && s.camera) {
       const alpha=s.reduced?1:1-Math.exp(-dt*5);
       for(const key of ['x','y','z','rotationX']) result[key]=s.camera[key]+(result[key]-s.camera[key])*alpha;
@@ -165,5 +187,5 @@
   }
   // @ts-ignore TS7006 -- cosmetic deck motion never affects physics or boarding.
   function deckBob(s, seconds) { return s.reduced?0:.018*Math.sin(seconds*1.8)+clamp(s.vy,-1,1)*.018; }
-  window.__gosx_scene3d_vessel_physics={create,speedCurve,localPoint,canBoard,helm,toggleCamera,buoyancy,allowed,step,advance,camera,deckBob,windLoad};
+  window.__gosx_scene3d_vessel_physics={create,speedCurve,localPoint,canBoard,helm,toggleCamera,look,buoyancy,allowed,step,advance,presentation,camera,deckBob,windLoad};
 })();

@@ -41,3 +41,24 @@ func TestWalkCollidersCoverMonolithAndStacks(t *testing.T) {
 		t.Fatalf("monolith=%v stacks=%d boulders=%d", monolith, stacks, boulders)
 	}
 }
+
+func TestWalkCollidersContainErodedStackBasesAndOwnTheirSlice(t *testing.T) {
+	shapes := WalkColliders(Seed)
+	for i, stack := range stackSpecs(Seed) {
+		g := &geometry{}
+		addStack(g, stack)
+		for v := 0; v < len(g.positions); v += 3 {
+			y := g.positions[v+1]
+			if y < -2.5 || y > 3 {
+				continue
+			}
+			if math.Hypot(g.positions[v]-stack.x, g.positions[v+2]-stack.z) > shapes[i].Radius {
+				t.Fatalf("stack %d extends outside its walking collider at height %g", i, y)
+			}
+		}
+	}
+	shapes[0].Radius = 0
+	if WalkColliders(Seed)[0].Radius <= 0 {
+		t.Fatal("mutating one scene's colliders changed the cached geometry")
+	}
+}

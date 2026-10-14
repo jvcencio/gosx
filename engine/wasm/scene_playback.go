@@ -7,7 +7,12 @@ import (
 
 // FramePlaybackOptions bounds presentation independently from simulation time.
 // Duration and Offset are seconds. A zero Rate selects normal speed.
-type FramePlaybackOptions struct{ Duration, Offset, Rate float64 }
+type FramePlaybackOptions struct {
+	Duration, Offset, Rate float64
+	// Applied runs after a successful frame command transaction. It can align
+	// interface cues with contact without adding a second animation clock.
+	Applied func(at float64, final bool)
+}
 
 // CameraTransitionOptions selects an optional temporary framing margin.
 type CameraTransitionOptions struct{ FOVArc float64 }

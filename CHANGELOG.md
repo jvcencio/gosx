@@ -12,6 +12,67 @@
 - Add splitpane, dock, tabs and collapsible UI recipes. Layout signals can persist
   through controller storage; document the controls in `docs/workbench.md`.
 
+- Reuse template, CSS, metadata, and runtime-manifest lookups in production
+  mode (`GOSX_ENV=production` or `prod`). Restart after replacing build files;
+  `GOSX_DEV=1` keeps file-change checks active.
+
+- Preserve integer JSON literals in Scene3D props during hydration, including
+  values above the exact float64 integer range.
+
+- Add pre-Build trusted proxy policies and one cached `ClientIP` resolver.
+  Normalize genuine peers and bounded X-Forwarded-For chains without changing
+  RemoteAddr or origin policies. Nested handlers and completion observers share
+  the result; malformed or repeated headers fall back to the peer.
+
+## v0.57.15
+
+- Add opt-in Scene3D frame requests to atomic command batches and typed
+  `scene.Surface.OnFrameSubmitted` receipts. A receipt requires the current
+  owning renderer and hydration generation, a complete submitted composition,
+  and every requested live model primitive in the color pass. Pending shaders,
+  stale owners and shadow-only draws cannot acknowledge the request. Submission
+  does not certify GPU completion or display presentation.
+- Preserve renderer outcomes through water-only and combined world/water
+  composition. Scene readiness now follows successful full-frame submission;
+  shader preparation continues to schedule retries.
+- Charge crowd bounds preprocessing for actual vertex influences and active
+  joint corners, sharing immutable source work across primitives while retaining
+  the bounded-work guard. Full imported rigs can use native crowd rendering
+  without an inflated preprocessing estimate forcing fallback.
+- Apply packed pose frames only to their requested actor batches. Unrelated
+  props and effects retain their committed transforms and playback state;
+  membership validation and atomic declaration replacement remain intact.
+
+## v0.57.14
+
+- Preserve live WebGL sampler bindings when PNG, HDR and KTX2 textures upload
+  asynchronously. Settled texture resources invalidate the retained material
+  cache; failed uploads restore bindings and report terminal failure.
+- Add opt-in `scene.Surface.PrepareModels` to decode selected models and upload
+  their material maps in the mounted renderer's cache. Context cancellation,
+  disposal and renderer replacement terminate preparation. Shader and vertex
+  buffer warming, and scene-generation commit, remain separate steps.
+
+## v0.57.13
+
+- Keep browser telemetry fetches pending until the native response body has
+  completed, including bodyless 204 responses. Failed body reads follow the
+  existing failure accounting instead of being counted as accepted delivery.
+- Fracture the Blackglass demo coastline and refine its shore materials and
+  authored coastal assets.
+
+## v0.57.12
+
+- Add `Hub.BroadcastBinarySnapshot(epoch, baseline, delta)` for application
+  state that can replace older pending updates. Each client retains at most a
+  pending keyframe baseline and the newest independently decodable delta;
+  baseline ordering, stale epoch handling and fair reliable traffic remain
+  explicit. Existing text, ordinary binary and CRDT queues keep their behavior.
+- Report intentional snapshot replacements through `SnapshotStats` and
+  `TrafficEvent.Snapshot` / `Replaced`, separately from full-queue drops and
+  slow-client eviction. Document immutable payload ownership and socket
+  buffering limits in `docs/hub-snapshots.md`.
+
 ## v0.57.11
 
 - Reset additive blending before WebGL post-processing so retained intermediate

@@ -41,10 +41,16 @@ func TestFinitePlaybackCompletionHiddenAndCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var samples []float64
+	var applied []float64
 	finals := 0
 	done := make(chan error, 1)
 	go func() {
-		done <- playFramesOnClock(ctx, FramePlaybackOptions{Duration: .1}, func(at float64, final bool) error {
+		done <- playFramesOnClock(ctx, FramePlaybackOptions{Duration: .1, Applied: func(at float64, final bool) {
+			if len(samples) != len(applied)+1 || samples[len(samples)-1] != at {
+				t.Error("frame observer ran before its transaction")
+			}
+			applied = append(applied, at)
+		}}, func(at float64, final bool) error {
 			samples = append(samples, at)
 			if final {
 				finals++

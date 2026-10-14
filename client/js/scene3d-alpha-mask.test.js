@@ -626,6 +626,16 @@ test("MASK materials map to the opaque pass and never mutate the source doc", ()
   assert.equal(res.scene.points[0].depthWrite, true);
 });
 
+test("BLEND meshes retain an explicit alpha route and disable depth writes at full opacity", () => {
+  const { context } = createLoaderContext();
+  for (const opacity of [1, 0.5]) {
+    const doc = JSON.stringify(alphaSceneDoc({alphaMode: "BLEND", pbrMetallicRoughness: {baseColorFactor: [1,0,0,opacity]}}));
+    const scene = plain(callIn(context, "gltfExtractScene("+doc+", new Float32Array([0,0,0, 1,0,0, 0,1,0]).buffer)"));
+    const mesh = scene.objects.find(o => o.kind === "gltf-mesh");
+    assert.equal(mesh.renderPass, "alpha");assert.equal(mesh.blendMode, "alpha");assert.equal(mesh.depthWrite, false);assert.equal(mesh.material.opacity, opacity);
+  }
+});
+
 test("mount model override plumbing applies alphaCutoff to raw and nested material", () => {
   const mountSource = readRuntimeSource("mount-webgl.ts");
   assert.ok(mountSource.includes("function sceneModelMaterialOverrideSource"));

@@ -19,6 +19,8 @@ type Walk struct {
 	LookSpeed        float64        `json:"lookSpeed,omitempty"`        // radians/1000px, default 2.2
 	Surfaces         []WalkSurface  `json:"surfaces,omitempty"`
 	Ground           *WalkGround    `json:"ground,omitempty"`
+	Grounds          []WalkGround   `json:"grounds,omitempty"`       // disjoint terrain patches; highest containing sample wins
+	OutsideHeight    *float64       `json:"outsideHeight,omitempty"` // optional seabed outside all patches; otherwise Ground clamps
 	Water            *WalkWater     `json:"water,omitempty"`
 	Colliders        []WalkCollider `json:"colliders,omitempty"`
 	Bounds           *WalkBounds    `json:"bounds,omitempty"`

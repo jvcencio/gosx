@@ -44,6 +44,7 @@ func TestGenerateAssets(t *testing.T) {
 		}
 	}
 	beach := mustParse(t, first["beach-v2.glb"])
+	checkTerrainSections(t, beach)
 	stacks := mustParse(t, first["stacks-v2.glb"])
 	monolith := mustParse(t, first["monolith-v2.glb"])
 	if count := positionCount(t, beach); count != 129*129 {
@@ -67,7 +68,8 @@ func TestGenerateAssets(t *testing.T) {
 	if beachLow[1] < -5.1 || beachLow[1] > -4.5 || beachHigh[1] < 20.5 || beachHigh[1] > 21.5 {
 		t.Errorf("terrain vertical bounds are [%.3f, %.3f], expected the sea basin and ridged headlands", beachLow[1], beachHigh[1])
 	}
-	stackLow, stackHigh := checkBounds(t, first["stacks-v2.glb"], stacks, [3]float64{-27, -6.1, -52}, [3]float64{34, 18.1, 2.5})
+	// Fallen blocks now extend the same mesh along the western cliff toe.
+	stackLow, stackHigh := checkBounds(t, first["stacks-v2.glb"], stacks, [3]float64{-33, -6.1, -52}, [3]float64{34, 18.1, 9})
 	checkNear(t, "stack bottoms", stackLow[1], -6, .01)
 	if stackHigh[1] < 17.9 || stackHigh[1] > 18.1 {
 		t.Errorf("stack tops reach %.3f m; want the main stack near 18 m", stackHigh[1])
@@ -123,6 +125,125 @@ func TestBouldersAvoidMonolith(t *testing.T) {
 	}
 }
 
+func TestSculptedTerrainKeepsWalkableGroundAndValidNormals(t *testing.T) {
+	g, err := terrainGeometry(newNoise(Seed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < len(g.positions); i += 3 {
+		x, y, z := g.positions[i], g.positions[i+1], g.positions[i+2]
+		if y <= 3 {
+			if ground := TerrainHeight(x, z, Seed); math.Abs(y-ground) > 1e-8 {
+				t.Fatalf("sculpting moved the walkable ground at %g,%g: mesh %g, ground %g", x, z, y, ground)
+			}
+		}
+		length := math.Hypot(g.normals[i], math.Hypot(g.normals[i+1], g.normals[i+2]))
+		if math.IsNaN(length) || math.Abs(length-1) > 1e-8 {
+			t.Fatalf("sculpted terrain normal %d has length %g", i/3, length)
+		}
+	}
+}
+
+func TestBrokenBouldersStayInsideWalkColliders(t *testing.T) {
+	shapes := WalkColliders(Seed)[len(stackSpecs(Seed)):]
+	for i, boulder := range boulderSpecs(Seed) {
+		g := &geometry{}
+		addBoulder(g, boulder, newNoise(Seed+int64(boulder.id)*101), newNoise(Seed))
+		for v := 0; v < len(g.positions); v += 3 {
+			x, y, z := g.positions[v]-shapes[i].X, g.positions[v+1]-shapes[i].Y, g.positions[v+2]-shapes[i].Z
+			if math.Hypot(x, math.Hypot(y, z)) > shapes[i].Radius {
+				t.Fatalf("boulder %d protrudes beyond its walk collider", i)
+			}
+		}
+	}
+}
+
+func TestRockWetnessStaysAtSeaLevel(t *testing.T) {
+	albedo, roughness, err := makeRockSurface(newNoise(Seed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	colorMap, _, err := image.Decode(bytes.NewReader(albedo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roughnessMap, _, err := image.Decode(bytes.NewReader(roughness))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rowAt := func(y float64) int { return int(math.Round((y + 6) / 24 * 255)) }
+	for x := 8; x < 128; x += 16 {
+		wet := color.NRGBAModel.Convert(colorMap.At(x, rowAt(0))).(color.NRGBA)
+		dry := color.NRGBAModel.Convert(colorMap.At(x, rowAt(8))).(color.NRGBA)
+		wetRough := color.NRGBAModel.Convert(roughnessMap.At(x, rowAt(0))).(color.NRGBA)
+		dryRough := color.NRGBAModel.Convert(roughnessMap.At(x, rowAt(8))).(color.NRGBA)
+		if float64(wet.R) >= float64(dry.R)*.8 || wetRough.G >= dryRough.G/2 || wetRough.B != 0 || dryRough.B != 0 {
+			t.Fatalf("wet rock must be darker, smoother and dielectric: wet=%v/%v dry=%v/%v", wet, wetRough, dry, dryRough)
+		}
+	}
+}
+
+func TestStackWaterlineTracksErodedMesh(t *testing.T) {
+	for _, stack := range stackSpecs(Seed) {
+		footprint := stackWaterline(stack)
+		if len(footprint.points) != 48 || footprint.distance(stack.x, stack.z) >= 0 {
+			t.Fatalf("stack at (%g,%g) has no closed waterline", stack.x, stack.z)
+		}
+		for i, p := range footprint.points {
+			if math.Abs(footprint.distance(p.x, p.z)) > 1e-7 {
+				t.Fatalf("waterline does not meet mesh at side %d", i)
+			}
+		}
+		if footprint.distance(footprint.maxX+2, stack.z) < 1 {
+			t.Fatal("waterline extends beyond the rock")
+		}
+	}
+}
+
+func TestStackNormalUVsPreserveFullHeight(t *testing.T) {
+	g, err := stackGeometry(Seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, uv := range g.uvs {
+		if uv < 0 || uv > 1 {
+			t.Fatalf("UV %d = %g cannot be stored in UNORM8", i, uv)
+		}
+	}
+	encoded := encodeUVs(g.uvs)
+	// Samples above eight metres used to clamp to the same final texel.
+	// Their vertical separation must survive encoding and sampler tiling.
+	a, b := 40*49, 56*49
+	va, vb := float64(encoded[a*2+1])/255, float64(encoded[b*2+1])/255
+	height := g.positions[b*3+1] - g.positions[a*3+1]
+	if got := (vb - va) * 9; math.Abs(got-height*3/8) > 9.0/255 {
+		t.Fatalf("normal map repeats %g times over %gm of rock", got, height)
+	}
+}
+
+func TestCoveShorelineCurvesAndDuneTransitionIsContinuous(t *testing.T) {
+	var shore [3]float64
+	for i, x := range []float64{-24, 0, 24} {
+		lo, hi := -10.0, 15.0
+		for range 20 {
+			mid := (lo + hi) / 2
+			if TerrainHeight(x, mid, Seed) < 0 {
+				lo = mid
+			} else {
+				hi = mid
+			}
+		}
+		shore[i] = (lo + hi) / 2
+		z := 18 - shoreDistance(x, 0)
+		if jump := math.Abs(TerrainHeight(x, z+.001, Seed) - TerrainHeight(x, z-.001, Seed)); jump > .01 {
+			t.Fatalf("dune transition jumps %gm at x=%g", jump, x)
+		}
+	}
+	if math.Max(shore[0], shore[2])-shore[1] < 3.5 {
+		t.Fatalf("shoreline remains a straight strip: %v", shore)
+	}
+}
+
 func TestBathymetryIncludesStackA(t *testing.T) {
 	data, err := makeBathymetry(newNoise(generatorSeed))
 	if err != nil {
@@ -151,14 +272,59 @@ func mustParse(t *testing.T, data []byte) *gltfedit.Document {
 
 func positionCount(t *testing.T, doc *gltfedit.Document) int {
 	t.Helper()
-	if len(doc.Meshes) != 1 || len(doc.Meshes[0].Primitives) != 1 {
-		t.Fatalf("expected one mesh with one primitive")
+	if len(doc.Meshes) != 1 || len(doc.Meshes[0].Primitives) == 0 {
+		t.Fatalf("expected one nonempty mesh")
 	}
 	accessor := doc.Meshes[0].Primitives[0].Attributes["POSITION"]
+	for _, primitive := range doc.Meshes[0].Primitives[1:] {
+		if primitive.Attributes["POSITION"] != accessor {
+			t.Fatal("material sections must share the vertex buffer")
+		}
+	}
 	if accessor < 0 || accessor >= len(doc.Accessors) {
 		t.Fatalf("invalid POSITION accessor %d", accessor)
 	}
 	return doc.Accessors[accessor].Count
+}
+
+func checkTerrainSections(t *testing.T, doc *gltfedit.Document) {
+	t.Helper()
+	primitives := doc.Meshes[0].Primitives
+	if len(primitives) != 2 {
+		t.Fatalf("terrain needs sand and basalt sections, got %d", len(primitives))
+	}
+	for _, attribute := range []string{"POSITION", "NORMAL", "TEXCOORD_0"} {
+		if primitives[0].Attributes[attribute] != primitives[1].Attributes[attribute] {
+			t.Fatalf("material split duplicated %s", attribute)
+		}
+	}
+	g, err := terrainGeometry(newNoise(Seed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	triangles := make(map[[3]uint32]bool, len(g.indices)/3)
+	for i := 0; i < len(g.indices); i += 3 {
+		triangles[[3]uint32{uint32(g.indices[i]), uint32(g.indices[i+1]), uint32(g.indices[i+2])}] = true
+	}
+	for material, primitive := range primitives {
+		if primitive.Material == nil || *primitive.Material != material || primitive.Indices == nil {
+			t.Fatalf("terrain section %d has no matching material or indices", material)
+		}
+		indices, err := doc.ReadIndices(*primitive.Indices)
+		if err != nil || len(indices) == 0 || len(indices)%3 != 0 {
+			t.Fatalf("terrain section %d has invalid triangles: %v", material, err)
+		}
+		for i := 0; i < len(indices); i += 3 {
+			key := [3]uint32{indices[i], indices[i+1], indices[i+2]}
+			if !triangles[key] {
+				t.Fatalf("material split duplicated or changed a triangle: %v", key)
+			}
+			delete(triangles, key)
+		}
+	}
+	if len(triangles) != 0 {
+		t.Fatalf("material split lost %d terrain triangles", len(triangles))
+	}
 }
 
 func checkBounds(t *testing.T, data []byte, doc *gltfedit.Document, low, high [3]float64) ([3]float64, [3]float64) {
@@ -236,6 +402,7 @@ func checkGLBEncoding(t *testing.T, data []byte, doc *gltfedit.Document, texture
 		} `json:"bufferViews"`
 		Materials []struct {
 			NormalTexture struct {
+				Index      *int    `json:"index"`
 				Scale      float64 `json:"scale"`
 				Extensions map[string]struct {
 					Scale []float64 `json:"scale"`
@@ -263,12 +430,15 @@ func checkGLBEncoding(t *testing.T, data []byte, doc *gltfedit.Document, texture
 			t.Errorf("terrain GLB has %d embedded images or lacks KHR_texture_transform", len(root.Images))
 		}
 		for _, embedded := range root.Images {
-			if len(root.Materials) != 1 {
-				t.Fatalf("terrain has %d materials, want 1", len(root.Materials))
+			if len(root.Materials) != 2 {
+				t.Fatalf("terrain has %d materials, want sand and basalt", len(root.Materials))
+			}
+			if root.Materials[1].NormalTexture.Index != nil {
+				t.Fatal("basalt must not inherit the sand ripple normal")
 			}
 			transform := root.Materials[0].NormalTexture.Extensions["KHR_texture_transform"].Scale
-			if root.Materials[0].NormalTexture.Scale != .6 || len(transform) != 2 || transform[0] != 60 || transform[1] != 45 {
-				t.Errorf("normal map parameters are scale=%g transform=%v, want 0.6 and [60 45]", root.Materials[0].NormalTexture.Scale, transform)
+			if root.Materials[0].NormalTexture.Scale != .24 || len(transform) != 2 || transform[0] != 60 || transform[1] != 45 {
+				t.Errorf("normal map parameters are scale=%g transform=%v, want 0.24 and [60 45]", root.Materials[0].NormalTexture.Scale, transform)
 			}
 			if (embedded.MIMEType != "image/png" && embedded.MIMEType != "image/jpeg") || embedded.BufferView < 0 || embedded.BufferView >= len(root.BufferViews) {
 				t.Errorf("invalid embedded image reference: %+v", embedded)
@@ -300,12 +470,12 @@ func checkRockMaterial(t *testing.T, data []byte) {
 	if err := json.Unmarshal(glbJSON(t, data), &root); err != nil {
 		t.Fatal(err)
 	}
-	if len(root.Images) != 1 || (root.Images[0].MIMEType != "image/png" && root.Images[0].MIMEType != "image/jpeg") || len(root.Materials) != 1 {
+	if len(root.Images) != 3 || root.Images[0].MIMEType != "image/jpeg" || root.Images[1].MIMEType != "image/jpeg" || root.Images[2].MIMEType != "image/png" || len(root.Materials) != 1 {
 		t.Fatalf("rock material has %d embedded images and %d materials", len(root.Images), len(root.Materials))
 	}
 	material := root.Materials[0]
 	transform := material.Normal.Extensions["KHR_texture_transform"].Scale
-	if !contains(root.ExtensionsUsed, "KHR_texture_transform") || material.PBR.Metallic != 0 || material.PBR.Roughness != .85 || material.Normal.Scale != .9 || len(transform) != 2 || transform[0] != 3 || transform[1] != 3 {
+	if !contains(root.ExtensionsUsed, "KHR_texture_transform") || material.PBR.Metallic != 0 || material.PBR.Roughness != 1 || material.Normal.Scale != .4 || len(transform) != 2 || transform[0] != 3 || transform[1] != 9 {
 		t.Errorf("unexpected rock material: %+v with normal transform %v", material, transform)
 	}
 }

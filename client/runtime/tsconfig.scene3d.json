@@ -27,8 +27,10 @@
     "scene3d/compute.ts",
     "scene3d/overlay-dom.ts",
     "scene3d/mount-controls.ts",
+    "scene3d/mount-pan.ts",
     "scene3d/mount-zoom.ts",
     "scene3d/timeline.ts",
+    "scene3d/walk-input.ts",
     "scene3d/mount-walk.ts",
     "scene3d/ocean-waves.ts",
     "scene3d/ocean-query.ts",
@@ -56,6 +58,7 @@
     "scene3d/webgpu-contact-shadows.ts",
     "scene3d/mount-input.ts",
     "scene3d/webgl-specular-bloom.ts",
-    "scene3d/webgpu-specular-bloom.ts"
+    "scene3d/webgpu-specular-bloom.ts",
+    "scene3d/model-preparation.ts"
   ]
 }

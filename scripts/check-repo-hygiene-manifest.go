@@ -18,7 +18,8 @@ type chunkManifest struct {
 }
 
 type chunk struct {
-	Name string `json:"name"`
+	Name      string `json:"name"`
+	SourceMap string `json:"sourceMap"`
 }
 
 var chunkNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.js$`)
@@ -83,7 +84,22 @@ func main() {
 			continue
 		}
 		seen[name] = true
-		for _, suffix := range []string{"", ".br", ".gz", ".map"} {
+		suffixes := []string{"", ".br", ".gz", ".map"}
+		switch entry.SourceMap {
+		case "":
+		case "debug-only":
+			suffixes = suffixes[:3]
+			artifact := "client/js/" + name + ".map"
+			if _, tracked, err := trackedMode(repoRoot, artifact); err != nil {
+				fail("%v", err)
+			} else if tracked {
+				fail("debug-only source map must not be tracked as a release artifact: %s", artifact)
+			}
+		default:
+			fail("chunk %q has unsupported sourceMap policy %q", name, entry.SourceMap)
+			continue
+		}
+		for _, suffix := range suffixes {
 			artifact := "client/js/" + name + suffix
 			required++
 			if mode, ok := requireTrackedMode(repoRoot, artifact, fail); ok && mode != "100644" {

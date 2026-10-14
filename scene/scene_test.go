@@ -802,6 +802,11 @@ func TestPropsLegacyPropsLowerCameraRotationAndControls(t *testing.T) {
 		ControlRotateDirection: "grab",
 		ControlRotateSpeed:     1.4,
 		ControlZoomSpeed:       0.85,
+		ControlZoom:            Bool(true),
+		ControlPan:             Bool(true),
+		ControlPanHandle:       "#pan",
+		ControlZoomMinFOV:      15,
+		ControlZoomMaxFOV:      75,
 		ControlLookSpeed:       1.2,
 		ControlMoveSpeed:       6.5,
 		ControlMinDistance:     2,
@@ -843,6 +848,11 @@ func TestPropsLegacyPropsLowerCameraRotationAndControls(t *testing.T) {
 	}
 	if got := legacy["controlZoomSpeed"]; got != 0.85 {
 		t.Fatalf("expected zoom speed 0.85, got %#v", got)
+	}
+	for key, want := range map[string]any{"controlZoom": true, "controlPan": true, "controlPanHandle": "#pan", "controlZoomMinFOV": float64(15), "controlZoomMaxFOV": float64(75)} {
+		if got := legacy[key]; got != want {
+			t.Errorf("%s = %v, want %v", key, got, want)
+		}
 	}
 	if got := legacy["controlLookSpeed"]; got != 1.2 {
 		t.Fatalf("expected look speed 1.2, got %#v", got)

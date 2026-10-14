@@ -52,12 +52,12 @@ var demoCatalog = []DemoDefinition{
 	},
 	{
 		Slug: "beacon", Title: "Blackglass Beach", Tag: "physical sky, open ocean, obsidian",
-		Promise: "A black sand beach at golden hour: waves run up the sand below basalt sea stacks.",
+		Promise: "Walk a black sand beach, explore its landmarks, and sail the clipper in three lighting presets.",
 		Lesson:  "One Go program describes the scene and generates its terrain, sea stacks and baked sky lighting; GoSX Scene3D draws the physical sky and open ocean on WebGPU or WebGL2.",
 		Accent:  "#f2c38c", Facets: []string{"Scene3D", "Physical sky", "Ocean", "PBR", "IBL", "PostFX"},
 		SourcePath: "examples/gosx-docs/app/demos/beacon/beach.go", Packages: []string{"scene", "route", "assetpipe/ibl"},
 		Status: "live", RenderMode: "SSR + Scene3D GPU runtime",
-		Limitations:  "The ocean reflects the sky, not the sea stacks (there is no planar or screen-space reflection yet), and the glass monolith is glossy obsidian rather than refractive glass. Adaptive quality lowers resolution and ocean detail on slower devices; WebGPU falls back to WebGL2.",
+		Limitations:  "The scene requests planar and screen-space ocean reflections and a transmissive monolith; the active backend and device capabilities determine the available effects. Adaptive quality lowers resolution and ocean detail on slower devices; WebGPU falls back to WebGL2. Shore and Ship use walking controls; Glass and Overlook use orbit controls.",
 		ShowcaseRank: 0,
 	},
 	{
@@ -255,4 +255,16 @@ func RelatedGuides(demoSlug string) []docsapp.DocEntry {
 		return nil
 	}
 	return guides
+}
+
+// demoNativeNavigation marks demos whose page-owned scripts require a fresh
+// document. These scripts are not managed runtime modules and do not replay
+// when enhanced navigation adopts their HTML.
+func demoNativeNavigation(slug string) any {
+	switch slug {
+	case "checkers", "playground", "fluid", "livesim", "collab", "cms", "scene3d-bench":
+		return "true"
+	default:
+		return nil
+	}
 }

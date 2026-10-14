@@ -255,6 +255,10 @@ for required_output in build.json run.sh server/app; do
 		exit 1
 	fi
 done
+if [ -n "${GOSX_DOCS_BLACKGLASS_ROM:-}" ]; then
+	python3 scripts/blackglass-cartridge.py --root "$dist_dir" \
+		--source "$GOSX_DOCS_BLACKGLASS_ROM" --sha256 "${GOSX_DOCS_BLACKGLASS_ROM_SHA256:-}"
+fi
 if [ -n "$(worktree_changes)" ]; then
 	echo "gosx docs deploy: production build changed the worktree" >&2
 	exit 1
@@ -643,5 +647,8 @@ GOSX_DOCS_EXPECT_FRAMEWORK_VERSION="$framework_version" \
 	GOSX_DOCS_EXPECT_BUILT_AT="$built_at" \
 	GOSX_DOCS_EXPECT_PUBLIC_URL="$public_url" \
 	scripts/smoke-gosx-docs.sh "$public_url"
+if [ -f "${dist_dir}/runtime-assets/blackglass-cartridge.json" ]; then
+	python3 scripts/blackglass-cartridge.py --root "$dist_dir" --verify-base "$public_url"
+fi
 rollback_armed=0
 printf '%s\n' "gosx docs deploy: ${immutable_image} (${framework_version}, ${revision}) is live at ${public_url}"

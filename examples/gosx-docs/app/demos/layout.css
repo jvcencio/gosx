@@ -816,8 +816,7 @@
 /* Keep renderer diagnostics out of the public demo chrome. */
 .demos-shell [data-gosx-scene3d-stats],
 .demos-shell [data-gosx-scene3d-inspector],
-.demos-shell [data-gosx-scene3d-status],
-.demos-shell .scene3d-bench__overlay {
+.demos-shell [data-gosx-scene3d-status] {
   display: none !important;
 }
 

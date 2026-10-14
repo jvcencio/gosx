@@ -26,14 +26,27 @@ func blackglassBeachWalk() *scene.Walk {
 	for _, s := range beachgen.JettySurfaces() {
 		surfaces = append(surfaces, scene.WalkSurface{X: s[0], Y: s[1], Z: s[2], SizeX: s[3], SizeZ: s[4], SlopeX: s[5], SlopeZ: s[6]})
 	}
+	var grounds []scene.WalkGround
+	for _, island := range beachgen.OffshoreIslands() {
+
+		for _, shape := range beachgen.OffshoreRockColliders(island) {
+			colliders = append(colliders, scene.WalkCollider{Kind: shape.Kind, X: shape.X, Y: shape.Y, Z: shape.Z, Radius: shape.Radius, Height: shape.Height})
+		}
+		g := beachgen.IslandGrid(island)
+		grounds = append(grounds, scene.NewWalkGround(g.MinX, g.MinZ, g.SizeX, g.SizeZ, g.Cols, g.Rows, g.Heights))
+		pier := beachgen.IslandPier(island)
+		surfaces = append(surfaces, scene.WalkSurface{X: pier[0], Y: pier[1], Z: pier[2], SizeX: pier[3], SizeZ: pier[4]})
+	}
 	return &scene.Walk{
 		Surfaces:  surfaces,
 		EyeHeight: 1.7, HeadBob: scene.Float(0.012), Hint: "none",
+		WalkSpeed: 3.6,
 		MaxSlope:  34,
 		Ground:    &ground,
+		Grounds:   grounds, OutsideHeight: scene.Float(-1e4),
 		Water:     &scene.WalkWater{Level: 0, MaxDepth: 0.55},
 		Colliders: colliders,
-		Bounds:    &scene.WalkBounds{MinX: -115, MinZ: -180, MaxX: 115, MaxZ: 46},
+		Bounds:    &scene.WalkBounds{MinX: -245, MinZ: -430, MaxX: 355, MaxZ: 46},
 	}
 }
 
@@ -46,23 +59,22 @@ func blackglassBeachLookRotation(position, target scene.Vector3) scene.Euler {
 	return scene.Euler{X: math.Atan2(fy, horizontal), Y: math.Atan2(-fx, -fz)}
 }
 
-// The generated normal maps add grain and basalt fissures without replacing
-// the terrain's wetness map: a dry detail roughness must not dull the tideline.
+// Scanned grain and fractured basalt use world-space projection so steep
+// faces keep their scale. The sand's roughness stays in the terrain wetness
+// map: a dry detail roughness must not dull the tideline.
 func blackglassBeachDetail() *scene.Detail {
-	root := blackglassBeachModelRoot
+	root := blackglassBeachModelRoot + "detail/"
 	return &scene.Detail{
-		Ground: &scene.DetailLayer{Normal: root + "sand-normal.jpg", Scale: 2.5, NormalScale: 0.32},
-		Steep: &scene.DetailLayer{Normal: root + "rock-normal.jpg", Roughness: root + "rock-rough.jpg",
-			Scale: 3, NormalScale: 0.85, RoughnessMix: 0.45},
-		SlopeStart: 28, SlopeEnd: 42, FadeStart: 12, FadeEnd: 24,
+		Ground: &scene.DetailLayer{Albedo: root + "sand-albedo.jpg", Normal: root + "sand-normal.jpg", Scale: 2.5, NormalScale: 0.35, AlbedoMix: .65},
+		Steep: &scene.DetailLayer{Albedo: root + "basalt-albedo.jpg", Normal: root + "basalt-normal.jpg", Roughness: root + "basalt-rough.jpg",
+			Scale: 6, NormalScale: 0.38, AlbedoMix: .4, RoughnessMix: 0.18},
+		SlopeStart: 28, SlopeEnd: 42, FadeStart: 24, FadeEnd: 100,
 	}
 }
 
 // blackglassBeachRockDetail gives the stacks basalt detail on every face.
 func blackglassBeachRockDetail() *scene.Detail {
-	d := blackglassBeachDetail()
-	d.Ground = d.Steep
-	d.SlopeStart, d.SlopeEnd = 0, 1
-	d.FadeStart, d.FadeEnd = 30, 85
-	return d
+	// A single triplanar layer covers every face, including the crowns.
+	// Avoid serializing and baking two identical basalt atlas layers.
+	return &scene.Detail{Ground: blackglassBeachDetail().Steep, Triplanar: scene.Bool(true), FadeStart: 55, FadeEnd: 140}
 }

@@ -338,6 +338,13 @@ func TestDemoLayoutDirectLoadsRenderCurrentProofMetadata(t *testing.T) {
 			}
 			visit(doc)
 
+			if want.Slug == "beacon" {
+				if shellSlug != want.Slug || len(currentHrefs) != 0 || title != "" || !strings.Contains(rendered, "<main>") {
+					t.Fatal("full-window Beach must retain its content without hidden dock or details")
+				}
+				return
+			}
+
 			if len(currentHrefs) != 1 || currentHrefs[0] != "/demos/"+want.Slug {
 				t.Fatalf("server-rendered current links = %#v, want only /demos/%s", currentHrefs, want.Slug)
 			}

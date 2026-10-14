@@ -20,10 +20,21 @@ function model(config = {}, reduced = false, pose = camera) {
 }
 function near(actual, expected, tolerance = 1e-5) { assert.ok(Math.abs(actual - expected) < tolerance, `${actual} != ${expected}`); }
 
+test("moving decks remain walkable beyond land bounds without permitting a step into deep water", () => {
+  const bounds = { minX: -10, minZ: -10, maxX: 10, maxZ: 10 };
+  const deck = { x: 2000, y: 2.5, z: -3000, sizeX: 4, sizeZ: 16 };
+  const { api, state } = model({ bounds, surfaces: [deck], ground: ground([30], 1, 1), water: { level: 0, maxDepth: 0.55 } }, false, { ...camera, x: deck.x, y: 4.2, z: deck.z });
+  api.move(state, 1, 2); near(state.x, 2001); near(state.z, -2998);
+  api.move(state, 10, 0); assert.ok(state.x <= 2002);
+  assert.equal(api.candidateAllowed(state, 2004, -3000), false);
+  assert.equal(api.candidateAllowed(state, 2000, -3020), false);
+  api.advance(state, 0.1, 0, 0, false); near(state.camera.y, 4.2);
+});
 test("walk ground bilinear sampling clamps edges and supports constant fields", () => {
   const { api } = model(), field = api.decodeGround(ground([0, 2, 4, 6]));
   near(api.sampleGround(field, 0.5, 0.5), 3); near(api.sampleGround(field, 0.25, 0.75), 3.5);
   near(api.sampleGround(field, -5, 3), 4); near(api.sampleGround(api.decodeGround(ground([3], 1, 1)), 5, 5), 3);
+  near(api.sampleGround(field, -5, 3, -1e4), -1e4); near(api.sampleGround(field, 0.5, 0.5, -1e4), 3);
   assert.throws(() => api.decodeGround({ ...ground([0]), cols: 2, rows: 2 }), /sample count/);
 });
 test("walk slides along a cylinder and cannot tunnel on a long sprint step", () => {
@@ -74,12 +85,25 @@ test("head bob is distance based, fades out, and is zero for reduced motion or a
 });
 test("movement is horizontal, normalizes diagonals, caps delta, and scales sprint", () => {
   const { api, state } = model({ headBob: 0 });
-  api.advance(state, 1, 1, 1, false); near(Math.hypot(state.x, state.z), 0.16);
+  api.advance(state, 1, 1, 1, false); near(Math.hypot(state.x, state.z), 0.8);
   const sprint = api.createState({ ...camera, rotationX: 1.4 }, { headBob: 0 }, false);
   api.advance(sprint, 0.1, 0, 1, true); near(sprint.z, -0.352);
   const slow = api.createState(camera, { headBob: 0 }, false);
   for (let i = 0; i < 10; i++) api.advance(slow, 0.01, 0, 1, false);
   near(slow.z, -0.16);
+});
+test("slow display frames retain walking pace, bound stalls, and cannot tunnel through thin obstacles", () => {
+  const { api } = model({ headBob: 0 });
+  const smooth = api.createState(camera, { headBob: 0 }, false);
+  const slow = api.createState(camera, { headBob: 0 }, false);
+  for (let i = 0; i < 60; i++) api.advance(smooth, 1 / 60, 0, 1, false);
+  for (let i = 0; i < 2; i++) api.advance(slow, 0.5, 0, 1, false);
+  near(smooth.z, slow.z); near(slow.z, -1.6);
+  const stalled = api.createState(camera, { headBob: 0 }, false);
+  api.advance(stalled, 30, 0, 1, false); near(stalled.z, -0.8);
+  const blocked = api.createState(camera, { headBob: 0, walkSpeed: 8, colliders: [{ kind: "cylinder", x: 0, z: -0.75, radius: 0.12 }] }, false);
+  api.advance(blocked, 0.5, 0, 1, true);
+  assert.ok(blocked.z > -0.28, "catch-up must query collisions throughout the travel");
 });
 
 function controls(config = {}, options = {}) {
@@ -111,12 +135,48 @@ test("keyboard navigation is focus scoped, supports look and Home reset, and sto
   assert.equal(h.raf.count(), 0); assert.equal(h.canvas.getAttribute("tabindex"), "0"); assert.match(h.canvas.getAttribute("aria-label"), /Home/);
   h.handle.dispose(); assert.equal(h.sceneState._gosxMotionController, null);
 });
+test("hiding a tab clears held movement before a delayed frame resumes", () => {
+  const h = controls({ headBob: 0 });
+  h.canvas.focus(); h.event(h.env.document, "keydown", { code: "KeyW" });
+  Object.defineProperty(h.env.document, "hidden", { value: true, configurable: true });
+  h.event(h.env.document, "visibilitychange"); h.raf.flush(1000);
+  near(h.handle.controller.currentCamera().z, camera.z);
+  assert.equal(h.raf.count(), 0); h.handle.dispose();
+});
 test("pointer lock looks with movementX/Y, clamps pitch, hides the hint and restores it on release", () => {
   const h = controls(); const hint = h.mount.querySelector(".gosx-scene3d-walk-hint");
   h.event(h.canvas, "click", { pointerType: "mouse" }); assert.equal(hint.hidden, true);
   h.event(h.env.document, "mousemove", { movementX: 100, movementY: -10000 });
   near(h.handle.controller.currentCamera().rotationY, -0.22); near(h.handle.controller.currentCamera().rotationX, 1.45);
   h.env.document.exitPointerLock(); assert.equal(hint.hidden, false); assert.equal(h.raf.count(), 0); h.handle.dispose();
+});
+test("primary mouse drag looks without pointer lock, ends on release or blur, and does not lock after dragging", () => {
+  const h = controls();
+  const pointer = { pointerType: "mouse", pointerId: 9, button: 0, clientX: 150, clientY: 100 };
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 200 });
+  near(h.handle.controller.currentCamera().rotationY, 0);
+  h.event(h.canvas, "pointerdown", { ...pointer, button: 2 });
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 200 });
+  near(h.handle.controller.currentCamera().rotationY, 0);
+  h.event(h.canvas, "pointerdown", pointer);
+  assert.equal(h.env.document.activeElement, h.canvas);
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 250, clientY: 50 });
+  near(h.handle.controller.currentCamera().rotationY, -.22);
+  near(h.handle.controller.currentCamera().rotationX, camera.rotationX + .11);
+  h.event(h.canvas, "pointerup", pointer);
+  h.event(h.canvas, "click", pointer);
+  assert.equal(h.canvas.pointerLockCalls.length, 0, "drag release must not hide the cursor");
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 300 });
+  near(h.handle.controller.currentCamera().rotationY, -.22);
+  h.event(h.canvas, "pointerdown", pointer); h.event(h.env.context, "blur");
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 300 });
+  near(h.handle.controller.currentCamera().rotationY, -.22);
+  h.event(h.env.document, "keydown", { code: "Home" });
+  assert.deepEqual({ ...h.handle.controller.currentCamera() }, camera);
+  h.event(h.canvas, "pointerdown", pointer); h.event(h.canvas, "pointercancel", pointer);
+  h.event(h.canvas, "pointermove", { ...pointer, clientX: 300 });
+  near(h.handle.controller.currentCamera().rotationY, 0);
+  h.handle.dispose();
 });
 test("touch move and drag-to-look use independent pointer IDs in portrait and landscape", () => {
   for (const [width, height] of [[600, 400], [300, 600]]) {
@@ -199,6 +259,33 @@ test("walk scene fetches its advertised chunk, preserves the first pose, publish
   unsubscribe();
   assert.equal(mounted.handle.resetCamera(), true);
   assert.deepEqual({ ...mounted.handle.getCamera() }, initial);
+  // Reproduce browsers that return a rejected promise for raw mouse input.
+  const request = canvas.requestPointerLock.bind(canvas), calls = [];
+  canvas.requestPointerLock = (options) => {
+    calls.push(options);
+    if (options) return Promise.reject(Object.assign(new Error("raw mouse input unsupported"), { name: "NotSupportedError" }));
+    request(); return Promise.resolve();
+  };
+  canvas.dispatchEvent({ type: "click", pointerType: "mouse" });
+  await flushAsyncWork();
+  assert.equal(calls.length, 2, "retry the asynchronous raw-input rejection with ordinary pointer lock");
+  assert.equal(calls[1], undefined);
+  assert.equal(env.document.pointerLockElement, canvas);
+  env.document.dispatchEvent({ type: "mousemove", movementX: 100, movementY: 0 });
+  near(mounted.handle.getCamera().rotationY, initial.rotationY - .22);
+  env.document.exitPointerLock(); mounted.handle.resetCamera();
+  calls.length = 0;
+  canvas.requestPointerLock = () => {
+    calls.push(null);
+    return Promise.reject(Object.assign(new Error("embedded browser denies pointer lock"), { name: "SecurityError" }));
+  };
+  canvas.dispatchEvent({ type: "click", pointerType: "mouse" });
+  await flushAsyncWork();
+  assert.equal(calls.length, 1, "do not retry a policy denial or leave an unhandled rejection");
+  canvas.dispatchEvent({ type: "pointerdown", pointerType: "mouse", pointerId: 3, button: 0, clientX: 30, clientY: 30 });
+  canvas.dispatchEvent({ type: "pointermove", pointerType: "mouse", pointerId: 3, clientX: 130, clientY: 30, preventDefault() {} });
+  near(mounted.handle.getCamera().rotationY, initial.rotationY - .22);
+  canvas.dispatchEvent({ type: "pointerup", pointerType: "mouse", pointerId: 3 });
   mounted.handle.dispose();
 });
 
@@ -247,4 +334,13 @@ test("optical zoom scales walking travel and every look input with the same proj
   full.api.look(full.state, 0.5, 0.3); zoomed.api.look(zoomed.state, 0.5, 0.3);
   near(zoomed.state.yaw, full.state.yaw * 0.4);
   near(zoomed.state.pitch - camera.rotationX, (full.state.pitch - camera.rotationX) * 0.4);
+});
+
+test('sparse ground patches preserve island walking and reject deep water without clamping another island',()=>{
+ const coast=ground([3],1,1),island={...ground([1,1,3,3],2,2,20,20),minX:200,minZ:-300};
+ const {api,state}=model({ground:coast,grounds:[island],outsideHeight:-10000,water:{level:0,maxDepth:.55}},true,{...camera,x:205,y:3.2,z:-295});
+ near(api.sampleGrounds(api.decodeGround(coast),[api.decodeGround(island)],205,-295,-10000),1.5,.0001);
+ assert.equal(api.sampleGrounds(api.decodeGround(coast),[api.decodeGround(island)],150,-200,-10000),-10000);
+ assert.ok(api.candidateAllowed(state,206,-296));api.move(state,1,-1);near(state.x,206);near(state.z,-296);
+ assert.equal(api.candidateAllowed(state,199,-295),false);
 });

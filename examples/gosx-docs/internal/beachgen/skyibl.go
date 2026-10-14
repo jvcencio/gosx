@@ -31,7 +31,9 @@ func PeriodSky(period string) scene.Sky {
 	case PeriodNoon:
 		return scene.Sky{Mode: "physical", SunDirection: scene.SunDirectionFromAngles(50, 100), Turbidity: 3.5, Rayleigh: 1.2, MieCoefficient: 0.004, MieDirectionalG: 0.8}
 	default:
-		return scene.Sky{Mode: "physical", SunDirection: scene.SunDirectionFromAngles(4.5, -6), Turbidity: 6, Rayleigh: 1.7, MieCoefficient: 0.006, MieDirectionalG: 0.82}
+		// A low side light exposes the basalt faces and casts long shadows
+		// across the cove without washing out the sea directly behind them.
+		return scene.Sky{Mode: "physical", SunDirection: scene.SunDirectionFromAngles(7.5, 112), Turbidity: 3.2, Rayleigh: 1.4, MieCoefficient: 0.004, MieDirectionalG: 0.8, Intensity: .65}
 	}
 }
 
@@ -127,7 +129,9 @@ func BakeSkyIBL(period, uriPrefix string) (map[string][]byte, scene.EnvironmentI
 	}
 	harmonics := make([][3]float64, len(sh))
 	for i, c := range sh {
-		harmonics[i] = [3]float64{c.X, c.Y, c.Z}
+		// Six decimals keep the absolute lighting error below 0.5e-6 while
+		// avoiding float64 serialization noise in every scene's props.
+		harmonics[i] = [3]float64{math.Round(c.X*1e6) / 1e6, math.Round(c.Y*1e6) / 1e6, math.Round(c.Z*1e6) / 1e6}
 	}
 	env := scene.EnvironmentIBL{
 		SchemaVersion: 1, Source: source, BRDFModel: ibl.BRDFModel, RoughnessPerLevel: roughness, SphericalHarmonics: harmonics,

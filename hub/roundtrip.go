@@ -16,7 +16,7 @@ type transportState struct {
 	clock clock.Clock
 	slow  SlowClientPolicy
 	// Queue counters share Client.mu with enqueue/channel closure.
-	enqueues [2]uint32
+	enqueues [3]uint32
 	// Pong handling is the reader; measured pings belong to the writer.
 	mu       sync.Mutex
 	sequence uint64
