@@ -241,7 +241,9 @@
     // Canvas gestures can suppress a browser's compatibility click. A completed
     // touch tap on an authored type=button control still runs its Go handler.
     // Native forms, links, cancelled drags and keyboard clicks keep their rules.
-    if (!declared || declared.has("click")) entries.push(...setupButtonTapDelegation(islandRoot));
+    if ((!declared || declared.has("click")) && typeof navigator !== "undefined" && navigator.maxTouchPoints > 0) {
+      entries.push(...setupButtonTapDelegation(islandRoot));
+    }
 
     for (const eventType of DELEGATED_EVENTS) {
       if (declared && !declared.has(eventType)) continue;
