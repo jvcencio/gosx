@@ -3625,7 +3625,7 @@
         var needsUnpremultipliedAlpha = ["specular-color", "base-color"].indexOf(descriptor.role) >= 0;
         var w = image.width;
         var h = image.height;
-        if (!w || !h) { image.onerror(); return; }
+        if (!w || !h) { image.onerror(""); return; }
         var imageTexture = wgpuCreateImageTexture(device, w, h, descriptor.colorSpace);
         var tex = imageTexture.texture;
         // Canvas makes SVG foreignObject pixels readable by Chromium WebGPU.
