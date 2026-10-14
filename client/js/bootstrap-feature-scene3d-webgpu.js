@@ -162,12 +162,12 @@ struct Capture { @location(0) color: vec4f, @location(1) depth: f32 };
  var d = 1.0;
  ${e>1?`for (var s = 0; s < ${e}; s++) { d = min(d,textureLoad(depth,p,s)); }`:"d = textureLoad(depth,p,0);"}
  return Capture(textureLoad(color,p,0),d);
-}`}function ji(e){const d=e.createSampler({minFilter:"linear",magFilter:"linear"}),a=e.createBuffer({label:"gosx-reflection",size:208,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),r=e.createBuffer({label:"gosx-reflection-frame",size:256,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),c=new Map,o=[];let l="",t=null;function i(t,n,s,i){const a=e.createTexture({label:"gosx-reflection",size:[t,n,1],format:s,sampleCount:i||1,usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});return o.push(a),a.createView()}function u(e,n){const s=Math.max(1,Math.round(e.width*n.resolution)),a=Math.max(1,Math.round(e.height*n.resolution)),r=[s,a,e.format,e.samples].join(":");r!==l&&(o.forEach(e=>e.destroy()),o.length=0,t={color:i(s,a,e.format,1),depth:i(s,a,"r32float",1),planar:i(s,a,e.format,1),planarDepth:i(s,a,"depth24plus",e.samples),planarMSAA:e.samples>1?i(s,a,e.format,e.samples):null},l=r)}function h(o,i){const l=i.format+":"+i.samples;let a=c.get(l);if(!a){const t=e.createShaderModule({label:"gosx-reflection-capture",code:bi(i.samples)});a=s(e,"render",{label:"gosx-reflection-capture",layout:"auto",vertex:{module:t,entryPoint:"vertexMain"},fragment:{module:t,entryPoint:"fragmentMain",targets:[{format:i.format},{format:"r32float"}]},primitive:{topology:"triangle-strip"}}),c.set(l,a)}const d=e.createBindGroup({layout:n(a).getBindGroupLayout(0),entries:[{binding:0,resource:i.colorView},{binding:1,resource:i.depthView}]}),r=o.beginRenderPass({label:"gosx-reflection-capture",colorAttachments:[t.color,t.depth].map(e=>({view:e,loadOp:"clear",storeOp:"store",clearValue:{r:1,g:1,b:1,a:1}}))});r.setPipeline(n(a)),r.setBindGroup(0,d),r.draw(4),r.end()}return{prepare:function(n,s,o){u(n,s),n.pass.end(),h(n.encoder,n);const i=Xs(n.view,n.proj,n.environment.ocean.level||0,!0),l=s.mode.includes("planar")&&o.planar;if(l&&n.draw){const s=new Float32Array(n.frameData);s.set(i.view,0),s.set(i.projection,16),s[33]=2*(n.environment.ocean.level||0)-n.camera.y,e.queue.writeBuffer(r,0,s);const o={view:t.planarMSAA||t.planar,loadOp:"clear",storeOp:"store",clearValue:{r:0,g:0,b:0,a:0}};t.planarMSAA&&(o.resolveTarget=t.planar);const a=n.encoder.beginRenderPass({label:"gosx-planar-reflection",colorAttachments:[o],depthStencilAttachment:{view:t.planarDepth,depthLoadOp:"clear",depthStoreOp:"store",depthClearValue:1}});n.draw(a,n.frameGroup(r)),a.end()}const c=new Float32Array(52);c.set(i.vp),c.set(i.inverse,16),c.set(i.planarVP,32),c.set([s.strength,s.mode.includes("ssr")?o.reflectionSteps:0,l?1:0,n.linear?1:0],48),e.queue.writeBuffer(a,0,c);const m=Object.assign({},n.descriptor,{colorAttachments:n.descriptor.colorAttachments.map(e=>Object.assign({},e,{loadOp:"load"})),depthStencilAttachment:Object.assign({},n.descriptor.depthStencilAttachment,{depthLoadOp:"load"})});return delete m.timestampWrites,{pass:n.encoder.beginRenderPass(m),record:{uniform:a,sampler:d,color:t.color,depth:t.depth,planar:t.planar}}},dispose:function(){o.forEach(e=>e.destroy()),o.length=0,a.destroy(),r.destroy(),c.clear(),t=null}}}function yi(e,t,n){const s=Kt(n.environment&&n.environment.ocean&&n.environment.ocean.reflections),o=G(n.meta);return!s||!o.reflections?(qt(e),{pass:n.pass,record:null}):(e.reflection||(e.reflection=ji(t)),e.reflection.prepare(n,s,o))}function _i(e,t,n){return e.createBindGroup({layout:t,entries:[{binding:0,resource:{buffer:n.uniform}},{binding:1,resource:n.sampler},{binding:2,resource:n.color},{binding:3,resource:n.depth},{binding:4,resource:n.planar}]})}function wi(e){return e.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.FRAGMENT,buffer:{type:"uniform"}},{binding:1,visibility:GPUShaderStage.FRAGMENT,sampler:{type:"filtering"}},{binding:2,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"float"}},{binding:3,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"unfilterable-float"}},{binding:4,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"float"}}]})}function Oi(e,t){return{uniform:e.createBuffer({size:208,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),sampler:e.createSampler({minFilter:"linear",magFilter:"linear"}),color:t,depth:t,planar:t}}const ze=`fn gosxCloudSurface(_b:vec3f,_l:vec3f,_a:vec4f,_d:vec4f,_r:vec3f,_s:vec3f,_m:vec3f,_t:vec3f)->vec4f {
-let _e = (_l + vec3<f32>(0.0, 6371000.0, 0.0));
+}`}function ji(e){const d=e.createSampler({minFilter:"linear",magFilter:"linear"}),a=e.createBuffer({label:"gosx-reflection",size:208,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),r=e.createBuffer({label:"gosx-reflection-frame",size:256,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),c=new Map,o=[];let l="",t=null;function i(t,n,s,i){const a=e.createTexture({label:"gosx-reflection",size:[t,n,1],format:s,sampleCount:i||1,usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});return o.push(a),a.createView()}function u(e,n){const s=Math.max(1,Math.round(e.width*n.resolution)),a=Math.max(1,Math.round(e.height*n.resolution)),r=[s,a,e.format,e.samples].join(":");r!==l&&(o.forEach(e=>e.destroy()),o.length=0,t={color:i(s,a,e.format,1),depth:i(s,a,"r32float",1),planar:i(s,a,e.format,1),planarDepth:i(s,a,"depth24plus",e.samples),planarMSAA:e.samples>1?i(s,a,e.format,e.samples):null},l=r)}function h(o,i){const l=i.format+":"+i.samples;let a=c.get(l);if(!a){const t=e.createShaderModule({label:"gosx-reflection-capture",code:bi(i.samples)});a=s(e,"render",{label:"gosx-reflection-capture",layout:"auto",vertex:{module:t,entryPoint:"vertexMain"},fragment:{module:t,entryPoint:"fragmentMain",targets:[{format:i.format},{format:"r32float"}]},primitive:{topology:"triangle-strip"}}),c.set(l,a)}const d=e.createBindGroup({layout:n(a).getBindGroupLayout(0),entries:[{binding:0,resource:i.colorView},{binding:1,resource:i.depthView}]}),r=o.beginRenderPass({label:"gosx-reflection-capture",colorAttachments:[t.color,t.depth].map(e=>({view:e,loadOp:"clear",storeOp:"store",clearValue:{r:1,g:1,b:1,a:1}}))});r.setPipeline(n(a)),r.setBindGroup(0,d),r.draw(4),r.end()}return{prepare:function(n,s,o){u(n,s),n.pass.end(),h(n.encoder,n);const i=Xs(n.view,n.proj,n.environment.ocean.level||0,!0),l=s.mode.includes("planar")&&o.planar;if(l&&n.draw){const s=new Float32Array(n.frameData);s.set(i.view,0),s.set(i.projection,16),s[33]=2*(n.environment.ocean.level||0)-n.camera.y,e.queue.writeBuffer(r,0,s);const o={view:t.planarMSAA||t.planar,loadOp:"clear",storeOp:"store",clearValue:{r:0,g:0,b:0,a:0}};t.planarMSAA&&(o.resolveTarget=t.planar);const a=n.encoder.beginRenderPass({label:"gosx-planar-reflection",colorAttachments:[o],depthStencilAttachment:{view:t.planarDepth,depthLoadOp:"clear",depthStoreOp:"store",depthClearValue:1}});n.draw(a,n.frameGroup(r)),a.end()}const c=new Float32Array(52);c.set(i.vp),c.set(i.inverse,16),c.set(i.planarVP,32),c.set([s.strength,s.mode.includes("ssr")?o.reflectionSteps:0,l?1:0,n.linear?1:0],48),e.queue.writeBuffer(a,0,c);const m=Object.assign({},n.descriptor,{colorAttachments:n.descriptor.colorAttachments.map(e=>Object.assign({},e,{loadOp:"load"})),depthStencilAttachment:Object.assign({},n.descriptor.depthStencilAttachment,{depthLoadOp:"load"})});return delete m.timestampWrites,{pass:n.encoder.beginRenderPass(m),record:{uniform:a,sampler:d,color:t.color,depth:t.depth,planar:t.planar}}},dispose:function(){o.forEach(e=>e.destroy()),o.length=0,a.destroy(),r.destroy(),c.clear(),t=null}}}function yi(e,t,n){const s=Kt(n.environment&&n.environment.ocean&&n.environment.ocean.reflections),o=G(n.meta);return!s||!o.reflections?(qt(e),{pass:n.pass,record:null}):(e.reflection||(e.reflection=ji(t)),e.reflection.prepare(n,s,o))}function _i(e,t,n){return e.createBindGroup({layout:t,entries:[{binding:0,resource:{buffer:n.uniform}},{binding:1,resource:n.sampler},{binding:2,resource:n.color},{binding:3,resource:n.depth},{binding:4,resource:n.planar}]})}function wi(e){return e.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.FRAGMENT,buffer:{type:"uniform"}},{binding:1,visibility:GPUShaderStage.FRAGMENT,sampler:{type:"filtering"}},{binding:2,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"float"}},{binding:3,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"unfilterable-float"}},{binding:4,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"float"}}]})}function Oi(e,t){return{uniform:e.createBuffer({size:208,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),sampler:e.createSampler({minFilter:"linear",magFilter:"linear"}),color:t,depth:t,planar:t}}const ze=`fn gosxCloudSurface(_b:vec3f,_u:vec3f,_a:vec4f,_d:vec4f,_z:vec3f,_aa:vec3f,_v:vec3f,_ab:vec3f)->vec4f {
+let _e = (_u + vec3<f32>(0.0, 6371000.0, 0.0));
   let b = dot(_e, _b);
-  let _n = (6371000.0 + _a.y);
-  let t = max(((-b) + sqrt(max((((b * b) - dot(_e, _e)) + (_n * _n)), 0.0))), 0.0);
-  var p : vec2<f32> = (((_l.xz + (_b.xz * t)) - (_d.xy * _d.z)) / _a.z);
+  let _w = (6371000.0 + _a.y);
+  let t = max(((-b) + sqrt(max((((b * b) - dot(_e, _e)) + (_w * _w)), 0.0))), 0.0);
+  var p : vec2<f32> = (((_u.xz + (_b.xz * t)) - (_d.xy * _d.z)) / _a.z);
   var _f : f32 = length(fwidth(p));
   var _g : f32 = 0.0;
   var _c : f32 = 0.52;
@@ -176,30 +176,46 @@ let _e = (_l + vec3<f32>(0.0, 6371000.0, 0.0));
     if ((f32(i) >= _d.w)) {
       break;
     }
-    let _u = (1.0 - smoothstep(0.3, 1.0, _f));
+    let _ac = (1.0 - smoothstep(0.3, 1.0, _f));
     let q = floor(p);
     let f = fract(p);
     let _i = ((f * f) * (3.0 - (2.0 * f)));
-    let a = fract((((fract((q * vec2<f32>(0.1031, 0.103))) + dot(fract((q * vec2<f32>(0.1031, 0.103))), (fract((q * vec2<f32>(0.1031, 0.103))).yx + 33.33))).x + (fract((q * vec2<f32>(0.1031, 0.103))) + dot(fract((q * vec2<f32>(0.1031, 0.103))), (fract((q * vec2<f32>(0.1031, 0.103))).yx + 33.33))).y) * (fract((q * vec2<f32>(0.1031, 0.103))) + dot(fract((q * vec2<f32>(0.1031, 0.103))), (fract((q * vec2<f32>(0.1031, 0.103))).yx + 33.33))).x));
-    let b0 = fract((((fract(((q + vec2<f32>(1.0, 0.0)) * vec2<f32>(0.1031, 0.103))) + dot(fract(((q + vec2<f32>(1.0, 0.0)) * vec2<f32>(0.1031, 0.103))), (fract(((q + vec2<f32>(1.0, 0.0)) * vec2<f32>(0.1031, 0.103))).yx + 33.33))).x + (fract(((q + vec2<f32>(1.0, 0.0)) * vec2<f32>(0.1031, 0.103))) + dot(fract(((q + vec2<f32>(1.0, 0.0)) * vec2<f32>(0.1031, 0.103))), (fract(((q + vec2<f32>(1.0, 0.0)) * vec2<f32>(0.1031, 0.103))).yx + 33.33))).y) * (fract(((q + vec2<f32>(1.0, 0.0)) * vec2<f32>(0.1031, 0.103))) + dot(fract(((q + vec2<f32>(1.0, 0.0)) * vec2<f32>(0.1031, 0.103))), (fract(((q + vec2<f32>(1.0, 0.0)) * vec2<f32>(0.1031, 0.103))).yx + 33.33))).x));
-    let c = fract((((fract(((q + vec2<f32>(0.0, 1.0)) * vec2<f32>(0.1031, 0.103))) + dot(fract(((q + vec2<f32>(0.0, 1.0)) * vec2<f32>(0.1031, 0.103))), (fract(((q + vec2<f32>(0.0, 1.0)) * vec2<f32>(0.1031, 0.103))).yx + 33.33))).x + (fract(((q + vec2<f32>(0.0, 1.0)) * vec2<f32>(0.1031, 0.103))) + dot(fract(((q + vec2<f32>(0.0, 1.0)) * vec2<f32>(0.1031, 0.103))), (fract(((q + vec2<f32>(0.0, 1.0)) * vec2<f32>(0.1031, 0.103))).yx + 33.33))).y) * (fract(((q + vec2<f32>(0.0, 1.0)) * vec2<f32>(0.1031, 0.103))) + dot(fract(((q + vec2<f32>(0.0, 1.0)) * vec2<f32>(0.1031, 0.103))), (fract(((q + vec2<f32>(0.0, 1.0)) * vec2<f32>(0.1031, 0.103))).yx + 33.33))).x));
-    let d = fract((((fract(((q + vec2<f32>(1.0, 1.0)) * vec2<f32>(0.1031, 0.103))) + dot(fract(((q + vec2<f32>(1.0, 1.0)) * vec2<f32>(0.1031, 0.103))), (fract(((q + vec2<f32>(1.0, 1.0)) * vec2<f32>(0.1031, 0.103))).yx + 33.33))).x + (fract(((q + vec2<f32>(1.0, 1.0)) * vec2<f32>(0.1031, 0.103))) + dot(fract(((q + vec2<f32>(1.0, 1.0)) * vec2<f32>(0.1031, 0.103))), (fract(((q + vec2<f32>(1.0, 1.0)) * vec2<f32>(0.1031, 0.103))).yx + 33.33))).y) * (fract(((q + vec2<f32>(1.0, 1.0)) * vec2<f32>(0.1031, 0.103))) + dot(fract(((q + vec2<f32>(1.0, 1.0)) * vec2<f32>(0.1031, 0.103))), (fract(((q + vec2<f32>(1.0, 1.0)) * vec2<f32>(0.1031, 0.103))).yx + 33.33))).x));
-    _g = (_g + (_c * mix(0.5, mix(mix(a, b0, _i.x), mix(c, d, _i.x), _i.y), _u)));
+    let _ad = q;
+    let _j = fract((_ad * vec2<f32>(0.1031, 0.103)));
+    let _k = (_j + dot(_j, (_j.yx + 33.33)));
+    let _ae = fract(((_k.x + _k.y) * _k.x));
+    let a = _ae;
+    let _af = (q + vec2<f32>(1.0, 0.0));
+    let _l = fract((_af * vec2<f32>(0.1031, 0.103)));
+    let _m = (_l + dot(_l, (_l.yx + 33.33)));
+    let _ag = fract(((_m.x + _m.y) * _m.x));
+    let b0 = _ag;
+    let _ah = (q + vec2<f32>(0.0, 1.0));
+    let _n = fract((_ah * vec2<f32>(0.1031, 0.103)));
+    let _o = (_n + dot(_n, (_n.yx + 33.33)));
+    let _ai = fract(((_o.x + _o.y) * _o.x));
+    let c = _ai;
+    let _aj = (q + vec2<f32>(1.0, 1.0));
+    let _q = fract((_aj * vec2<f32>(0.1031, 0.103)));
+    let _r = (_q + dot(_q, (_q.yx + 33.33)));
+    let _ak = fract(((_r.x + _r.y) * _r.x));
+    let d = _ak;
+    _g = (_g + (_c * mix(0.5, mix(mix(a, b0, _i.x), mix(c, d, _i.x), _i.y), _ac)));
     _h = (_h + _c);
     p = ((p * 2.03) + vec2<f32>(17.1, 9.2));
     _f = (_f * 2.03);
     _c = (_c * 0.5);
   }
-  let _o = (1.0 - _a.x);
-  let _v = (smoothstep((_o - 0.12), (_o + 0.18), (_g / max(_h, 0.1))) * smoothstep(0.0, 0.025, _a.x));
-  let _j = (_v * 3.5);
-  let _k = exp((-_j));
-  let _w = (1.0 - exp(((-_j) * 2.0)));
-  let _x = (((pow(max(dot(_b, _m), 0.0), 32.0) * exp(((-_j) * 0.7))) * (1.0 - _k)) * 2.2);
-  let _y = ((_r * (0.45 + (0.4 * _k))) + ((_s * ((0.35 * _w) + _x)) * smoothstep((-0.04), 0.03, _m.y)));
-  let _z = mix(_y, _t, (1.0 - exp(((-t) / 65000.0))));
-  let _q = (((1.0 - _k) * _a.w) * smoothstep((-0.005), 0.025, _b.y));
-  return vec4<f32>((_z * _q), _q);
+  let _x = (1.0 - _a.x);
+  let _al = (smoothstep((_x - 0.12), (_x + 0.18), (_g / max(_h, 0.1))) * smoothstep(0.0, 0.025, _a.x));
+  let _s = (_al * 3.5);
+  let _t = exp((-_s));
+  let _am = (1.0 - exp(((-_s) * 2.0)));
+  let _an = (((pow(max(dot(_b, _v), 0.0), 32.0) * exp(((-_s) * 0.7))) * (1.0 - _t)) * 2.2);
+  let _ao = ((_z * (0.45 + (0.4 * _t))) + ((_aa * ((0.35 * _am) + _an)) * smoothstep((-0.04), 0.03, _v.y)));
+  let _ap = mix(_ao, _ab, (1.0 - exp(((-t) / 65000.0))));
+  let _y = (((1.0 - _t) * _a.w) * smoothstep((-0.005), 0.025, _b.y));
+  return vec4<f32>((_ap * _y), _y);
 }
 `+["fn gosxClouds(_a:vec3f,_b:vec3f,_c:vec4f,_d:vec4f,_e:vec3f,_f:vec3f,_g:vec3f)->vec4f {","let _h=gosxPhysicalSky(normalize(vec3f(_a.x,0.025,_a.z)),cloud.p[7],cloud.p[8],vec4f(cloud.p[9].xyz,2.0),cloud.p[10].x)*cloud.p[3].w;","return gosxCloudSurface(_a,_b,_c,_d,_e,_f,_g,_h); }"].join(`
 `),Ci=["struct Cloud { p: array<vec4f,16> }; @group(0) @binding(0) var<uniform> cloud: Cloud;","struct Out { @builtin(position) position: vec4f, @location(0) ndc: vec2f };","@vertex fn vertexMain(@builtin(vertex_index) i: u32) -> Out {","let p=vec2f(f32((i<<1u)&2u),f32(i&2u))*2.0-1.0; var o: Out; o.position=vec4f(p,1,1);o.ndc=p;return o; }","//SKY","//CLOUD","@fragment fn fragmentMain(in: Out) -> @location(0) vec4f {","let _a=normalize(cloud.p[2].xyz+cloud.p[0].xyz*in.ndc.x*cloud.p[0].w+cloud.p[1].xyz*in.ndc.y*cloud.p[1].w);","var c=gosxClouds(_a,cloud.p[13].xyz,cloud.p[11],cloud.p[12],cloud.p[14].xyz,cloud.p[15].xyz,cloud.p[9].xyz);","if(cloud.p[6].x==0.0) {let rgb=c.rgb/max(c.a,1e-5);c=vec4f(select(1.055*pow(rgb,vec3f(1.0/2.4))-0.055,rgb*12.92,rgb<=vec3f(0.0031308))*c.a,c.a);} return c; }"].join(`

@@ -157,21 +157,21 @@ func CoastViews(props struct{ View, Period string }) Node {
 				class="bgb__link"
 				onClick={selectPeriod}
 				data-gosx-event-value="golden-hour"
-				aria-pressed={state.Get().Period=="golden-hour"}
+				title="Jump to late afternoon"
 			>Golden hour</button>
 			<button
 				type="button"
 				class="bgb__link"
 				onClick={selectPeriod}
 				data-gosx-event-value="blue-hour"
-				aria-pressed={state.Get().Period=="blue-hour"}
+				title="Jump to dusk"
 			>Blue hour</button>
 			<button
 				type="button"
 				class="bgb__link"
 				onClick={selectPeriod}
 				data-gosx-event-value="noon"
-				aria-pressed={state.Get().Period=="noon"}
+				title="Jump to midday"
 			>Midday</button>
 		</nav>
 	</div>

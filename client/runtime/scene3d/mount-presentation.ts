@@ -127,8 +127,11 @@ function sceneCreateDayCycle(config: any, state: any, hashes?: { light: any; env
     const duration = Number.isFinite(config.durationSeconds) && config.durationSeconds >= 60 ? Math.min(86400, config.durationSeconds) : 1080;
     const peak = Math.min(89, Math.max(1, Number(config.peakElevation) || 55));
     const intensity = Math.min(30, Math.max(0, Number(config.sunIntensity) || 9));
+    const nightIntensity = Math.min(30, Math.max(0, Number(config.nightIntensity) || .22));
+    const nightEnvironment = Math.min(4, Math.max(0, Number(config.nightEnvIntensity) || .025));
     const phase = (Number(config.seed) >>> 0) / 4294967296 * Math.PI * 2;
     let hour = Math.max(0, Math.min(23.999, Number(config.initialHour) || 0)), automatic = true, last = 0, next = -1;
+    let publishedHour = NaN, publishedWeather = '', publishedAutomatic: boolean | undefined;
     const unsubscribe = config.inputSignal && typeof window.__gosx_runtime_api.gosxSubscribeSharedSignal === 'function' ? window.__gosx_runtime_api.gosxSubscribeSharedSignal(config.inputSignal, (value: any) => { if (typeof value === 'boolean')
         automatic = value; }) : () => { };
     const mix = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -153,7 +156,7 @@ function sceneCreateDayCycle(config: any, state: any, hashes?: { light: any; env
         sky.intensity = mix(.05, .65, daytime);
         sky.turbidity = mix(3.2, 3.5, midday);
         sky.rayleigh = mix(1.4, 1.2, midday);
-        env.envIntensity = mix(.025, .85, daytime);
+        env.envIntensity = mix(nightEnvironment, .85, daytime);
         env.fogColor = color([9, 18, 36], [153, 179, 184], daytime * (.65 + .35 * midday));
         const weather = .5 + .32 * Math.sin(seconds / 170 + phase) + .12 * Math.sin(seconds / 61 + phase * 1.7);
         const coverage = Math.max(.18, Math.min(.88, weather));
@@ -173,11 +176,26 @@ function sceneCreateDayCycle(config: any, state: any, hashes?: { light: any; env
             if (typeof hashes?.light === 'function')
                 light._lightHash = hashes.light(light);
         }
+        const nightLight = state.lights instanceof Map ? state.lights.get(config.nightLightId) : null;
+        if (nightLight && nightLight !== light) {
+            nightLight.directionX = sun.x;
+            nightLight.directionY = sun.y;
+            nightLight.directionZ = sun.z;
+            nightLight.intensity = nightIntensity * (1 - daytime) * smooth(0, 18, -elevation);
+            if (typeof hashes?.light === 'function')
+                nightLight._lightHash = hashes.light(nightLight);
+        }
         if (typeof hashes?.environment === 'function')
             env._envHash = hashes.environment(env);
         if (config.outputSignal && typeof window.__gosx_runtime_api.setSharedSignalValue === 'function') {
+            const weatherLabel = !config.weather ? 'Fair weather' : coverage > .68 ? 'Clouds gathering' : coverage < .38 ? 'Clear spells' : 'Coastal clouds';
+            if (hour === publishedHour && weatherLabel === publishedWeather && automatic === publishedAutomatic)
+                return;
+            publishedHour = hour;
+            publishedWeather = weatherLabel;
+            publishedAutomatic = automatic;
             const minutes = Math.floor(hour * 60), label = String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
-            window.__gosx_runtime_api.setSharedSignalValue(config.outputSignal, { Hour: hour, HourLabel: label, WeatherLabel: !config.weather ? 'Fair weather' : coverage > .68 ? 'Clouds gathering' : coverage < .38 ? 'Clear spells' : 'Coastal clouds', Automatic: automatic });
+            window.__gosx_runtime_api.setSharedSignalValue(config.outputSignal, { Hour: hour, HourLabel: label, WeatherLabel: weatherLabel, Automatic: automatic });
         }
     }
     return { advance, seek: (value: number) => { if (Number.isFinite(value) && value >= 0 && value < 24) {

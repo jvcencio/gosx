@@ -162,8 +162,8 @@ func blackglassBeachProgram(viewID, periodID string, interactive bool) scene.Pro
 			Ocean: &scene.Ocean{
 				WindDirection: -28, WaveHeight: 0.95, WaveLength: 38, Choppiness: 0.32, Speed: 0.85,
 				DeepColor: "#03121b", ShallowColor: "#123b43", ScatterColor: "#16695e", FoamColor: "#dde9e5",
-				Clarity: 2.8, Roughness: 0.13, Foam: 0.48, Surf: 0.65, Extent: 4000,
-				Reflections: &scene.OceanReflections{Mode: "ssr+planar", Resolution: 0.5, Strength: 1},
+				Clarity: 2.8, Roughness: 0.19, Foam: 0.48, Surf: 0.65, Extent: 4000,
+				Reflections: &scene.OceanReflections{Mode: "ssr+planar", Resolution: 0.5, Strength: 0.8},
 				Bathymetry: &scene.OceanBathymetry{
 					Src:  blackglassOffshoreHeightSrc,
 					MinX: beachgen.OffshoreMinX, MinZ: beachgen.OffshoreMinZ, MaxX: beachgen.OffshoreMaxX, MaxZ: beachgen.OffshoreMaxZ,
@@ -183,6 +183,7 @@ func blackglassBeachProgram(viewID, periodID string, interactive bool) scene.Pro
 		Graph: scene.NewGraph(append([]scene.Node{
 			scene.DirectionalLight{ID: "sun", Color: period.SunColor, Intensity: period.SunPower, Direction: scene.Vec3(-sun.X, -sun.Y, -sun.Z),
 				CastShadow: true, ShadowBias: -0.0018, ShadowSize: 2048, ShadowCascades: 3, ShadowSoftness: 1.5},
+			scene.DirectionalLight{ID: "night-fill", Color: "#a8c4e8", Intensity: .001, Direction: scene.Vec3(0, -1, 0)},
 			scene.Model{ID: "beach", Src: blackglassBeachModelRoot + "beach-v2.glb", Bounds: 90, CastShadow: true, ReceiveShadow: true, Detail: blackglassBeachDetail()},
 			scene.Model{ID: "sea-stacks", Src: blackglassBeachModelRoot + "stacks-v2.glb", Bounds: 60, CastShadow: true, ReceiveShadow: true, Detail: blackglassBeachRockDetail()},
 			scene.Model{ID: "jetty", Src: blackglassBeachModelRoot + "jetty.glb", CastShadow: true, ReceiveShadow: true},
@@ -246,5 +247,16 @@ func BlackglassBeachExperience(viewID, periodID string) scene.Experience {
 	if period.ID == beachgen.PeriodBlue {
 		hour = 18.3
 	}
-	return scene.Experience{Optics: blackglassBeachOptics(), Vessel: blackglassBeachVessel(), Presentation: blackglassBeachPresentation(view.ID, period.ID), Exploration: blackglassBeachExploration(), DayCycle: &scene.DayCycle{DurationSeconds: 1080, InitialHour: hour, SunLightID: "sun", SunAzimuth: 90, PeakElevation: 55, Seed: uint32(beachgen.Seed), Weather: true, InputSignal: "$blackglass.timeAutomatic", OutputSignal: "$blackglass.day"}}
+	return scene.Experience{
+		Optics: blackglassBeachOptics(), Vessel: blackglassBeachVessel(),
+		Presentation: blackglassBeachPresentation(view.ID, period.ID),
+		Exploration:  blackglassBeachExploration(),
+		DayCycle: &scene.DayCycle{
+			DurationSeconds: 1080, InitialHour: hour,
+			SunLightID: "sun", SunAzimuth: 90, PeakElevation: 55,
+			NightLightID: "night-fill", NightIntensity: 1.15, NightEnvIntensity: .18,
+			Seed: uint32(beachgen.Seed), Weather: true,
+			InputSignal: "$blackglass.timeAutomatic", OutputSignal: "$blackglass.day",
+		},
+	}
 }
