@@ -208,3 +208,20 @@ func TestRenderProfileStillRejectsIntroducedDispatchAttrs(t *testing.T) {
 		t.Fatalf("profile-introduced marker accepted: %q, %v", b.String(), r.err)
 	}
 }
+
+func TestFileSpreadCannotInstallFrameworkBindings(t *testing.T) {
+	attrs := map[string]any{"data-gosx-bind-source": "#source", "DATA-GOSX-BIND-ATTR": "onclick:data-code", "data-gosx-action": "POST /delete", "data-gosx-action-target": "#target", "data-app-id": "safe"}
+	var b strings.Builder
+	renderFileSpreadAttrs(&b, attrs, "")
+	if b.String() != ` data-app-id="safe"` {
+		t.Fatalf("spread installed framework behavior: %s", b.String())
+	}
+	resolved := resolveFileAttrs([]ir.Attr{{Kind: ir.AttrSpread, Expr: "attrs"}}, fileRenderEnv{values: map[string]any{"attrs": attrs}}, "")
+	if len(resolved) != 1 || resolved[0].Name != "data-app-id" {
+		t.Fatalf("profile received framework attrs: %+v", resolved)
+	}
+	got := defaultRenderedComponent("Unknown", fileComponentHTMLAttrs{values: attrs}, "")
+	if strings.Contains(got, "bind-source") || strings.Contains(got, "BIND-ATTR") || strings.Contains(got, "action-target") {
+		t.Fatalf("fallback installed behavior: %s", got)
+	}
+}

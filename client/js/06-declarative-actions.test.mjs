@@ -808,11 +808,12 @@ test("declarative attribute bindings cannot overwrite or remove dispatch markers
         "data-gosx-bind-source": ".active",
         "data-gosx-bind-attr": `${name}:data-value;data-gosx-link:data-value`,
         [name]: "real",
+        "data-gosx-link": "trusted",
       });
       const { ctx } = runModule({ queryMap: { ".active": source }, queryAll: { "[data-gosx-bind-source]": [root] } });
       ctx.window.__gosx.actions.refreshBindings();
       assert.equal(root.getAttribute(name), "real", name);
-      assert.equal(root.getAttribute("data-gosx-link"), value || null);
+      assert.equal(root.getAttribute("data-gosx-link"), "trusted");
     }
   }
 });
@@ -827,4 +828,54 @@ test("declarative toggles cannot inject or remove reserved dispatch markers", ()
       assert.equal(target.getAttribute(name), existing, name);
     }
   }
+});
+
+test("attribute bindings refuse executable and framework targets before mutation", () => {
+ for (const name of ["onclick", "OnError", "ONLOAD", "style", "STYLE", "data-gosx-action", "DATA-GOSX-BIND-ATTR", "data-gosx-on-click", "x y", "x=onclick"]) {
+  for (const value of ["alert(1)", "", null]) {
+   const source = makeEl(value === null ? {} : { "data-value": value });
+   const root = makeEl({ "data-gosx-bind-source": ".active", "data-gosx-bind-attr": name+":data-value", [name]: "original" });
+   const { ctx } = runModule({ queryMap: { ".active": source }, queryAll: { "[data-gosx-bind-source]": [root] } });
+   ctx.window.__gosx.actions.refreshBindings();
+   assert.equal(root.getAttribute(name), "original", name+"="+value);
+  }
+ }
+});
+
+test("attribute bindings use a positive allowlist before writing or removing targets", () => {
+ for (const name of ["srcdoc", "SRCDOC", "data", "attributeName", "values", "to", "from", "by", "begin", "end", "keyTimes", "keySplines", "data-csrf", "DATA-CSRF-TOKEN", "class", "id", "name", "src", "action", "formaction", "poster"]) {
+  for (const value of ["payload", "", null]) {
+   const source = makeEl(value === null ? {} : { "data-value": value });
+   const root = makeEl({ "data-gosx-bind-source": ".active", "data-gosx-bind-attr": name+":data-value", [name]: "original" });
+   const { ctx } = runModule({ queryMap: { ".active": source }, queryAll: { "[data-gosx-bind-source]": [root] } });
+   ctx.window.__gosx.actions.refreshBindings();
+   assert.equal(root.getAttribute(name), "original", name+"="+value);
+  }
+ }
+});
+
+test("attribute bindings retain inert targets and their removal semantics", () => {
+ for (const name of ["title", "value", "datetime", "disabled", "hidden", "data-app-state", "aria-label"]) {
+  for (const value of ["safe", "", null]) {
+   const source = makeEl(value === null ? {} : { "data-value": value });
+   const root = makeEl({ "data-gosx-bind-source": ".active", "data-gosx-bind-attr": name+":data-value", [name]: "original" });
+   const { ctx } = runModule({ queryMap: { ".active": source }, queryAll: { "[data-gosx-bind-source]": [root] } });
+   ctx.window.__gosx.actions.refreshBindings();
+   assert.equal(root.getAttribute(name), value || null, name+"="+value);
+  }
+ }
+});
+
+test("attribute bindings refuse unsafe URLs and retain safe href values", () => {
+ for (const name of ["href", "HREF"]) {
+  const safeValues = ["/safe", "https://example.com/img", "http://example.com", "../img", "#item", "?q=javascript:x"];
+  for (const value of ["javascript:alert(1)", " JaVaScRiPt:alert(1)", "java\tscript:alert(1)", "java\nscript:alert(1)", "\u0000javascript:alert(1)", "data:text/html,x", "vbscript:x", "mailto:user@example.com", "//evil.example", "/\\evil.example", "\\\\evil.example", ...safeValues]) {
+   const source = makeEl({ "data-value": value });
+   const root = makeEl({ "data-gosx-bind-source": ".active", "data-gosx-bind-attr": name+":data-value", [name]: "/original" });
+   const { ctx } = runModule({ queryMap: { ".active": source }, queryAll: { "[data-gosx-bind-source]": [root] } });
+   ctx.window.__gosx.actions.refreshBindings();
+   const safe = safeValues.includes(value);
+   assert.equal(root.getAttribute(name), safe ? value : "/original", name+"="+value);
+  }
+ }
 });
