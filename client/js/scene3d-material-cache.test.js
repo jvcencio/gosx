@@ -170,4 +170,18 @@ test("a named PBR field edit refreshes both objects sharing that material", asyn
   }
 });
 
+test("two objects sharing a named material preserve the surviving owner after removal", async t => {
+  const h = await materialHarness(false, 2, false);
+  t.after(() => h.renderer.dispose());
+  for (let i = 0; i < 5; i++) await h.render();
+  const groups = h.fake.state.renderPasses.at(-1).bindGroups.filter(b => b.slot === 1);
+  assert.equal(groups.length, 2);
+  const survivor = groups[1].group.desc.entries.find(e => e.binding === 0).resource.buffer;
+  h.api.applySceneCommands(h.state, [{ kind: 1, objectId: "box-0" }]);
+  await h.render();
+  const group = h.fake.state.renderPasses.at(-1).bindGroups.find(b => b.slot === 1).group;
+  assert.equal(group.desc.entries.find(e => e.binding === 0).resource.buffer, survivor);
+  assert.equal(survivor.destroyed, false);
+});
+
 module.exports = { materialHarness };
