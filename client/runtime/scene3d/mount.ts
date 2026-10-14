@@ -1491,7 +1491,7 @@
           framePacingTick2 = framePacingTick1;
           framePacingTick1 = rawTickDeltaMS;
           var vsyncSampleMS = sceneFramePacingMedianOf3(framePacingTick1, framePacingTick2, framePacingTick3);
-          var advanced = sceneFramePacingAdvanceOnTick(vsyncSampleMS, framePacingVsyncMS, framePacingCostMS, framePacingActiveK, framePacingPendingK, framePacingPendingStreak, framePacingTicksSinceRender, sceneAnimationFrameIntervalMS(animation.reason));
+          var advanced = sceneFramePacingAdvanceOnTick(vsyncSampleMS, framePacingVsyncMS, framePacingCostMS, framePacingActiveK, framePacingPendingK, framePacingPendingStreak, framePacingTicksSinceRender, sceneAnimationFrameIntervalMS(""));
           framePacingVsyncMS = advanced.vsyncEstimateMS;
           framePacingActiveK = advanced.activeK;
           framePacingPendingK = advanced.pendingK;
@@ -2014,7 +2014,7 @@
       if (disposed || sceneWebGLFallbackOwner === false || sceneWebGLFallbackOwner === renderer) {
         return;
       }
-      if (/^(controls|camera|signal-camera|scroll|gizmo-drag|motion|vessel)/.test(reason || "")) sceneActiveInputUntil = sceneNowMilliseconds() + 180;
+      if (/^(controls|controls-inertia|controls-reset|controls-keyboard|camera|signal-camera|scroll|gizmo-drag|vessel-helm|vessel-camera|vessel-look|vessel-reset)$/.test(reason || "")) sceneActiveInputUntil = sceneNowMilliseconds() + 180;
       lastRenderReason = reason || "refresh";
       recordScenePerfCounter("schedule:" + (reason || "refresh"));
       // A runtime program or a scene command can add a particle system or an

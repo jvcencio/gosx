@@ -3,12 +3,12 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const H = require("./runtime-test-harness.js");
 
-async function mountScene(extra = {}) {
+async function mountScene(extra = {}, environment = {}) {
   let now = 1000;
   const mount = new H.FakeElement("div", null);
   mount.id = "default-budgets";
   const env = H.createContext({ elements: [mount], enableWebGL2: true,
-    disableCanvas2D: true, devicePixelRatio: 2, performanceNow: () => now,
+    disableCanvas2D: true, devicePixelRatio: 2, performanceNow: () => now, ...environment,
     manifest: { engines: [{ id: "budget-engine", component: "GoSXScene3D", kind: "surface", mountId: mount.id,
       props: { width: 1440, height: 900, adaptiveQuality: false,
         scene: { objects: [{ kind: "box", spinY: 0.2 }] }, ...extra } }] } });
@@ -74,4 +74,34 @@ test("transitions retain display cadence alongside ambient spin", async () => {
   const before = s.renders();
   for (let i = 1; i <= 120; i++) s.tick(2000 + i * 1000 / 120);
   assert.equal(s.renders() - before, 120);
+});
+
+test("Canvas2D draws CSS coordinates at the capped backing scale below DPR 1", async () => {
+  const { canvas } = await mountScene({ width: 2560, height: 1440 },
+    { enableWebGL2: false, disableCanvas2D: false, devicePixelRatio: 1 });
+  assert.equal(canvas.width, 1920);
+  assert.equal(canvas.height, 1080);
+  const scales = canvas._canvasContext.ops.filter(op => op[0] === "scale");
+  assert.ok(scales.length > 0, "capped Canvas2D frames must scale their CSS coordinates");
+  assert.deepEqual(scales.at(-1), ["scale", 0.75, 0.75]);
+});
+
+for (const hz of [60.02, 75, 120, 144]) {
+  test(`default ambient cap does not force a vsync divisor at ${hz} Hz`, async () => {
+    const s = await mountScene({ framePacing: "vsync-divisor" });
+    for (let i = 1; i <= 300; i++) s.tick(1000 + i * 1000 / hz);
+    const before = s.renders();
+    for (let i = 301; i <= 600; i++) s.tick(1000 + i * 1000 / hz);
+    assert.equal(s.mount.getAttribute("data-gosx-scene3d-frame-pacing-k"), "1");
+    assert.equal(s.renders() - before, 300);
+  });
+}
+
+test("an authored minimum DPR overrides only the default pixel budget", async () => {
+  const minimum = await mountScene({ minDevicePixelRatio: 2 });
+  assert.equal(minimum.canvas.width * minimum.canvas.height, 5184000);
+  const modest = await mountScene({ minDevicePixelRatio: 1 });
+  assert.equal(modest.canvas.width * modest.canvas.height, 2072298);
+  const capped = await mountScene({ minDevicePixelRatio: 2, maxPixels: 2073600 });
+  assert.ok(capped.canvas.width * capped.canvas.height <= 2073600);
 });

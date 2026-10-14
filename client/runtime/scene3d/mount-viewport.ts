@@ -112,7 +112,9 @@
     // there and falls off a cliff. Deriving the ratio from a pixel budget makes
     // the cap resolution-aware. Zero uses 1080p; -1 explicitly opts out.
     const pixelBudget = sceneNumber(props && (props.maxPixels != null ? props.maxPixels : props.maxRenderPixels), 0);
-    const maxPixels = pixelBudget === -1 ? 0 : pixelBudget > 0 ? pixelBudget : 2073600;
+    const authoredMinRatio = Math.max(0, sceneNumber(props && props.minDevicePixelRatio, 0));
+    const maxPixels = pixelBudget === -1 ? 0 : pixelBudget > 0 ? pixelBudget
+      : Math.max(2073600, cssWidth * cssHeight * authoredMinRatio * authoredMinRatio);
     if (maxPixels > 0) {
       const cssPixels = Math.max(1, cssWidth * cssHeight);
       const budgetRatio = Math.sqrt(maxPixels / cssPixels);

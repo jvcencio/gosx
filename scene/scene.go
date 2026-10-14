@@ -221,7 +221,8 @@ type Props struct {
 	// remains an upper bound on the paced rate: k grows past 4 when the
 	// authored cap needs a longer interval than four vsync ticks. An
 	// empty value, or any other string, keeps the existing
-	// fixed-interval behavior.
+	// fixed-interval behavior. Vsync-divisor replaces the default ambient cap;
+	// only authored frame-rate caps constrain its divisor.
 	FramePacing string `json:"framePacing,omitempty"`
 	// MaxDevicePixelRatio overrides the automatic 1.5 DPR cap on phones
 	// (coarse pointer and a screen short side of at most 600 CSS pixels).
@@ -229,7 +230,9 @@ type Props struct {
 	MaxDevicePixelRatio float64 `json:"maxDevicePixelRatio,omitempty"`
 	// MaxPixels caps the render target by total backing pixels after DPR.
 	// Zero defaults to 2,073,600 pixels (1080p). MaxPixelsUnbounded opts out.
-	MaxPixels             int     `json:"maxPixels,omitempty"`
+	MaxPixels int `json:"maxPixels,omitempty"`
+	// MinDevicePixelRatio overrides the default pixel budget. An explicit
+	// positive MaxPixels still takes precedence over this minimum.
 	MinDevicePixelRatio   float64 `json:"minDevicePixelRatio,omitempty"`
 	AdaptiveQuality       *bool   `json:"adaptiveQuality,omitempty"`
 	AdaptiveTargetFrameMS float64 `json:"adaptiveTargetFrameMS,omitempty"`
