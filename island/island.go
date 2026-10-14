@@ -17,6 +17,7 @@ import (
 	"html"
 	"m31labs.dev/gosx/internal/filepolicy"
 	"m31labs.dev/gosx/internal/htmlattr"
+	"m31labs.dev/gosx/internal/sceneprobe"
 	"m31labs.dev/gosx/internal/urlpath"
 	"maps"
 	neturl "net/url"
@@ -1516,6 +1517,13 @@ func (r *Renderer) RenderEngine(cfg engine.Config, fallback gosx.Node) gosx.Node
 		return renderEngineError(err)
 	}
 
+	// Preserve the existing sorted JSON wire form for engines outside Scene3D.
+	if !strings.EqualFold(strings.TrimSpace(cfg.Name), "GoSXScene3D") && len(cfg.Props) > 0 {
+		if err := json.Unmarshal(cfg.Props, &props); err != nil {
+			return renderEngineError(err)
+		}
+	}
+
 	mountID := cfg.MountID
 	if engine.KindNeedsMount(cfg.Kind) && mountID == "" {
 		mountID = fmt.Sprintf("gosx-engine-mount-%d", len(r.manifest.Engines))
@@ -1534,6 +1542,12 @@ func (r *Renderer) RenderEngine(cfg engine.Config, fallback gosx.Node) gosx.Node
 	)
 	if err != nil {
 		return renderEngineError(err)
+	}
+
+	if strings.EqualFold(strings.TrimSpace(cfg.Name), "GoSXScene3D") {
+		entry := &r.manifest.Engines[len(r.manifest.Engines)-1]
+		entry.Scene3DProbe = cfg.Scene3DProbe
+		cfg.Scene3DProbe = sceneProbe(entry)
 	}
 
 	if !engine.KindNeedsMount(cfg.Kind) {
@@ -2608,110 +2622,15 @@ func (r *Renderer) hasVideoEngines() bool {
 	return false
 }
 
-// scene3DChunkRecord is the narrow view of one points, instanced-mesh or
-// animation-channel record that decides whether a page needs the decompress
-// chunk. Only the keys named here are decoded, so a large scene costs a scan
-// and a few slice headers, not a full generic decode.
-//
-// The field names match the readers in
-// client/js/bootstrap-src/11a-scene-decompress.ts and
-// 11b-scene-points-generate.ts. Add a field here whenever one of those files
-// learns to read a new key, or the page will not advertise the chunk that
-// reads it.
-type scene3DChunkRecord struct {
-	Generator            json.RawMessage `json:"generator"`
-	CompressedPositions  json.RawMessage `json:"compressedPositions"`
-	CompressedSizes      json.RawMessage `json:"compressedSizes"`
-	CompressedTransforms json.RawMessage `json:"compressedTransforms"`
-	CompressedTimes      json.RawMessage `json:"compressedTimes"`
-	CompressedValues     json.RawMessage `json:"compressedValues"`
-	PreviewPositions     json.RawMessage `json:"previewPositions"`
-	PreviewSizes         json.RawMessage `json:"previewSizes"`
-	PreviewTransforms    json.RawMessage `json:"previewTransforms"`
-	PreviewTimes         json.RawMessage `json:"previewTimes"`
-	PreviewValues        json.RawMessage `json:"previewValues"`
+// sceneProbe also supports entries registered directly through Manifest.
+func sceneProbe(entry *hydrate.EngineEntry) *sceneprobe.Probe {
+	if entry.Scene3DProbe == nil {
+		entry.Scene3DProbe = sceneprobe.Decode(entry.Props)
+	}
+	return entry.Scene3DProbe
 }
 
-func (rec scene3DChunkRecord) needsDecompress() bool {
-	return len(rec.Generator) > 0 ||
-		len(rec.CompressedPositions) > 0 ||
-		len(rec.CompressedSizes) > 0 ||
-		len(rec.CompressedTransforms) > 0 ||
-		len(rec.CompressedTimes) > 0 ||
-		len(rec.CompressedValues) > 0 ||
-		len(rec.PreviewPositions) > 0 ||
-		len(rec.PreviewSizes) > 0 ||
-		len(rec.PreviewTransforms) > 0 ||
-		len(rec.PreviewTimes) > 0 ||
-		len(rec.PreviewValues) > 0
-}
-
-type scene3DChunkClip struct {
-	Channels []scene3DChunkRecord `json:"channels"`
-}
-
-// scene3DChunkProbe reads the two shapes a Scene3D engine can carry: the wire
-// IR under props.scene, and the flat props form the runtime also accepts.
-type scene3DChunkProbe struct {
-	ParticleBursts   bool                 `json:"particleBursts"`
-	Scene            *scene3DChunkProbe   `json:"scene"`
-	Compression      json.RawMessage      `json:"compression"`
-	ComputeParticles []json.RawMessage    `json:"computeParticles"`
-	InstancedMeshes  []scene3DChunkRecord `json:"instancedMeshes"`
-	Points           []scene3DChunkRecord `json:"points"`
-	Animations       []scene3DChunkClip   `json:"animations"`
-}
-
-// needsComputeChunk reports whether the scene reaches
-// bootstrap-feature-scene3d-compute.js. Two paths do: a compute particle
-// system, which both renderers build through createSceneParticleSystem, and an
-// instanced mesh, which the WebGPU renderer culls on the GPU with a kernel from
-// the same file.
-//
-// Be permissive on purpose. A URL the runtime never uses costs about sixty
-// bytes of HTML; a missing URL drops a particle system the author asked for.
-func (p *scene3DChunkProbe) needsComputeChunk() bool {
-	if p == nil {
-		return false
-	}
-	if p.ParticleBursts || len(p.ComputeParticles) > 0 || len(p.InstancedMeshes) > 0 {
-		return true
-	}
-	return p.Scene.needsComputeChunk()
-}
-
-// needsDecompressChunk reports whether the scene reaches
-// bootstrap-feature-scene3d-decompress.js. A compression policy alone is
-// enough: progressive and level-of-detail mode both drive the chunk after the
-// first frame, even when the first payload arrives plain.
-func (p *scene3DChunkProbe) needsDecompressChunk() bool {
-	if p == nil {
-		return false
-	}
-	if len(p.Compression) > 0 && string(p.Compression) != "null" {
-		return true
-	}
-	for i := range p.Points {
-		if p.Points[i].needsDecompress() {
-			return true
-		}
-	}
-	for i := range p.InstancedMeshes {
-		if p.InstancedMeshes[i].needsDecompress() {
-			return true
-		}
-	}
-	for i := range p.Animations {
-		for j := range p.Animations[i].Channels {
-			if p.Animations[i].Channels[j].needsDecompress() {
-				return true
-			}
-		}
-	}
-	return p.Scene.needsDecompressChunk()
-}
-
-// scene3DChunkNeeds decodes every Scene3D engine on the page once and reports
+// scene3DChunkNeeds reuses the Scene3D snapshots and reports
 // which gated sub-feature chunks the page must advertise. A page with several
 // scenes advertises a chunk when any one scene needs it.
 func (r *Renderer) scene3DChunkNeeds() (needsCompute bool, needsDecompress bool) {
@@ -2723,18 +2642,18 @@ func (r *Renderer) scene3DChunkNeeds() (needsCompute bool, needsDecompress bool)
 		if len(entry.Props) == 0 {
 			continue
 		}
-		var probe scene3DChunkProbe
-		if err := json.Unmarshal(entry.Props, &probe); err != nil {
+		probe := sceneProbe(entry)
+		if probe.ChunkErr != nil {
 			// A scene whose props do not decode is a scene this renderer cannot
 			// reason about. Advertise both chunks rather than drop a feature the
 			// author declared: a wrong URL costs bytes, a missing one costs the
 			// feature.
 			return true, true
 		}
-		if probe.needsComputeChunk() {
+		if probe.ComputeChunk {
 			needsCompute = true
 		}
-		if probe.needsDecompressChunk() {
+		if probe.DecompressChunk {
 			needsDecompress = true
 		}
 		if needsCompute && needsDecompress {
@@ -2746,14 +2665,13 @@ func (r *Renderer) scene3DChunkNeeds() (needsCompute bool, needsDecompress bool)
 
 // Timelines are advertised only for scenes that opt into finite playback.
 func (r *Renderer) scene3DNeedsTimelineChunk() bool {
-	for _, entry := range r.manifest.Engines {
+	for i := range r.manifest.Engines {
+		entry := &r.manifest.Engines[i]
 		if !strings.EqualFold(strings.TrimSpace(entry.Component), "GoSXScene3D") {
 			continue
 		}
-		var props struct {
-			Timelines bool `json:"timelines"`
-		}
-		if json.Unmarshal(entry.Props, &props) == nil && props.Timelines {
+		props := sceneProbe(entry)
+		if props.Timelines {
 			return true
 		}
 	}
@@ -2762,14 +2680,13 @@ func (r *Renderer) scene3DNeedsTimelineChunk() bool {
 
 // Particle bursts are advertised only for scenes that opt into event effects.
 func (r *Renderer) scene3DNeedsParticleBurstChunk() bool {
-	for _, entry := range r.manifest.Engines {
+	for i := range r.manifest.Engines {
+		entry := &r.manifest.Engines[i]
 		if !strings.EqualFold(strings.TrimSpace(entry.Component), "GoSXScene3D") {
 			continue
 		}
-		var props struct {
-			ParticleBursts bool `json:"particleBursts"`
-		}
-		if json.Unmarshal(entry.Props, &props) == nil && props.ParticleBursts {
+		props := sceneProbe(entry)
+		if props.ParticleBursts {
 			return true
 		}
 	}
@@ -2778,14 +2695,13 @@ func (r *Renderer) scene3DNeedsParticleBurstChunk() bool {
 
 // Zoom is downloaded only for an explicit camera control opt-in.
 func (r *Renderer) scene3DNeedsZoomChunk() bool {
-	for _, entry := range r.manifest.Engines {
+	for i := range r.manifest.Engines {
+		entry := &r.manifest.Engines[i]
 		if !strings.EqualFold(strings.TrimSpace(entry.Component), "GoSXScene3D") {
 			continue
 		}
-		var props struct {
-			ControlZoom bool `json:"controlZoom"`
-		}
-		if json.Unmarshal(entry.Props, &props) == nil && props.ControlZoom {
+		props := sceneProbe(entry)
+		if props.ControlZoom {
 			return true
 		}
 	}
@@ -2794,14 +2710,13 @@ func (r *Renderer) scene3DNeedsZoomChunk() bool {
 
 // Preparation is advertised only for mounts that opt in through typed props.
 func (r *Renderer) scene3DNeedsModelPreparationChunk() bool {
-	for _, entry := range r.manifest.Engines {
+	for i := range r.manifest.Engines {
+		entry := &r.manifest.Engines[i]
 		if !strings.EqualFold(strings.TrimSpace(entry.Component), "GoSXScene3D") {
 			continue
 		}
-		var props struct {
-			ModelPreparation bool `json:"modelPreparation"`
-		}
-		if json.Unmarshal(entry.Props, &props) == nil && props.ModelPreparation {
+		props := sceneProbe(entry)
+		if props.ModelPreparation {
 			return true
 		}
 	}
@@ -2810,14 +2725,13 @@ func (r *Renderer) scene3DNeedsModelPreparationChunk() bool {
 
 // Walking depends on an object-valued top-level prop, not on SceneIR contents.
 func (r *Renderer) scene3DNeedsWalkChunk() bool {
-	for _, entry := range r.manifest.Engines {
+	for i := range r.manifest.Engines {
+		entry := &r.manifest.Engines[i]
 		if !strings.EqualFold(strings.TrimSpace(entry.Component), "GoSXScene3D") {
 			continue
 		}
-		var props struct {
-			Walk map[string]json.RawMessage `json:"walk"`
-		}
-		if json.Unmarshal(entry.Props, &props) == nil && props.Walk != nil {
+		props := sceneProbe(entry)
+		if props.Walk != nil {
 			return true
 		}
 	}
@@ -2860,12 +2774,12 @@ func engineProps(raw json.RawMessage) (any, error) {
 	if len(raw) == 0 {
 		return nil, nil
 	}
-
-	var props any
-	if err := json.Unmarshal(raw, &props); err != nil {
+	if !json.Valid(raw) {
+		var value any
+		err := json.Unmarshal(raw, &value)
 		return nil, fmt.Errorf("invalid engine props JSON: %w", err)
 	}
-	return props, nil
+	return raw, nil
 }
 
 func engineCapabilities(caps []engine.Capability) []string {
@@ -2973,10 +2887,14 @@ func scenePosterFromEngine(cfg engine.Config) (scenePosterProps, bool) {
 	if !strings.EqualFold(strings.TrimSpace(cfg.Name), "GoSXScene3D") || len(cfg.Props) == 0 {
 		return scenePosterProps{}, false
 	}
-	var props scenePosterProps
-	if err := json.Unmarshal(cfg.Props, &props); err != nil {
+	probe := cfg.Scene3DProbe
+	if probe == nil {
+		probe = sceneprobe.Decode(cfg.Props)
+	}
+	if probe.PosterErr != nil {
 		return scenePosterProps{}, false
 	}
+	props := scenePosterProps{probe.Poster, probe.PosterWidth, probe.PosterHeight, probe.PosterAlt}
 	props.Poster = strings.TrimSpace(props.Poster)
 	if props.Poster == "" {
 		return scenePosterProps{}, false
@@ -3063,16 +2981,13 @@ func scenePosterCSSURL(value string) string {
 
 // A named model is required before advertising either sailing authority.
 func (r *Renderer) scene3DNeedsVesselChunk() bool {
-	for _, entry := range r.manifest.Engines {
+	for i := range r.manifest.Engines {
+		entry := &r.manifest.Engines[i]
 		if !strings.EqualFold(strings.TrimSpace(entry.Component), "GoSXScene3D") {
 			continue
 		}
-		var props struct {
-			Vessel *struct {
-				NodeID string `json:"nodeId"`
-			} `json:"vessel"`
-		}
-		if json.Unmarshal(entry.Props, &props) == nil && props.Vessel != nil && props.Vessel.NodeID != "" {
+		props := sceneProbe(entry)
+		if props.Vessel != nil && props.Vessel.NodeID != "" {
 			return true
 		}
 	}

@@ -6,6 +6,9 @@
   mode (`GOSX_ENV=production` or `prod`). Restart after replacing build files;
   `GOSX_DEV=1` keeps file-change checks active.
 
+- Preserve integer JSON literals in Scene3D props during hydration, including
+  values above the exact float64 integer range.
+
 - Add pre-Build trusted proxy policies and one cached `ClientIP` resolver.
   Normalize genuine peers and bounded X-Forwarded-For chains without changing
   RemoteAddr or origin policies. Nested handlers and completion observers share
