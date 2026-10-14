@@ -77,10 +77,11 @@ test("transitions retain display cadence alongside ambient spin", async () => {
 });
 
 test("Canvas2D draws CSS coordinates at the capped backing scale below DPR 1", async () => {
-  const s = await mountScene({ width: 2560, height: 1440 },
+  const s = await mountScene({ width: 2560, height: 1440, responsive: false },
     { enableWebGL2: false, disableCanvas2D: false, devicePixelRatio: 1 });
-  s.tick(1017);
+  for (let i = 1; i <= 8; i++) {s.tick(1000 + i * 17); await H.flushAsyncWork();}
   const { canvas } = s;
+  assert.equal(s.mount.getAttribute("data-gosx-scene3d-css-width"), "2560");
   assert.equal(canvas.width, 1920);
   assert.equal(canvas.height, 1080);
   const scales = canvas._canvasContext.ops.filter(op => op[0] === "scale");
