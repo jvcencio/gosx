@@ -54,6 +54,10 @@
   `gosx.DispatchAttr("click", "handler")`; ordinary attributes and spreads
   cannot manufacture these markers.
 
+- Upgrade gotreesitter to v0.56.0. Explicit generic signal constructors that
+  were silently dropped now lower correctly, and valid Go that previously
+  produced ERROR nodes now parses. Parse allocations are about 98% lower.
+
 ## v0.57.15
 
 - Add opt-in Scene3D frame requests to atomic command batches and typed

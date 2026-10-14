@@ -752,9 +752,9 @@ func (l *lowerer) computedInfoForAssignedExpr(varName string, rightExpr *gotrees
 }
 
 func (l *lowerer) signalSourceType(call *gotreesitter.Node, source string) string {
-	// gotreesitter v0.56 parses signal.New[T](x) as a call_expression whose
-	// function is index_expression(operand, index=T), not a call with a
-	// type_arguments field. Read the explicit type from the index field.
+	// Depending on argument count and context, explicit generic calls use
+	// either a conversion's type_arguments or a call's index_expression.
+	// Preserve the explicit type from either shape.
 	if gt := l.conversionGenericType(call); gt != nil && l.nodeType(call) == "type_conversion_expression" {
 		if types := l.childByField(gt, "type_arguments"); types != nil {
 			if types.NamedChildCount() != 1 {
@@ -884,11 +884,17 @@ func (l *lowerer) signalCallExpr(n *gotreesitter.Node, lex *LexicalScope) (signa
 		return signalCallUnknown, nil, false
 	}
 	if l.nodeType(n) == "type_conversion_expression" {
-		// gotreesitter v0.56 may parse a one-argument explicit instantiation
-		// such as sig.New[int](0) as type_conversion_expression(generic_type,
-		// operand). Treat a generic type as the callee and return the whole
-		// node as the argument holder; argNodes skips its leading type.
+		// One-argument generic calls can use the conversion shape, depending
+		// on context; v0.50.1 also produced it in some contexts. Treat the
+		// generic type as the callee; argNodes skips its leading type.
 		if gt := l.conversionGenericType(n); gt != nil {
+			_, name := l.callName(gt)
+			if name == "Computed" {
+				args := l.argNodes(n)
+				if len(args) != 1 || l.nodeType(args[0]) != "func_literal" {
+					return signalCallUnknown, nil, false
+				}
+			}
 			return l.signalCallKind(gt, lex), n, true
 		}
 		return signalCallUnknown, nil, false
@@ -926,15 +932,30 @@ func (l *lowerer) callName(funcNode *gotreesitter.Node) (string, string) {
 	case "type_identifier":
 		return "", l.text(funcNode)
 	case "index_expression":
-		// gotreesitter v0.56 parses an explicit instantiation such as
-		// sig.NewShared[int](...) as index_expression(selector, type) rather
-		// than a call_expression with type_arguments. Resolve the callee.
-		if funcNode.NamedChildCount() < 1 {
+		// Zero-argument and two-or-more-argument generic calls use an indexed
+		// callee; one-argument calls can instead use a conversion, depending
+		// on context. A value index must not be mistaken for a type argument.
+		if !l.isTypeArgument(l.childByField(funcNode, "index")) {
 			return "", ""
 		}
-		return l.callName(funcNode.NamedChild(0))
+		return l.callName(l.childByField(funcNode, "operand"))
 	default:
 		return "", ""
+	}
+}
+
+func (l *lowerer) isTypeArgument(n *gotreesitter.Node) bool {
+	if n == nil {
+		return false
+	}
+	switch l.nodeType(n) {
+	case "identifier", "type_identifier", "qualified_type", "pointer_type",
+		"generic_type", "slice_type", "map_type", "array_type":
+		return true
+	case "selector_expression":
+		return n.NamedChildCount() == 2 && l.nodeType(n.NamedChild(0)) == "identifier"
+	default:
+		return false
 	}
 }
 
@@ -976,7 +997,7 @@ func (l *lowerer) argNodes(argsNode *gotreesitter.Node) []*gotreesitter.Node {
 	}
 	var out []*gotreesitter.Node
 	for i := start; i < int(argsNode.NamedChildCount()); i++ {
-		if c := argsNode.NamedChild(i); c != nil {
+		if c := argsNode.NamedChild(i); c != nil && l.nodeType(c) != "comment" {
 			out = append(out, c)
 		}
 	}
