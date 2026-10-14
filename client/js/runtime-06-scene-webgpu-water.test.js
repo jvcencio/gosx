@@ -212,7 +212,7 @@ test("bootstrap preserves Scene3D point maxPixelSize from GLB extras", () => {
 test("bootstrap exposes WebGPU Scene3D planned draw stats on the mount", () => {
   const source = readSceneRendererBackendSrc("webgpu");
 
-  assert.match(source, /function publishWebGPUFrameStats\(stats\)/);
+  assert.match(source, /function publishWebGPUFrameStats\(stats\s*\)/);
   assert.match(source, /var webGPUFrameSeq = 0/);
   assert.match(source, /data-gosx-scene3d-webgpu-frame-seq/);
   assert.match(source, /data-gosx-scene3d-webgpu-frame-at/);
