@@ -19510,10 +19510,8 @@
       for (const pair of Array.from(retainedMeshAttributeCache.entries())) {
         webGPURetireRetainedMeshEntry(pair[0], pair[1]);
       }
-
-      for (const owner of retainedMaterialOwnerSources.keys()) webGPURetireRetainedMaterialOwner(owner);
-      destroyRendererGPUResource(frameUniformBuffer);
-      frameUniformBuffer = null;
+      sceneWebGPURetireMaterialOwners(retainedMaterialOwnerSources, webGPURetireRetainedMaterialOwner);
+      destroyRendererGPUResource(frameUniformBuffer); frameUniformBuffer = null;
       destroyRendererGPUResource(lightStorageBuffer);
       lightStorageBuffer = null;
       // Release the light buffers that capacity growth replaced.
@@ -19918,4 +19916,8 @@
       if (source && typeof source === "object") sources.add(source);
     }
     return sources;
+  }
+
+  function sceneWebGPURetireMaterialOwners(owners: Map<any, any>, retire: (owner: any) => void): void {
+    for (const owner of owners.keys()) retire(owner);
   }
