@@ -5675,7 +5675,7 @@ async function createCullSystemHarness(fakeDevice) {
 
 // bundleMeshScene builds a mesh-only scene. Mesh-only matters: water, points,
 // labels, screen lines, surfaces and world lines all keep the direct path.
-function bundleMeshScene(api, objects) {
+function bundleMeshScene(api, objects, rendererCapabilities) {
   const state = api.createSceneState({
     scene: {
       materials: [{ id: "m", color: "#8de1ff", roughness: 0.4, metalness: 0.1 }],
@@ -5686,7 +5686,7 @@ function bundleMeshScene(api, objects) {
   return api.createSceneRenderBundle(
     64, 64, "#000000",
     { x: 0, y: 0, z: 4, fov: 60, near: 0.05, far: 128 },
-    withMaterials, [], [], [], [], {}, 0, [], [], [], [], [], 0, false,
+    withMaterials, [], [], [], [], {}, 0, [], [], [], [], [], 0, false, rendererCapabilities,
   );
 }
 

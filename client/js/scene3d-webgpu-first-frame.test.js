@@ -15,9 +15,9 @@ function firstScene(api, lit) {
   return bundle;
 }
 
-async function startup(lit, asyncPipelines = true, edit = () => {}) {
+async function startup(lit, asyncPipelines = true, edit = () => {}, fakeDeviceOptions = {}) {
   const waiting = [], asyncLabels = [];
-  const h = await createBoardWebGPUHarness({ fresh: true, configureDevice(device) {
+  const h = await createBoardWebGPUHarness({ fresh: true, fakeDeviceOptions, configureDevice(device) {
     device.popErrorScope = () => new Promise(resolve => waiting.push(() => resolve(null)));
     if (asyncPipelines) for (const kind of ["Render", "Compute"]) {
       const create = device["create" + kind + "Pipeline"].bind(device);
@@ -33,8 +33,8 @@ async function startup(lit, asyncPipelines = true, edit = () => {}) {
   context.getCurrentTexture = () => { acquired++; return acquire(); };
   const construction = { ...deviceCallSnapshot(h.fake), buffers: h.fake.state.buffers.length };
   assert.equal(h.renderer.diagnostics().initialPipelinesReady, false, "initial readiness needs the prepared bundle");
-  const scene = firstScene(h.env.context.__gosx_scene3d_api, lit);
-  edit(scene);
+  let scene = firstScene(h.env.context.__gosx_scene3d_api, lit);
+  scene = edit(scene, h.env.context.__gosx_scene3d_api) || scene;
   let result;
   for (let i = 0; i < 20; i++) {
     const before = acquired;
@@ -44,7 +44,7 @@ async function startup(lit, asyncPipelines = true, edit = () => {}) {
     while (waiting.length) waiting.shift()();
     await flushAsyncWork();
   }
-  const counts = { ...deviceCallSnapshot(h.fake), buffers: h.fake.state.buffers.length, pending, acquired, partial };
+  const counts = { ...deviceCallSnapshot(h.fake), buffers: h.fake.state.buffers.length, pending, acquired, partial, bundleEncodes: h.fake.state.renderBundleEncoders.length };
   h.renderer.dispose();
   return { result, counts, construction, asyncLabels };
 }
@@ -152,4 +152,24 @@ for (const variant of ["taa", "mip-bloom", "detail"]) test(`${variant} pipelines
   assert.equal(evidence.result, "submitted");
   assert.ok(evidence.counts.pending <= 1, `pending renders: ${evidence.counts.pending}`);
   assert.equal(evidence.counts.partial, 0);
+});
+
+
+test("a reflected retained render bundle prepares only its drawn winding variant", async () => {
+  const evidence = await startup(false, true, (_scene, api) => {
+    const scene = bundleMeshScene(api, [{
+    id: "reflected", kind: "box", wireframe: false, color: "#f6a44c", pickable: true,
+    parentMatrix: [-2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    vertices: { positions: [-0.4, -0.4, 0, 0.4, -0.4, 0, 0, 0.4, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+      uvs: [0, 0, 1, 0, 0.5, 1], tangents: [1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1], indices: [0, 1, 2], count: 3, immutable: true, revision: 0 },
+    }], { retainedGeometry: true });
+    scene.meshObjects[0].modelMatrix = new Float32Array([-2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    assert.equal(scene.meshObjects[0].directVertices, true);
+    return scene;
+  }, { renderBundles: true });
+  assert.equal(evidence.result, "submitted");
+  assert.equal(evidence.counts.partial, 0, "a late unused default variant must not acquire the canvas");
+  assert.equal(evidence.counts.pending, 1);
+  assert.equal(evidence.counts.renderPipelines, 1);
+  assert.ok(evidence.counts.bundleEncodes > 0, "the render-bundle path must run");
 });

@@ -18698,10 +18698,8 @@
       for (var p = 0; p < passes.length; p++) {
         var spec = passes[p];
         var meshList = ctx.drawList[spec.name];
-        /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ if (meshList && meshList.length > 0) {
-          target.setPipeline(wgpuRequirePipeline(getPBRPipeline(spec.blend, spec.depthWrite)));
-          /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ target.setBindGroup(0, ctx.frameBindGroup);
-          drawPBRObjects(target, meshList, ctx.bundle, ctx.materials, ctx.frameBindGroup, spec.blend, spec.depthWrite, ctx.pbrBuffers);
+        if (meshList && meshList.length > 0) {
+          drawPBRObjects(target, meshList, ctx.bundle, ctx.materials, ctx.frameBindGroup, spec.blend, spec.depthWrite, ctx.pbrBuffers, null);
         }
         var instancedList = ctx.instancedDrawList[spec.name];
         if (instancedList && instancedList.length > 0) {
