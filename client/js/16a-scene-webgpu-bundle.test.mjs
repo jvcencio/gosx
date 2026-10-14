@@ -567,3 +567,13 @@ test("the bundle state reaches the diagnostics attributes", () => {
     assert.ok(webgpuSource.includes(name), `${name} must be published`);
   }
 });
+
+test("renderer source reader erases optional parameter types without moving executable source", () => {
+  const fixture = "function probe(value?: number): number { return value ?? 1; }\n";
+  const source = readSceneRendererBackendSrc("webgpu", { readSource: () => fixture });
+  assert.equal(source.indexOf("return value"), fixture.indexOf("return value"));
+  const context = vm.createContext({});
+  vm.runInContext(source, context);
+  assert.equal(context.probe(), 1);
+  assert.equal(context.probe(7), 7);
+});
