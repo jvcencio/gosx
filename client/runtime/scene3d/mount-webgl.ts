@@ -4486,15 +4486,20 @@
     const requestedTier = normalizeSceneCapabilityTier(props && props.capabilityTier);
     const environment = sceneEnvironmentState();
     const navigatorRef = window && window.navigator ? window.navigator : {};
-    // Explicit WebGPU preference overrides software-WebGL classification. Keep
-    // the probe for defaults and fallback, where it can change backend choice.
+    // Reuse the selected adapter's classification; unknown metadata still needs
+    // the legacy probe so capability and fallback policy remain unchanged.
     const gpuPreferred = scenePrefersWebGPU(props) && !sceneRequiresWebGL(props) && !sceneForcesWebGL(props)
       && !sceneBool(props && props.preferCanvas, false) && !sceneNeedsWebGLForWebGPUCoverage(props)
       && typeof sceneWebGPUAvailable === "function" && sceneWebGPUAvailable();
     const verdict = gpuPreferred ? chooseSceneBackend(sceneBackendCapsOf(props), { preferWebGPU: true }, { webgpu: true, webgl: true }) : null;
     const gpuSelected = gpuPreferred && (!verdict || verdict.backend === "webgpu");
-    const webglProbe = !gpuSelected && sceneBool(props && props.preferWebGL, true) ? sceneProbeWebGLRenderer() : null;
-    const softwareWebGL = Boolean(webglProbe && webglProbe.available && webglProbe.software);
+    const gpuProbe = gpuSelected && typeof window.__gosx_scene3d_webgpu_probe === "function" ? window.__gosx_scene3d_webgpu_probe() : null;
+    const adapter = gpuProbe && gpuProbe.adapter;
+    const info = gpuProbe && gpuProbe.adapterInfo || adapter && adapter.info || {};
+    const gpuMetadata = { vendor: String(info.vendor || ""), renderer: [info.architecture, info.description].filter(Boolean).join(" ") };
+    const gpuClassified = Boolean(adapter && (adapter.isFallbackAdapter || (gpuMetadata.vendor + gpuMetadata.renderer).trim()));
+    const webglProbe = !gpuClassified && sceneBool(props && props.preferWebGL, true) ? sceneProbeWebGLRenderer() : null;
+    const softwareWebGL = gpuClassified ? Boolean(adapter.isFallbackAdapter || sceneWebGLRendererLooksSoftware(gpuMetadata)) : Boolean(webglProbe && webglProbe.available && webglProbe.software);
     const coarsePointer = environment ? Boolean(environment.coarsePointer) : (sceneMediaQueryMatches("(pointer: coarse)") || sceneMediaQueryMatches("(any-pointer: coarse)"));
     const hover = environment ? Boolean(environment.hover) : (sceneMediaQueryMatches("(hover: hover)") || sceneMediaQueryMatches("(any-hover: hover)"));
     const reducedData = environment ? Boolean(environment.reducedData) : sceneMediaQueryMatches("(prefers-reduced-data: reduce)");

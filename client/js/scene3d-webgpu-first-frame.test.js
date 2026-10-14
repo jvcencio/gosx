@@ -15,7 +15,7 @@ function firstScene(api, lit) {
   return bundle;
 }
 
-async function startup(lit, asyncPipelines = true) {
+async function startup(lit, asyncPipelines = true, edit = () => {}) {
   const waiting = [], asyncLabels = [];
   const h = await createBoardWebGPUHarness({ fresh: true, configureDevice(device) {
     device.popErrorScope = () => new Promise(resolve => waiting.push(() => resolve(null)));
@@ -34,6 +34,7 @@ async function startup(lit, asyncPipelines = true) {
   const construction = { ...deviceCallSnapshot(h.fake), buffers: h.fake.state.buffers.length };
   assert.equal(h.renderer.diagnostics().initialPipelinesReady, false, "initial readiness needs the prepared bundle");
   const scene = firstScene(h.env.context.__gosx_scene3d_api, lit);
+  edit(scene);
   let result;
   for (let i = 0; i < 20; i++) {
     const before = acquired;
@@ -111,6 +112,7 @@ test("a pipeline discovered inside the main pass never acquires or submits the c
     const before = acquired, passes = h.fake.state.renderPasses.length;
     assert.equal(h.renderer.render(scene, { width: 64, height: 64 }), "pending");
     assert.equal(acquired, before);
+    assert.equal(h.renderer.diagnostics().initialPipelinesReady, true, "initial readiness is a one-time milestone during later compilation");
     assert.equal(h.fake.state.renderPasses.length, passes, "the canvas main pass must not reach the raw encoder");
     for (const resolve of waiting) resolve(null);
     await flushAsyncWork();
@@ -139,4 +141,15 @@ test("reflection capture binds the acquired canvas view after deferred encoding"
     assert.ok(capture);
     assert.equal(capture.bindGroups[0].group.desc.entries[0].resource.__kind, "canvasTextureView");
   } finally { h.renderer.dispose(); }
+});
+
+for (const variant of ["taa", "mip-bloom", "detail"]) test(`${variant} pipelines are ready after one pending render`, async () => {
+  const evidence = await startup(true, true, scene => {
+    if (variant === "taa") scene.postEffects.push({ kind: "taa" });
+    if (variant === "mip-bloom") scene.postEffects[0].mode = "mip";
+    if (variant === "detail") scene.materials[0].detail = { ground: { scale: 3 }, fadeStart: 5, fadeEnd: 12 };
+  });
+  assert.equal(evidence.result, "submitted");
+  assert.ok(evidence.counts.pending <= 1, `pending renders: ${evidence.counts.pending}`);
+  assert.equal(evidence.counts.partial, 0);
 });

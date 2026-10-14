@@ -125,66 +125,103 @@
 
   function wgpuDeferredCanvasView(guard: any, context: any): any {
     guard.canvasContext = context;
+    if (guard.framePipelinesReady) return context.getCurrentTexture().createView();
     return guard.canvasView || (guard.canvasView = {});
+  }
+
+  function wgpuReplayFrameCommands(encoder: any, guard: any, commands: any[], view: any) {
+    for (var i = 0; i < commands.length; i += 4) {
+      var record = commands[i], method = commands[i + 1], args = commands[i + 2], group = commands[i + 3];
+      if (method === "beginRenderPass" || method === "beginComputePass") {
+        var descriptor = args[0];
+        if (record.canvas) descriptor = Object.assign({}, descriptor, { colorAttachments: descriptor.colorAttachments.map(function(attachment: any) {
+          if (!attachment) return attachment;
+          var resolved = Object.assign({}, attachment);
+          if (resolved.view === guard.canvasView) resolved.view = view;
+          if (resolved.resolveTarget === guard.canvasView) resolved.resolveTarget = view;
+          return resolved;
+        }) });
+        record.pass = encoder[method](descriptor);
+      } else {
+        if (group) {
+          if (group.view !== view) { group.group = group.create(view); group.view = view; }
+          args[1] = group.group;
+        }
+        var target = record ? record.pass : encoder;
+        target[method].apply(target, args);
+      }
+    }
+  }
+
+  var renderMethods = new Set(["setPipeline", "setBindGroup", "setVertexBuffer", "setIndexBuffer", "setViewport", "setScissorRect", "setBlendConstant", "setStencilReference", "draw", "drawIndexed", "drawIndirect", "drawIndexedIndirect", "executeBundles", "beginOcclusionQuery", "endOcclusionQuery", "pushDebugGroup", "popDebugGroup", "insertDebugMarker", "end"]);
+  var computeMethods = new Set(["setPipeline", "setBindGroup", "dispatchWorkgroups", "dispatchWorkgroupsIndirect", "pushDebugGroup", "popDebugGroup", "insertDebugMarker", "end"]);
+
+  function wgpuFramePassProxy(record: any, prototype: any, guard: any, commands: any[], state: any, kind: string) {
+    var wrappers: any = Object.create(null), active: any;
+    active = new Proxy({}, { get: function(_, method) {
+      if (wrappers[method]) return wrappers[method];
+      var source = record.pass || prototype;
+      var member = source ? Reflect.get(source, method, source) : null;
+      if (source && typeof member !== "function") return member;
+      if (!source && (typeof method !== "string" || !(kind === "render" ? renderMethods : computeMethods).has(method))) return undefined;
+      if (!source && method === "executeBundles" && !guard.supportsBundles) return undefined;
+      return wrappers[method] = function(...args: any[]) {
+        if (method === "end" && guard.framePass === active) guard.framePass = null;
+        if (state.recording) {
+          var group = method === "setBindGroup" && guard.canvasGroups && guard.canvasGroups.get(args[1]);
+          if (method === "setBindGroup" && args[2] && typeof args[2] === "object") args[2] = args[2].slice ? args[2].slice() : Array.from(args[2]);
+          commands.push(record, method, args, group || null);
+        } else return record.pass[method].apply(record.pass, args);
+      };
+    } });
+    guard.framePass = active;
+    return active;
   }
 
   function wgpuTrackFrameEncoder(encoder: any, guard: any): any {
     guard.frameEncoder = encoder;
-    var deferred: any[] = [];
-    var recording = false;
-    guard.frameAbort = function() { recording = false; deferred.length = 0; };
+    guard.framePass = null;
+    guard.frameAbort = null;
+    if (guard.framePipelinesReady) return encoder;
+    var commands: any[] = [], state = { recording: false }, methods: any = Object.create(null);
+    guard.frameAbort = function() { state.recording = false; commands.length = 0; };
     return new Proxy(encoder, { get: function(target, key) {
       var value = Reflect.get(target, key, target);
       if (typeof value !== "function") return value;
-      if (key === "finish") return function(descriptor: any) {
-        // Nothing acquires the canvas until all pipeline requirements passed.
-        var canvasView = recording ? guard.canvasContext.getCurrentTexture().createView() : null;
-        for (var replay of deferred) replay(canvasView);
+      if (methods[key]) return methods[key];
+      if (key === "finish") return methods[key] = function(descriptor: any) {
+        var view = state.recording ? guard.canvasContext.getCurrentTexture().createView() : null;
+        wgpuReplayFrameCommands(target, guard, commands, view);
         return target.finish(descriptor);
       };
-      if (key !== "beginRenderPass" && key !== "beginComputePass") return function(...args: any[]) {
-        if (recording) { deferred.push(function() { value.apply(target, args); }); return; }
+      if (key !== "beginRenderPass" && key !== "beginComputePass") return methods[key] = function(...args: any[]) {
+        if (state.recording) { commands.push(null, key, args, null); return; }
         return value.apply(target, args);
       };
-      return function(descriptor: any) {
-        var canvasPass = guard.canvasView && key === "beginRenderPass" && descriptor.colorAttachments.some(function(attachment: any) {
+      return methods[key] = function(descriptor: any) {
+        var kind = key === "beginRenderPass" ? "render" : "compute";
+        var canvasPass = guard.canvasView && kind === "render" && descriptor.colorAttachments.some(function(attachment: any) {
           return attachment && (attachment.view === guard.canvasView || attachment.resolveTarget === guard.canvasView);
         });
-        if (canvasPass) recording = true;
-        if (recording) {
+        if (canvasPass) state.recording = true;
+        if (state.recording) {
           descriptor = Object.assign({}, descriptor);
           if (descriptor.colorAttachments) descriptor.colorAttachments = descriptor.colorAttachments.map(function(attachment: any) { return attachment && Object.assign({}, attachment); });
           if (descriptor.depthStencilAttachment) descriptor.depthStencilAttachment = Object.assign({}, descriptor.depthStencilAttachment);
         }
-        var pass: any = recording ? null : value.call(target, descriptor);
-        var active: any;
-        if (recording) deferred.push(function(canvasView: any) {
-          var resolved = Object.assign({}, descriptor);
-          if (key === "beginRenderPass") resolved.colorAttachments = descriptor.colorAttachments.map(function(attachment: any) {
-            if (!attachment) return attachment;
-            var out = Object.assign({}, attachment);
-            if (out.view === guard.canvasView) out.view = canvasView;
-            if (out.resolveTarget === guard.canvasView) out.resolveTarget = canvasView;
-            return out;
+        var pass: any = state.recording ? null : value.call(target, descriptor);
+        var types: any = globalThis, constructor = types[kind === "render" ? "GPURenderPassEncoder" : "GPUComputePassEncoder"];
+        var prototype = constructor && constructor.prototype || guard[kind + "PassPrototype"];
+        if (pass && !prototype) {
+          prototype = Object.create(null);
+          (kind === "render" ? renderMethods : computeMethods).forEach(function(method: string) {
+            if (typeof pass[method] === "function") prototype[method] = pass[method];
           });
-          pass = value.call(target, resolved);
-        });
-        active = new Proxy({}, { get: function(_, method) {
-          return function(...args: any[]) {
-            if (method === "end" && guard.framePass === active) guard.framePass = null;
-            if (recording) deferred.push(function(canvasView: any) {
-              var group = method === "setBindGroup" && guard.canvasGroups && guard.canvasGroups.get(args[1]);
-              if (group) {
-                if (group.view !== canvasView) { group.group = group.create(canvasView); group.view = canvasView; }
-                args[1] = group.group;
-              }
-              pass[method](...args);
-            });
-            else pass[method](...args);
-          };
-        } });
-        guard.framePass = active;
-        return active;
+          guard[kind + "PassPrototype"] = prototype;
+        }
+        var record: any = { pass: pass, canvas: canvasPass };
+        if (state.recording) commands.push(record, key, [descriptor], null);
+        return wgpuFramePassProxy(record, prototype, guard, commands, state, kind);
       };
     } });
   }
@@ -192,6 +229,7 @@
   function wgpuGuardDevice(raw: any, guard: any): any {
     var methods = Object.create(null);
     guard.submit = raw.queue.submit.bind(raw.queue);
+    guard.supportsBundles = typeof raw.createRenderBundleEncoder === "function";
     return new Proxy(raw, {
       get: function(target, key) {
         if (key === "__gosxPipelineGuard") return guard;
@@ -4872,8 +4910,8 @@
     }
 
     // Resolve covered MSAA depth before a depth-reading post pass.
-    function resolveSceneDepth(encoder: any, sourceView: any, effects: any[], samples: number) {
-      if (samples !== 4 || !effects.some(effect => [SCENE_POST_SSAO, SCENE_POST_DOF, "contactShadows", SCENE_POST_CUSTOM_POST].includes(effect.kind))) return;
+    function prepareSceneDepth(effects: any[], samples: number) {
+      if (samples !== 4 || !effects.some(effect => [SCENE_POST_SSAO, SCENE_POST_DOF, "contactShadows", SCENE_POST_CUSTOM_POST].includes(effect.kind))) return false;
       if (!depthResolvePipeline) {
         depthResolveLayout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth", multisampled: true } }] });
         var module = device.createShaderModule({ label: "post-depth-resolve", code: `@group(0) @binding(0) var source: texture_depth_multisampled_2d;
@@ -4884,24 +4922,30 @@
           vertex: { module: device.createShaderModule({ code: WGSL_POST_VERTEX }), entryPoint: "vertexMain" }, fragment: { module: module, entryPoint: "fragmentMain", targets: [] },
           primitive: { topology: "triangle-strip" }, depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "always" } });
       }
+      return true;
+    }
+    function resolveSceneDepth(encoder: any, sourceView: any, effects: any[], samples: number) {
+      if (!prepareSceneDepth(effects, samples)) return;
       var group = device.createBindGroup({ layout: depthResolveLayout, entries: [{ binding: 0, resource: sourceView }] });
       var pass = encoder.beginRenderPass({ label: "gosx-post-depth-resolve", colorAttachments: [], depthStencilAttachment: { view: depthTexView, depthLoadOp: "clear", depthClearValue: 1, depthStoreOp: "store" } });
       pass.setPipeline(wgpuRequirePipeline(depthResolvePipeline)); pass.setBindGroup(0, group); pass.draw(4); pass.end();
     }
-    function preparePipelines(effects: any[]) {
+    function preparePipelines(effects: any[], samples: number) {
+      prepareSceneDepth(effects, samples);
       getPipeline("blit", WGSL_POST_BLIT_FRAGMENT, getPostBlitLayout());
       getPipeline("present", WGSL_POST_BLIT_FRAGMENT, getPostBlitLayout());
       for (var effect of effects) {
         switch (effect.kind) {
           case SCENE_POST_TONE_MAPPING: getPipeline("toneMapping", WGSL_POST_TONEMAPPING_FRAGMENT, getPostParamsLayout()); break;
           case SCENE_POST_BLOOM:
-            if (effect.mode === "mip") break;
+            if (effect.mode === "mip") { mipBloom.preparePipelines(); break; }
             getPipeline("bloomBright", WGSL_POST_BLOOM_BRIGHT_FRAGMENT, getPostParamsLayout());
             getPipeline("blur", postUsesF16 ? WGSL_POST_BLUR_FRAGMENT_F16 : WGSL_POST_BLUR_FRAGMENT, getPostParamsLayout());
             getPipeline("bloomComposite", WGSL_POST_BLOOM_COMPOSITE_FRAGMENT, getBloomCompositeLayout()); break;
           case "contactShadows": getPipeline("contactShadows", WGSL_POST_CONTACT_SHADOWS_FRAGMENT, getSSAOLayout()); break;
           case SCENE_POST_SSAO: getPipeline("ssao", WGSL_POST_SSAO_FRAGMENT, getSSAOLayout()); break;
           case SCENE_POST_DOF: getPipeline("dof", WGSL_POST_DOF_FRAGMENT, getSSAOLayout()); break;
+          case "taa":
           case SCENE_POST_FXAA: getPipeline("fxaa", postUsesF16 ? WGSL_POST_FXAA_FRAGMENT_F16 : WGSL_POST_FXAA_FRAGMENT, getPostBlitLayout()); break;
           case SCENE_POST_VIGNETTE: getPipeline("vignette", WGSL_POST_VIGNETTE_FRAGMENT, getPostParamsLayout()); break;
           case SCENE_POST_COLOR_GRADE: getPipeline("colorGrade", WGSL_POST_COLORGRADE_FRAGMENT, getPostParamsLayout()); break;
@@ -6020,6 +6064,7 @@
     }
 
     return {
+      preparePipelines: ensureResources,
       queuePick: queuePick,
       recordPickPass: recordPickPass,
       finishReadback: finishReadback,
@@ -8609,30 +8654,44 @@
       });
     }
 
-    var initialPipelinesPrepared = false, preparedPipelineKey = "";
+    var initialPipelinesPrepared = false, initialPipelinesReady = false, preparedPipelineKey = "";
+    function getObjectSelenaPipeline(object: any, material: any, blend: string, depth: boolean) {
+      if (!sceneSelenaIsMaterial(material)) return null;
+      var options = sceneWebGPUSelenaPipelineOptions(object, sceneWebGPUObjectReflected(object));
+      return webGPUObjectIsSkinned(object) ? getSelenaSkinnedPipeline(material, blend, depth, options) : getSelenaPipeline(material, blend, depth, options);
+    }
+    function instancedMeshUsesCull(mesh: any) {
+      return Boolean(typeof mesh.cullKernelWGSL === "string" && mesh.cullKernelWGSL.trim()) || webGPUBuiltinCullEligible(mesh);
+    }
     function prepareBundlePipelines(bundle: any, prepared: any, effects: any[], post: boolean) {
-      var key = prepared ? prepared.signature + "|" + targetFormat + "|" + activeSampleCount + "|" + selectiveBloom + "|" + effects.map(function(effect: any) { return effect.kind + ":" + effect.mode; }).join(",") : "";
-      if (key && key === preparedPipelineKey) return;
       var materials = bundle.materials || [];
+      var instancedVariants = (bundle.instancedMeshes || []).map(function(mesh: any) {
+        var material = instancedMeshMaterial(mesh, materials), blend = scenePBRObjectRenderPass(mesh, material);
+        return [blend, sceneTransmissionDepthWrite(mesh, material, blend === "opaque"), Boolean(material && material.detail), instancedMeshUsesCull(mesh)].join(":");
+      }).sort().join(",");
+      var key = prepared ? [prepared.pipelineVariantHash, prepared.materialsHash, prepared.shadowPassHash, instancedVariants, (bundle.instancedMeshes || []).length, (bundle.waterSystems || []).length, targetFormat, activeSampleCount, selectiveBloom, post, effects.map(function(effect: any) { return effect.kind + ":" + effect.mode; }).join(",")].join("|") : "";
+      if (key && key === preparedPipelineKey) return;
       var passes = prepared && prepared.pbrPasses || buildDrawList(bundle);
       var shadows = Array.isArray(bundle.lights) && bundle.lights.some(function(light: any) { return light.castShadow; });
+      if (shadows) getShadowPipeline(false);
       for (var blend of ["opaque", "alpha", "additive"]) {
         var objects = passes[blend] || [];
         var depth = blend === "opaque";
-        if (objects.length) getPBRPipeline(blend, depth, "ccw");
         for (var object of objects) {
           var material = materials[object.materialIndex];
-          var reflected = sceneAffineDeterminant(object.modelMatrix, 0) < 0;
-          getPBRPipeline(blend, sceneTransmissionDepthWrite(object, material, depth), reflected ? "cw" : "ccw", Boolean(material && material.detail));
+          var reflected = sceneWebGPUObjectReflected(object);
+          if (!getObjectSelenaPipeline(object, material, blend, depth)) getPBRPipeline(blend, sceneTransmissionDepthWrite(object, material, depth), reflected ? "cw" : "ccw", Boolean(material && material.detail));
           if (shadows && object.castShadow) getShadowPipeline(reflected);
           if (webGPUObjectIsSkinned(object)) ensureElioSkinPipeline();
-          else if (object.computedMorph) ensureComputedMorphPipeline();
+          if (object.computedMorph) ensureComputedMorphPipeline();
         }
       }
       for (var mesh of bundle.instancedMeshes || []) {
         var material = instancedMeshMaterial(mesh, materials);
         var meshBlend = scenePBRObjectRenderPass(mesh, material);
-        getPBRInstancedPipeline(meshBlend, meshBlend === "opaque", Boolean(material && material.detail));
+        var meshDepth = sceneTransmissionDepthWrite(mesh, material, meshBlend === "opaque"), meshDetail = Boolean(material && material.detail);
+        getPBRInstancedPipeline(meshBlend, meshDepth, meshDetail);
+        if (instancedMeshUsesCull(mesh)) getPBRInstancedCullPipeline(meshBlend, meshDepth, meshDetail);
         if (shadows && mesh.castShadow) getShadowInstancedPipeline();
       }
       if (bundle.waterSystems && bundle.waterSystems.length) ensureWaterPipelines();
@@ -8640,7 +8699,7 @@
         if (!postProcessor) postProcessor = wgpuCreatePostProcessor(device, presentationFormat, reportWebGPUFrameError, function(material: any, owner: any, context: any) {
           return sceneSelenaUniformData(material, owner, context, selenaFrame);
         });
-        postProcessor.preparePipelines(effects);
+        postProcessor.preparePipelines(effects, activeSampleCount);
       }
       initialPipelinesPrepared = true;
       preparedPipelineKey = key;
@@ -12668,6 +12727,9 @@
         if (optics.reflection) stats.waterReflectionSystems += 1;
         if (optics.refraction) stats.waterRefractionSystems += 1;
         if (optics.object) stats.waterObjectOpticsSystems += 1;
+        // Resolve every authored compute stage before advancing the clock or
+        // consuming events. A pending compilation must leave this tick intact.
+        prepareWaterComputePipelines(system, entry);
         var waterPaused = sceneBool(entry && entry.paused, false);
         var waterClock = waterClockAPI.sceneWaterAdvanceClock(system.waterClock, currentNowMS, waterLifecycleActive, waterPaused, {
           simulationHz: 60,
@@ -13844,6 +13906,17 @@
       var bindGroup = createSelenaComputeBindGroup(system, selenaResource, inBuf, outBuf, renderContext);
       if (!bindGroup) return null;
       return { pipeline: selenaResource.pipeline, bindGroup: bindGroup };
+    }
+
+    function prepareWaterComputePipelines(system: any, entry: any) {
+      var resources = [];
+      for (var stage of ["seed", "drop", "displacement", "simulation", "normal"]) {
+        var fields = sceneWaterComputeStageFields(stage);
+        var material = sceneWaterSelenaMaterial(system, entry, fields.wgslField, fields.descKey, fields.memoSlot);
+        var resource = material && getSelenaComputePipeline(material);
+        if (resource) resources.push(resource.pipeline);
+      }
+      for (var pipeline of resources) wgpuRequirePipeline(pipeline);
     }
 
     function getWaterComputeStageSelenaDraw(system, entry, stage, readBuffer, writeBuffer) {
@@ -16378,7 +16451,7 @@
           // meshes use drawIndexed; expanded procedural triangle lists use
           // draw. The shadow uniform carries the light view-projection alone,
           // so every model-space caster folds in its own transform per draw.
-          var reflectedCaster = sceneAffineDeterminant(obj.modelMatrix, 0) < 0, retainedPipelineKind = sceneWebGPUPipelineKind(reflectedCaster, "static");
+          var reflectedCaster = sceneWebGPUObjectReflected(obj), retainedPipelineKind = sceneWebGPUPipelineKind(reflectedCaster, "static");
           if (currentShadowPipeline !== retainedPipelineKind) {
             pass.setPipeline(wgpuRequirePipeline(getShadowPipeline(reflectedCaster)));
             currentShadowPipeline = retainedPipelineKind;
@@ -16511,10 +16584,8 @@
         // render/bundle/shadow_drift_test.go measures that move and pins all
         // three settings. See client/js/12-scene-geometry-winding.test.mjs for
         // the winding numbers.
-        var reflectedDirect = sceneWebGPUObjectReflected(obj), selenaPipelineOptions = sceneWebGPUSelenaPipelineOptions(obj, reflectedDirect);
-        var selenaResource = isSkinned
-          ? getSelenaSkinnedPipeline(mat, blendMode, depthWrite, selenaPipelineOptions)
-          : getSelenaPipeline(mat, blendMode, depthWrite, selenaPipelineOptions);
+        var reflectedDirect = sceneWebGPUObjectReflected(obj);
+        var selenaResource = getObjectSelenaPipeline(obj, mat, blendMode, depthWrite);
         if (selenaResource) {
           worldBuffersBound = false;
           var selenaKey = "selena:" + (isSkinned ? "skin:" : "") + (mat && mat.key || matIndex) + sceneWebGPUSelenaPipelineSuffix(obj, reflectedDirect);
@@ -16850,8 +16921,7 @@
         // Indirect draw via GPU cull (D3: ready cull record → drawIndirect;
         // not-ready / no kernel / capability absent → draw-all).
         var meshId = (typeof mesh.id === "string" && mesh.id) ? mesh.id : ("mesh-" + i);
-        var hasCullWGSL = (typeof mesh.cullKernelWGSL === "string" && mesh.cullKernelWGSL.trim().length > 0);
-        var cullRecord = (hasCullWGSL || webGPUBuiltinCullEligible(mesh)) ? instancedCullSystems.get(meshId) : null;
+        var cullRecord = instancedMeshUsesCull(mesh) ? instancedCullSystems.get(meshId) : null;
         var cullSys = cullRecord && cullRecord.system;
 
         if (cullSys && cullSys.isReady()) {
@@ -18785,10 +18855,19 @@
       var sampleCount = resolveWebGPUSampleCount(bundle);
       activeSampleCount = sampleCount;
       detailResources = sceneWebGPUEnsureDetailResources(device, detailResources, bundle.materials, frameBindGroupLayout, materialBindGroupLayout, WGSL_PBR_FRAGMENT);
+      detailEnabled = !frameMeta || frameMeta.detailEnabled !== false;
+      if (detailEnabled && detailResources) sceneWebGPUDetailBakeResources(device, detailResources, placeholderView);
+      if (scenePicker && scenePicker.hasPending()) scenePicker.preparePipelines();
       prepareBundlePipelines(bundle, preparedScene, postEffects, usePostProcessing);
       if (pipelineGuard.coreError) return "failed";
       if (pipelineGuard.pending) return "pending";
-
+      // The standard mesh, shadow and post variants are prepared above. Other
+      // feature renderers can discover pipelines while encoding; defer their
+      // canvas commands until the entire frame has encoded successfully.
+      pipelineGuard.framePipelinesReady = !(hasPointsData || hasInstancedData || hasWorldLines || hasScreenLines || hasSurfaces || hasLabels || hasWaterData || hasTransmission ||
+        bundle.environment && (bundle.environment.sky || bundle.environment.ocean || bundle.environment.clouds) ||
+        (bundle.materials || []).some(function(material: any) { return sceneSelenaIsMaterial(material); }) ||
+        postEffects.some(function(effect: any) { return effect.kind === SCENE_POST_CUSTOM_POST; }));
 
       // Upload per-frame uniforms (use scaled dims so point sprites and
       // projection aspect match the actual render target, not the canvas).
@@ -18816,7 +18895,6 @@
       pollGPUPassTimingReadback();
       beginGPUPassTimingFrame(); pipelineGuard.frameCleanup = function() { endGPUFrameTiming(encoder, gpuTimingToken); endGPUPassTimingFrame(encoder); wgpuFinishGPUDrivenEncoding(gpuDriven, encoder); };
       var scopedFrameErrors = beginWebGPUErrorScope();
-      detailEnabled = !frameMeta || frameMeta.detailEnabled !== false;
       // Retain ownership before an atlas bake can suspend this frame for pipeline validation.
       detailResources = sceneWebGPUPrepareDetailFrame(device, detailResources, bundle.materials, textureCache, {
         placeholderView: placeholderView, enabled: detailEnabled,
@@ -19269,10 +19347,7 @@
       const prepareOceanReflection = () => { if (pipelineGuard.disabled.has("reflections")) return; const r = sceneReflectWebGPU(oceanResources, device, { environment: bundle.environment, meta: frameMeta, pass: mainPass, encoder, descriptor: mainPassDescriptor, width: scaledW, height: scaledH, view: scratchViewMatrix, proj: scratchProjMatrix, camera: cam, linear: usePostProcessing, format: targetFormat, samples: sampleCount, colorView: mainResolveView || mainColorView, depthView: mainDepthTargetView, frameData: _frameUniformF, frameGroup: (buffer = false) => _createFrameBindGroupUncached(shadowView0, shadowView1, iblResources.active && iblResources.irradiance && iblResources.irradiance.view, iblResources.active && iblResources.radiance && iblResources.radiance.view, iblResources.active && iblResources.brdfLUT && iblResources.brdfLUT.view, envMapResources.active && envMapResources.record && envMapResources.record.view, buffer), draw: (pass = mainPass,group = frameBindGroup) => { pass.setPipeline(wgpuRequirePipeline(getPBRPipeline("opaque", true, "cw"))); pass.setBindGroup(0,group); drawPBRObjects(pass, sceneReflectOpaqueList(drawList.opaque, materials), bundle, materials, group, "opaque", true, pbrSceneBuffers, null); } }); mainPass = r.pass; oceanOpts.reflection = r.record; };
       if (frameStats.bundleState === "direct" && (hasPBRData || hasInstancedData || hasWorldLines || hasSurfaces)) {
         // Opaque pass.
-        /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ if (drawList.opaque.length > 0) {
-          var opaquePipeline = getPBRPipeline("opaque", true);
-          mainPass.setPipeline(wgpuRequirePipeline(opaquePipeline));
-          mainPass.setBindGroup(0, frameBindGroup);
+        if (drawList.opaque.length > 0) {
           drawPBRObjects(mainPass, drawList.opaque, bundle, materials, frameBindGroup, "opaque", true, pbrSceneBuffers, frameStats, frameMeta && frameMeta.frameRequest);
         }
         if (instancedDrawList.opaque.length > 0) {
@@ -19314,10 +19389,7 @@
         }
 
         // Alpha pass.
-        /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ if (drawList.alpha.length > 0) {
-          var alphaPipeline = getPBRPipeline("alpha", false);
-          mainPass.setPipeline(wgpuRequirePipeline(alphaPipeline));
-          mainPass.setBindGroup(0, frameBindGroup);
+        if (drawList.alpha.length > 0) {
           drawPBRObjects(mainPass, drawList.alpha, bundle, materials, frameBindGroup, "alpha", false, pbrSceneBuffers, frameStats, frameMeta && frameMeta.frameRequest);
         }
         if (instancedDrawList.alpha.length > 0) {
@@ -19334,10 +19406,7 @@
         }
 
         // Additive pass.
-        /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ if (drawList.additive.length > 0) {
-          var additivePipeline = getPBRPipeline("additive", false);
-          mainPass.setPipeline(wgpuRequirePipeline(additivePipeline));
-          mainPass.setBindGroup(0, frameBindGroup);
+        if (drawList.additive.length > 0) {
           drawPBRObjects(mainPass, drawList.additive, bundle, materials, frameBindGroup, "additive", false, pbrSceneBuffers, frameStats, frameMeta && frameMeta.frameRequest);
         }
         if (instancedDrawList.additive.length > 0) {
@@ -19423,6 +19492,7 @@
         performance.clearMarks("scene3d-render-start");
         performance.clearMarks("scene3d-render-end");
       }
+      initialPipelinesReady = true;
       return "submitted";
     }
 
@@ -19742,7 +19812,7 @@
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.waterDroppedTicks = lastWebGPUFrameStats && lastWebGPUFrameStats.waterDroppedTicks || 0;
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.waterNormalDispatchSeq = lastWebGPUFrameStats && lastWebGPUFrameStats.waterNormalDispatchSeq || 0;
       /* @ts-expect-error TS2339 -- this object literal grows fields after construction; TypeScript does not apply evolving-object inference to .ts files (only to checkJs .js files) */ out.waterSampledStateSyncSeq = lastWebGPUFrameStats && lastWebGPUFrameStats.waterSampledStateSyncSeq || 0;
-      out.postProcessing = !!postProcessor; pipelineGuard.snapshot(out); Object.assign(out, { initialPipelinesReady: initialPipelinesPrepared && !pipelineGuard.pending && !pipelineGuard.coreError });
+      out.postProcessing = !!postProcessor; pipelineGuard.snapshot(out); Object.assign(out, { initialPipelinesReady: initialPipelinesReady });
       // Frame-error resilience state (see reportWebGPUFrameError /
       // disablePostProcessing / enablePostProcessing above and
       // 20-scene-mount.js's checkSceneWebGPUFrameErrorWatchdog, the poller

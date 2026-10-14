@@ -4261,14 +4261,25 @@ function makeFakeGPUDevice(options) {
       return pipeline;
     },
     createComputePipelineAsync(desc) {
-      const pipeline = device.createComputePipeline(desc);
-      // Match the default fake's immediately settled validation scopes.
-      // Tests of parallel compilation install controllable promises instead.
-      return { then(resolve) { return Promise.resolve(resolve(pipeline)); } };
+      return Promise.resolve().then(() => device.createComputePipeline(desc));
     },
     createRenderPipeline(desc) {
       validateRenderPipelineDesc(desc);
-      const pipeline = { __kind: "renderPipeline", desc };
+      const pipeline = { __kind: "renderPipeline", desc, getBindGroupLayout(index) {
+        if (desc.layout !== "auto") return desc.layout.desc.bindGroupLayouts[index];
+        const declarations = parseWGSLBindingKinds([desc.vertex?.module?.code, desc.fragment?.module?.code].join("\n"));
+        const entries = [];
+        for (const [key, kind] of declarations) {
+          const [group, binding] = key.split(":").map(Number);
+          if (group !== index) continue;
+          const entry = { binding, visibility: 3 };
+          if (kind === "texture") entry.texture = {};
+          else if (kind === "sampler") entry.sampler = {};
+          else entry.buffer = { type: kind === "uniform" ? "uniform" : kind === "storage-read" ? "read-only-storage" : "storage" };
+          entries.push(entry);
+        }
+        return device.createBindGroupLayout({ entries });
+      } };
       state.renderPipelines.push(pipeline);
       return pipeline;
     },
@@ -4836,6 +4847,17 @@ function deviceCallDelta(before, after) {
   };
 }
 
+// Retry the same frame after builtin pipeline compilation settles. Authored
+// shader fallback/recovery remains visible to tests after the first submission.
+async function renderPreparedFrame(renderer, ...args) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const result = renderer.render(...args);
+    if (result !== "pending") return result;
+    await flushAsyncWork();
+  }
+  assert.fail("frame stayed pending after pipeline preparation");
+}
+
 // renderWaterPerfShapeFrames renders N consecutive frames of one scenario
 // (`duck` true/false) against a FRESH harness (fresh device + renderer), and
 // returns the per-frame device-call delta array. Each frame rebuilds the
@@ -4865,7 +4887,7 @@ async function renderWaterPerfShapeFrames(duck, frameCount, resolution) {
       objects, [], [], [], [], {}, frame * 0.016, [], [], [], state.waterSystems, [], 0, false,
     );
     const before = deviceCallSnapshot(harness.fake);
-    harness.renderer.render(bundle, { width: 64, height: 64 }, {
+    await renderPreparedFrame(harness.renderer, bundle, { width: 64, height: 64 }, {
       nowMS: frame * 17,
       displayDeltaMS: frame === 0 ? 0 : 17,
       active: true,
@@ -5217,8 +5239,7 @@ async function createComputeParticleHarness(fakeDevice, options) {
   const authoredRenderAsync = fakeDevice.createRenderPipelineAsync;
   if (typeof authoredRenderAsync === "function") fakeDevice.createRenderPipelineAsync = function(desc) {
     if (/^gosx-(?:points-authored|particle-render-authored|selena-post)/.test(desc.label || "")) return authoredRenderAsync.call(fakeDevice, desc);
-    const pipeline = fakeDevice.createRenderPipeline(desc);
-    return { then(resolve) { return Promise.resolve(resolve(pipeline)); } };
+    return Promise.resolve().then(() => fakeDevice.createRenderPipeline(desc));
   };
   const opts = options || {};
   const env = createContext({
@@ -5322,8 +5343,7 @@ function makeFakeGPUDeviceForPoints(options) {
   };
   device.createRenderPipelineAsync = function(desc) {
     if (!/^gosx-(?:points-authored|particle-render-authored|selena-post)/.test(desc.label || "")) {
-      const pipeline = device.createRenderPipeline(desc);
-      return { then(resolve) { return Promise.resolve(resolve(pipeline)); } };
+      return Promise.resolve().then(() => device.createRenderPipeline(desc));
     }
     renderPipelineAsyncCalls.push(desc);
     if (typeof opts.pipelineAsyncBehavior === "function") {
@@ -5956,6 +5976,7 @@ module.exports = {
   deviceCallSnapshot,
   deviceCallDelta,
   renderWaterPerfShapeFrames,
+  renderPreparedFrame,
   waterComputeKernelPipeline,
   assertWaterComputeKernelBindings,
   loadBoardLabels,
