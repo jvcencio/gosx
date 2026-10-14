@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createBoardWebGPUHarness, bundleBoxes, flushAsyncWork, deviceCallSnapshot, bundleMeshScene } = require("./runtime-test-harness.js");
 
-async function setup({ post = false, timing = false, optIn = false, asyncScopes = false, perf = false, mesh = false } = {}) {
+async function setup({ post = false, timing = false, optIn = false, asyncScopes = false, perf = false, mesh = false, postTail = "toneMapping" } = {}) {
   let now = 0;
   const resolves = [];
   const writes = [];
@@ -35,7 +35,7 @@ async function setup({ post = false, timing = false, optIn = false, asyncScopes 
     bundleBoxes(10, 1).map(o => ({ ...o, castShadow: true, receiveShadow: true })),
     [], [], [], [], {}, 0, [], [], [], [], [], 0, false);
   bundle.lights = [{ kind: "directional", directionX: -1, directionY: -2, directionZ: -1, intensity: 1, castShadow: true, color: "#fff" }];
-  if (post) bundle.postEffects = [{ kind: "bloom", threshold: 0.8, intensity: 0.5 }, { kind: "toneMapping" }];
+  if (post) bundle.postEffects = [{ kind: "bloom", threshold: 0.8, intensity: 0.5 }, { kind: postTail }];
   const set = h.mount.setAttribute;
   h.mount.setAttribute = function(name, value) { writes.push([name, value]); return set.call(this, name, value); };
   const frame = async time => { now = time; const result = h.renderer.render(bundle, { width: 640, height: 480 }, { nowMS: time, active: true }); await flushAsyncWork(); return result; };
@@ -176,8 +176,8 @@ test("WebGPU pending frames leave published stats intact with async error scopes
   } finally { h.renderer.dispose(); }
 });
 
-test("WebGPU direct and scaled output switches submit every frame with async pipeline validation", async () => {
-  const h = await setup({ post: true, asyncScopes: true });
+for (const postTail of ["toneMapping", "fxaa", "vignette", "colorGrade"]) test(`WebGPU direct and scaled output switches submit every frame with async pipeline validation (${postTail})`, async () => {
+  const h = await setup({ post: true, asyncScopes: true, postTail });
   try {
     for (const [width, height] of [[1920, 1080], [1921, 1080], [640, 480], [64, 64], [63, 47], [64, 64]]) {
       h.canvas.width = width; h.canvas.height = height;
