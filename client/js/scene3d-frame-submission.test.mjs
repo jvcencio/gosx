@@ -144,7 +144,7 @@ function completedFrame(outcome,checkEmpty=false,covered=true) {
     ensureRendererCanCoverBundle(){trace.push('coverage');return covered;},
     syncSceneNodeSentinels:step('sentinels'),createSceneRenderFrameMeta(){trace.push('meta');return h.eval('meta');},
     sceneRenderWithTiming(_renderer,rendered){assert.equal(rendered,bundle);trace.push('render');return outcome;},
-    recordSceneWaterFrame:step('water'),maybeEmitRenderEmpty:step('empty'),
+    publishMetrics(){},recordSceneWaterFrame:step('water'),maybeEmitRenderEmpty:step('empty'),
     renderSceneLayers:step('layers'),statsOverlay:{update:step('stats')},inspectorOverlay:{update:step('inspector')},
     sceneUpdateAdaptiveQuality(){trace.push('quality');return true;},scheduleRender:step('schedule'),
     publishReady:step('ready'),publishRevealed:step('revealed'),notifySceneProgressiveModelRenderCommitted:step('progressive'),
