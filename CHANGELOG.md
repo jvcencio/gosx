@@ -12,10 +12,13 @@
 - Add splitpane, dock, tabs and collapsible UI recipes. Layout signals can persist
   through controller storage; document the controls in `docs/workbench.md`.
 
-- Keep the entire `data-gosx-*` framework namespace out of attribute spreads.
-  Write trusted framework attributes explicitly. Declarative attribute bindings
-  now refuse framework targets, inline event handlers, style, and unsafe URL
-  schemes, including JavaScript URLs hidden by ASCII control characters.
+- Keep the entire `data-gosx-*` framework namespace, style and `srcdoc` out of
+  attribute spreads, including Scene3D mount attributes. Write trusted framework
+  attributes explicitly; unresolved component fallbacks preserve them.
+  Declarative attribute bindings now allow only inert text, boolean, application
+  data and ARIA attributes, plus safe HTTP(S) and relative `href` values. They
+  cannot write framework attributes, CSRF tokens, HTML documents or SVG animation
+  targets, or introduce executable URLs through ASCII control characters.
 
 - Reuse template, CSS, metadata, and runtime-manifest lookups in production
   mode (`GOSX_ENV=production` or `prod`). Restart after replacing build files;
@@ -36,7 +39,7 @@
   attribute from a resolved node before it appends its own dispatch markers.
   Before this, HTML kept the first duplicate, so an authored
   `data-gosx-on-click={expr}` beat the real marker and a runtime value could
-  choose which handler fired. Other `data-gosx-*` names (`data-gosx-link`,
+  choose which handler fired. Other authored `data-gosx-*` names (`data-gosx-link`,
   `data-gosx-region`) are unchanged. Island components reject `{...spread}`
   at compile time; server renderers also filter reserved names from spreads.
   Server component renderers and the WASM

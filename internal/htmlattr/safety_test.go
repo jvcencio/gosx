@@ -2,6 +2,17 @@ package htmlattr
 
 import "testing"
 
+func TestSafeSpreadNameRejectsSrcdoc(t *testing.T) {
+	for _, name := range []string{"srcdoc", "SRCDOC", "srcDoc"} {
+		if SafeSpreadName(name) {
+			t.Errorf("executable HTML accepted from spread: %s", name)
+		}
+		if !SafeAuthoredName(name) {
+			t.Errorf("explicit authored attribute refused: %s", name)
+		}
+	}
+}
+
 func TestSafeNamesAndURLs(t *testing.T) {
 	for _, name := range []string{"", "x y", "x=y", "x\x00", "x<y", "x`y", "x\"y", "x/y", "x\u00a0y"} {
 		if ValidName(name) {

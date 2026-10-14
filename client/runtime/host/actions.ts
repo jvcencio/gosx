@@ -458,15 +458,17 @@
 
   function bindingTargetAllowed(name, value) {
     var lower = name.replace(/[A-Z]/g, function(c) { return String.fromCharCode(c.charCodeAt(0) + 32); });
-    if (!/^[a-z_:][a-z0-9_.:-]*$/.test(lower) || lower.indexOf("on") === 0 || lower === "style" || lower.indexOf("data-gosx-") === 0) return false;
-    if (/^(href|src|action|formaction|xlink:href|poster)$/.test(lower) && value !== null) {
-      // Match the server URL filter before assigning a DOM attribute. Browsers
-      // ignore ASCII controls in schemes, including embedded tabs/newlines.
-      var clean = String(value).trim().replace(/[\u0000-\u0020\u007f]/g, "");
-      var colon = clean.indexOf(":");
-      if (colon >= 0 && !/[/?#]/.test(clean.slice(0, colon)) && !/^(https?|mailto|tel)$/i.test(clean.slice(0, colon))) return false;
-    }
-    return true;
+    if (!/^[a-z_][-a-z0-9_.]*$/.test(lower) || lower.indexOf("data-gosx-") === 0 || lower === "data-csrf" || lower === "data-csrf-token") return false;
+    // Match live bindings: permit inert targets explicitly rather than trying
+    // to enumerate every executable HTML and SVG attribute.
+    if (/^(title|value|datetime|disabled|hidden)$/.test(lower) || lower.indexOf("data-") === 0 || lower.indexOf("aria-") === 0) return true;
+    if (lower !== "href") return false;
+    if (value === null) return true;
+    // Browsers ignore ASCII controls in schemes and normalize backslashes in
+    // web URLs. Check the URL they resolve, including network-path references.
+    var clean = String(value).replace(/[\u0000-\u0020\u007f]/g, "").replace(/\\/g, "/");
+    if (/^[a-z][a-z0-9+.-]*:/i.test(clean)) return /^https?:/i.test(clean);
+    return clean.indexOf("//") !== 0;
   }
 
   function bindAttribute(target, spec, source) {

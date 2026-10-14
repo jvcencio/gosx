@@ -1744,8 +1744,8 @@ func (r *fileProgramRenderer) componentAttrMap(attrs []ir.Attr, env fileRenderEn
 	return values
 }
 
-// Keep authored style provenance until fallback HTML is emitted. Spread
-// filtering happens before merging, so a spread cannot replace authored CSS.
+// Keep authored attribute provenance until fallback HTML is emitted. Spread
+// filtering happens before merging, so spreads cannot replace trusted attributes.
 func (r *fileProgramRenderer) componentHTMLAttrs(attrs []ir.Attr, env fileRenderEnv) fileComponentHTMLAttrs {
 	out := fileComponentHTMLAttrs{values: make(map[string]any, len(attrs))}
 	for _, attr := range attrs {
@@ -1758,12 +1758,10 @@ func (r *fileProgramRenderer) componentHTMLAttrs(attrs []ir.Attr, env fileRender
 			}
 		case ir.AttrStatic, ir.AttrExpr, ir.AttrBool:
 			out.values[attr.Name] = attrValue([]ir.Attr{attr}, env, attr.Name)
-			if strings.EqualFold(attr.Name, "style") {
-				if out.authoredStyles == nil {
-					out.authoredStyles = make(map[string]bool)
-				}
-				out.authoredStyles[attr.Name] = true
+			if out.authoredNames == nil {
+				out.authoredNames = make(map[string]bool)
 			}
+			out.authoredNames[attr.Name] = true
 		}
 	}
 	return out
@@ -3406,7 +3404,9 @@ func engineComponentProps(attrs []ir.Attr, env fileRenderEnv, surface bool) (map
 				value := entry.Value
 				normalized := normalizeSurfaceMountAttr(key)
 				if surface && normalized != "" {
-					mountAttrs[normalized] = value
+					if htmlattr.SafeSpreadName(normalized) {
+						mountAttrs[normalized] = value
+					}
 					continue
 				}
 				if isEngineReservedAttr(key) {

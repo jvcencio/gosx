@@ -69,7 +69,7 @@ func ValidTag(name string) bool {
 // or CSS or framework behavior. Authors can supply trusted attributes explicitly.
 func SafeSpreadName(name string) bool {
 	name = strings.ToLower(name)
-	return SafeAuthoredName(name) && !strings.HasPrefix(name, "on") && name != "style" && !strings.HasPrefix(name, "data-gosx-")
+	return SafeAuthoredName(name) && !strings.HasPrefix(name, "on") && name != "style" && name != "srcdoc" && !strings.HasPrefix(name, "data-gosx-")
 }
 
 // FilterURL allows web, email and telephone URLs and relative references.
