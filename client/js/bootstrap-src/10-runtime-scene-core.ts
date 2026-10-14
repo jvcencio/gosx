@@ -5541,7 +5541,6 @@
           vertices: candidate.vertices,
           directVertices: true,
           retainedGeometry: true,
-          resourceOwner: object.resourceOwner || object,
           geometryRevision: candidate.revision,
           modelMatrix: group.matrices[0],
           instanceMatrices: group.matrices,
@@ -6481,7 +6480,7 @@
         _crowdMotion: motion || null,
         vertices, directVertices: true, retainedGeometry: true, resourceOwner, geometryRevision: 0,
         modelMatrix, vertexOffset: 0, vertexCount: vertices.count };
-      sceneStampRetainedMeshCSSInput(meshRecord, object);
+      sceneStampRetainedMeshCSSInput(meshRecord, resourceOwner);
       bundle.meshObjects.push(meshRecord);
       bundle.retainedMeshObjectCount += 1;
       bundle.retainedMeshVertexCount += vertices.count;
@@ -6527,7 +6526,7 @@
         vertexCount: Math.max(0, Math.floor(sceneNumber(vertices.count, 0))),
       };
       if (retained) {
-        sceneStampRetainedMeshCSSInput(meshRecord, object);
+        sceneStampRetainedMeshCSSInput(meshRecord, resourceOwner);
         bundle.retainedMeshObjectCount += 1;
         bundle.retainedMeshVertexCount += meshRecord.vertexCount;
         bundle.retainedGeometryTelemetry.retained += 1;
@@ -6570,7 +6569,7 @@
           vertexOffset: 0,
           vertexCount,
         };
-        sceneStampRetainedMeshCSSInput(meshRecord, object);
+        sceneStampRetainedMeshCSSInput(meshRecord, resourceOwner);
         bundle.meshObjects.push(meshRecord);
         bundle.retainedMeshObjectCount += 1;
         bundle.retainedMeshVertexCount += vertexCount;

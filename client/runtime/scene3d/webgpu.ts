@@ -6574,6 +6574,7 @@
     var encodes = 0;
     var replays = 0;
     var lastDrawCount = 0;
+    var consecutiveMisses = 0, previousMissTokens = null;
 
     return {
       recorder: recorder,
@@ -6591,9 +6592,21 @@
         if (recorder.drawCount() === 0) {
           return { reusable: false, eligible: false, reason: "no-draws" };
         }
+        // Ping-pong bindings never settle. Encode directly until two command
+        // streams agree again, so temporary churn does not disable bundles forever.
+        if (consecutiveMisses >= 4) {
+          if (!sceneWebGPUBundleTokensMatch(recorder.tokens(), recorder.length(), previousMissTokens)) {
+            previousMissTokens = sceneWebGPUCopyBundleTokens(recorder.tokens(), recorder.length());
+            return { reusable: false, eligible: false, reason: "binding-thrash" };
+          }
+          consecutiveMisses = 0;
+        }
         var reusable = bundle !== null &&
           savedLayout === layoutKey &&
           sceneWebGPUBundleTokensMatch(recorder.tokens(), recorder.length(), savedTokens);
+        consecutiveMisses = reusable ? 0 : consecutiveMisses + 1;
+        previousMissTokens = reusable ? null : sceneWebGPUCopyBundleTokens(recorder.tokens(), recorder.length());
+        if (consecutiveMisses >= 4) return { reusable: false, eligible: false, reason: "binding-thrash" };
         return { reusable: reusable, eligible: true, reason: reusable ? "replay" : "re-encode" };
       },
       // adopt stores a freshly finished bundle together with the stream the
@@ -6611,6 +6624,7 @@
         bundle = null;
         savedTokens = null;
         savedLayout = "";
+        consecutiveMisses = 0; previousMissTokens = null;
       },
       stats: function() {
         return { encodes: encodes, replays: replays, draws: lastDrawCount };
@@ -7929,6 +7943,7 @@
     // again for a brand new one.
     var pbrSceneAttributeCache = {};
     var retainedMaterialOwners = new WeakMap();
+    var retainedMaterialOwnerSources = new Map();
     var retainedMaterialFrameSources = new WeakSet();
 
     // 1x1 white placeholder texture (for unbound material maps).
@@ -8068,9 +8083,14 @@
     }
     function wgpuCachedTrackedBuffer(owner, slot, typedArray, usage, dynamic) {
       if (!owner || !typedArray) return null;
-      // Foreign buffers can still report a size after device-loss disposal.
-      // Retire them and their bind-group caches so recovery allocates resources
-      // tracked by this renderer's device.
+      // Cross-renderer staleness guard: if the buffer cached at owner[slot] was
+      // created by a prior renderer (not in this renderer's pointsEntryGPUBuffers
+      // set), the underlying GPU resource was destroyed when that renderer was
+      // disposed or lost its device. Clear the stale JS reference so that the
+      // alloc path below creates a fresh buffer on the current device. Without
+      // this, sceneCachedSlotBuffer would blindly reuse the dead buffer (its .size
+      // property survives .destroy()), causing "Buffer with '' label is invalid"
+      // errors on every frame after device-loss recovery until the page is reloaded.
       var staleCandidate = owner[slot];
       if (staleCandidate && !pointsEntryGPUBuffers.has(staleCandidate)) {
         owner[slot] = null;
@@ -15428,16 +15448,8 @@
         : (obj && obj.vertices && typeof obj.vertices === "object" ? obj.vertices : obj);
     }
 
-    function webGPURetireRetainedMaterialOwner(entry) {
-      if (!entry || !entry.materialOwner) return;
-      var owner = entry.materialOwner;
-      // A resource owner may be shared by multiple retained entries. Do not
-      // retire its material buffers until the final associated entry leaves.
-      for (const pair of retainedMeshAttributeCache.entries()) {
-        if (pair[1] !== entry && pair[1] && pair[1].materialOwner === owner) {
-          return;
-        }
-      }
+    function webGPURetireRetainedMaterialOwner(owner) {
+      if (!owner) return;
       var slots = ["_gosxWGPUMaterialUniform", "_gosxWGPUMaterialShadowUniform"];
       for (var slotIndex = 0; slotIndex < slots.length; slotIndex++) {
         var slot = slots[slotIndex];
@@ -15452,14 +15464,9 @@
       }
       owner["_gosxWGPUMatBGCache"] = null;
       owner["_gosxWGPUMatBGCacheS"] = null;
-      if (
-        entry.materialSource &&
-        retainedMaterialOwners.get(entry.materialSource) === owner
-      ) {
-        retainedMaterialOwners.delete(entry.materialSource);
-      }
-      entry.materialOwner = null;
-      entry.materialSource = null;
+      var source = retainedMaterialOwnerSources.get(owner);
+      retainedMaterialOwners.delete(source);
+      retainedMaterialOwnerSources.delete(owner);
     }
 
     function webGPURetainedMaterialOwner(obj) {
@@ -15471,15 +15478,15 @@
         webGPURetireRetainedMeshEntry(vertices, entry);
       }
       var source = webGPURetainedMaterialSource(obj);
-      if (entry && entry.materialSource && entry.materialSource !== source &&
-          !retainedMaterialFrameSources.has(entry.materialSource)) {
-        webGPURetireRetainedMaterialOwner(entry);
-      }
+      // Do not retire before createMaterialBindGroup: shared vertices and shadow
+      // passes may already reference the old owner's buffer in this frame.
+      // Sweeping absent sources after submit avoids destroying a bound buffer.
       if (!source || typeof source !== "object") return defaultMaterialOwner;
       var owner = retainedMaterialOwners.get(source);
       if (!owner) {
         owner = {};
         retainedMaterialOwners.set(source, owner);
+        retainedMaterialOwnerSources.set(owner, source);
       }
       return owner;
     }
@@ -15502,7 +15509,6 @@
       for (var i = 0; i < keys.length; i++) {
         webGPURetireRetainedMeshAttribute(entry, keys[i]);
       }
-      webGPURetireRetainedMaterialOwner(entry);
       retainedMeshAttributeCache.delete(vertices);
     }
 
@@ -15521,6 +15527,9 @@
     }
 
     function webGPUSweepRetainedMeshBuffers() {
+      for (const pair of retainedMaterialOwnerSources) {
+        if (!retainedMaterialFrameSources.has(pair[1])) webGPURetireRetainedMaterialOwner(pair[0]);
+      }
       for (const pair of Array.from(retainedMeshAttributeCache.entries())) {
         if (pair[1].lastSeenEpoch !== retainedMeshAttributeEpoch) {
           webGPURetireRetainedMeshEntry(pair[0], pair[1]);
@@ -15571,11 +15580,6 @@
           attributes: Object.create(null),
         };
         retainedMeshAttributeCache.set(vertices, entry);
-      }
-      var materialSource = webGPURetainedMaterialSource(obj);
-      if (materialSource && typeof materialSource === "object") {
-        entry.materialSource = materialSource;
-        entry.materialOwner = retainedMaterialOwners.get(materialSource) || null;
       }
       entry.lastSeenEpoch = retainedMeshAttributeEpoch;
       var record = entry.attributes[key];
@@ -15638,11 +15642,6 @@
           attributes: Object.create(null),
         };
         retainedMeshAttributeCache.set(vertices, entry);
-      }
-      var materialSource = webGPURetainedMaterialSource(obj);
-      if (materialSource && typeof materialSource === "object" && !entry.materialSource) {
-        entry.materialSource = materialSource;
-        entry.materialOwner = retainedMaterialOwners.get(materialSource) || null;
       }
       entry.lastSeenEpoch = retainedMeshAttributeEpoch;
       var record = entry.attributes.indices;
@@ -19512,6 +19511,7 @@
         webGPURetireRetainedMeshEntry(pair[0], pair[1]);
       }
 
+      for (const owner of retainedMaterialOwnerSources.keys()) webGPURetireRetainedMaterialOwner(owner);
       destroyRendererGPUResource(frameUniformBuffer);
       frameUniformBuffer = null;
       destroyRendererGPUResource(lightStorageBuffer);

@@ -74,7 +74,6 @@ test("replacing a retained resource owner retires its material uniform", async t
   assert.ok(materialBuffer.destroyed, "old owner's uniform is destroyed on replacement");
 });
 
-module.exports = { materialHarness };
 
 test("stable Selena owners invalidate groups when the shader layout changes", async t => {
   const h = await materialHarness(true, 1);
@@ -90,3 +89,85 @@ test("stable Selena owners invalidate groups when the shader layout changes", as
   assert.ok(h.fake.state.bindGroups.some(g => g.desc.layout === layout && g.desc.entries[0].binding === 1),
     "the new pipeline binds a group with the current layout");
 });
+
+for (const mode of ["shadow casters", "shared vertices"]) test(`patched named ${mode} retire every absent owner after submit`, async t => {
+  const h = await materialHarness(false, 3, false);
+  t.after(() => h.renderer.dispose());
+  const shared = h.bundle().meshObjects[0].vertices;
+  for (const object of h.state.objects.values()) {
+    if (mode === "shadow casters") object.castShadow = true;
+    else object.vertices = shared;
+  }
+  const render = async () => {
+    const b = h.bundle();
+    if (mode === "shadow casters") b.lights = [{ kind: "directional", castShadow: true,
+      x: 2, y: 4, z: 2, directionX: 0.2, directionY: -1, directionZ: -0.3, shadowSize: 64 }];
+    else assert.equal(b.meshObjects[0].vertices, b.meshObjects[1].vertices);
+    await h.render(b);
+  };
+  for (let i = 0; i < 5; i++) await render();
+  const uniformUsage = h.env.context.GPUBufferUsage.UNIFORM;
+  const live = () => h.fake.state.buffers.filter(b => !b.destroyed && (b.usage & uniformUsage)).length;
+  const initial = live();
+  let beforeSubmit = null, earlyRetirements = 0;
+  const observe = buffer => {
+    const destroy = buffer.destroy.bind(buffer);
+    buffer.destroy = () => {
+      if (beforeSubmit !== null && h.fake.state.submitCount <= beforeSubmit) earlyRetirements++;
+      destroy();
+    };
+    return buffer;
+  };
+  for (const buffer of h.fake.state.buffers) if (buffer.size === 288) observe(buffer);
+  const create = h.fake.device.createBuffer.bind(h.fake.device);
+  h.fake.device.createBuffer = desc => { const b = create(desc); return b.size === 288 ? observe(b) : b; };
+  for (let i = 0; i < 20; i++) {
+    h.api.applySceneCommands(h.state, [{ kind: 2, objectId: "box-0", data: { x: -4 + i * 0.01 } }]);
+    beforeSubmit = h.fake.state.submitCount;
+    await render();
+    beforeSubmit = null;
+  }
+  t.diagnostic(`live uniform buffers: ${initial} -> ${live()}`);
+  assert.equal(live(), initial, "patched owners do not accumulate material uniforms");
+  assert.equal(earlyRetirements, 0, "material retirement occurs after submission");
+  if (mode === "shadow casters") assert.ok(h.fake.state.renderPasses.some(p => p.descriptor.colorAttachments.length === 0));
+});
+
+test("named material CSS inputs perform no steady computed-style reads", async t => {
+  const h = await materialHarness(false, 3);
+  t.after(() => h.renderer.dispose());
+  let styles = 0, properties = 0;
+  h.env.context.window.getComputedStyle = () => { styles++; return {
+    getPropertyValue() { properties++; return ""; },
+  }; };
+  for (let i = 0; i < 5; i++) await h.render();
+  styles = properties = 0;
+  await h.render();
+  t.diagnostic(`steady getComputedStyle/getPropertyValue: ${styles}/${properties}`);
+  assert.equal(styles, 0);
+  assert.equal(properties, 0);
+});
+
+test("a named PBR field edit refreshes both objects sharing that material", async t => {
+  const h = await materialHarness(false, 2, false);
+  t.after(() => h.renderer.dispose());
+  for (let i = 0; i < 5; i++) await h.render();
+  const b = h.bundle();
+  assert.equal(b.meshObjects[0].materialIndex, b.meshObjects[1].materialIndex);
+  assert.notEqual(b.meshObjects[0].resourceOwner, b.meshObjects[1].resourceOwner);
+  const start = h.fake.state.writeBufferCalls.length;
+  h.state.materials[0].roughness = 0.75;
+  await h.render();
+  const writes = h.fake.state.writeBufferCalls.slice(start).filter(w => w.buffer.size === 288);
+  assert.ok(writes.length >= 1);
+  for (const write of writes) assert.equal(new Float32Array(write.data.buffer)[3], 0.75);
+  const bindings = h.fake.state.renderPasses.at(-1).bindGroups.filter(binding => binding.slot === 1);
+  assert.equal(bindings.length, 2, "both named-material objects draw");
+  for (const binding of bindings) {
+    const buffer = binding.group.desc.entries.find(e => e.binding === 0).resource.buffer;
+    const write = h.fake.state.writeBufferCalls.findLast(w => w.buffer === buffer);
+    assert.equal(new Float32Array(write.data.buffer)[3], 0.75, "both draws use the edited field");
+  }
+});
+
+module.exports = { materialHarness };
