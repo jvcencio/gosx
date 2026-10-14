@@ -9,10 +9,15 @@
       return {};
     }
 
-    let props = ctx.props || {};
+    let props=ctx.props||{};
+    const needsExperience=props.experienceRef||props.presentation||props.dayCycle||props.exploration||props.metricsSignal;
+    if(needsExperience&&!window.__gosx_runtime_api.scene3DExperience)await ensureSceneGatedFeatureLoaded("experience","gosxScene3dExperienceUrl","");
+    const experience=window.__gosx_runtime_api.scene3DExperience;
+    if(needsExperience)props=await experience.load(props,ctx.signal);
+    if (!scene3DFactoryCurrent()) return {};
     const renderBeforeModels = props.renderBeforeModels === true;
     let handle = null;
-    if (props.controlZoom === true) {
+    if (props.controlZoom === true || props.optics) {
       await ensureSceneGatedFeatureLoaded("zoom", "gosxScene3dZoomUrl", "");
       if (!scene3DFactoryCurrent()) return {};
     }
@@ -153,6 +158,10 @@
     // nor the first resumed frame can credit paused wall time. Camera controls
     // keep their own wall-clock paths.
     let clockSeconds = 0;
+    let dayCycle: any = null;
+    let exploration: any = null;
+    let disposePresentation = () => {};
+    let publishMetrics = () => {};
     let clockLastFrameMS = NaN;
     let animationPaused = false;
     let animationToggle = null;
@@ -169,6 +178,8 @@
       // the toggle is the last frame until resume and the mount reports
       // render-loop=stopped / reason=paused / wants-animation=false instead
       // of burning requestAnimationFrame work at a frozen clock.
+      if (!animationPaused && exploration?.active) return {wants:true,reason:"inspection"};
+      if (!animationPaused && props.dayCycle) return { wants: true, reason: "day-cycle" };
       if (animationPaused) {
         return { wants: false, reason: "paused" };
       }
@@ -3074,6 +3085,7 @@
         scheduleRender("quality-transition");
       }
       if (finishSceneSubmission(frameOutcome, frameMeta)) {
+        publishMetrics();
         publishReady();
         publishRevealed(bundle);
         notifySceneProgressiveModelRenderCommitted(sceneState);
@@ -3118,6 +3130,8 @@
         clockSeconds += frameDeltaSeconds;
       }
       const timeSeconds = clockSeconds;
+      if (dayCycle) dayCycle.advance(timeSeconds);
+      if (exploration) exploration.advance(timeSeconds);
       // @ts-ignore TS7005 -- the optional authority is installed after renderer creation
       const advanceVessel = sceneControlHandle && sceneControlHandle.advance;
       if (advanceVessel) {
@@ -3636,10 +3650,21 @@
       dispose: disposeMountedScene,
     };
 
+    if(experience){
+      publishMetrics=experience.metrics(props.metricsSignal,()=>sceneRendererFrameTiming(renderer,renderTiming));
+      dayCycle=experience.cycle(props.dayCycle,sceneState,{light:hashLightContent,environment:hashEnvironmentContent});
+      exploration=experience.exploration(mount,props,sceneState,handle,scheduleRender,applySceneAudioCue,(commands: any)=>applySceneCommands(sceneState,commands));
+    }
+    handle.setDayHour = (hour: number) => { if (dayCycle) {dayCycle.seek(hour);scheduleRender("day-cycle-seek");} };
+    disposePresentation=experience?experience.presentation(mount,props,handle,scheduleRender):()=>{};
+
     function disposeMountedScene() {
       pendingFrameRequest = null;
       const ownsMount = mount.__gosxScene3DOwner === sceneMountOwner;
       disposed = true;
+      disposePresentation();
+      if (dayCycle) dayCycle.dispose();
+      if (exploration) exploration.dispose();
       if (sceneFrameRegistration) sceneFrameRegistration.dispose(); detachMotionScene(); detachMotionScene = function() {};
       if (animationToggle) {
         if (typeof animationToggle.removeEventListener === "function") {

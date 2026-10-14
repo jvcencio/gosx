@@ -1,0 +1,16 @@
+scene.Props{
+	DayCycle: &scene.DayCycle{
+		DurationSeconds: 18 * 60,
+		InitialHour:     17.5,
+		SunLightID:      "sun",
+		Seed:            42,
+		Weather:         true,
+		InputSignal:     "$world.clockRunning",
+		OutputSignal:    "$world.day",
+	},
+	Optics: &scene.Optics{
+		Magnification: 3,
+		InputSignal:   "$world.spyglass",
+		OutputSignal:  "$world.sight",
+	},
+}
