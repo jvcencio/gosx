@@ -14,8 +14,9 @@ class Target {
   removeAttribute(name) { delete this.attrs[name]; }
   closest() { return this.host || null; }
   setPointerCapture() {}
+  dispatchEvent(e) { this.emit(e.type, e); return true; }
   emit(type, props = {}) {
-    const e = { type, ...props, preventDefault() { this.defaultPrevented = true; }, stopImmediatePropagation() { this.stopped = true; } };
+    const e = { type, target: this, ...props, preventDefault() { this.defaultPrevented = true; }, stopImmediatePropagation() { this.stopped = true; } };
     for (const x of [...this.listeners].sort((a,b) => Number(!!b.options?.capture)-Number(!!a.options?.capture))) {
       if (x.name === type) x.fn(e);
       if (e.stopped) break;
@@ -27,7 +28,7 @@ function harness(mode = 'first-person', reduced = false, enabled = true, options
   const window = new Target(), canvas = new Target(), handle = new Target(), document = { activeElement: canvas, querySelector: () => handle }, media = new Target();
   window.__gosx_runtime_api = {};
   media.matches = reduced; window.matchMedia = () => media;
-  vm.runInNewContext(source, { window, document, Map, Math, Number, Array });
+  vm.runInNewContext(source, { window, document, Map, Math, Number, Array, CustomEvent: class { constructor(type, options) { this.type=type; Object.assign(this,options); } } });
   const api = window.__gosx_runtime_api.scene3DZoom, frames = new Map(), reasons = [];
   let id = 0, now = 0, pose = { x: 1, y: 2, z: 3, fov: 75 }, cancelled = 0, disposed = 0;
   const controller = { mode, target: {x:0,y:0,z:0}, touched: false, zoomScale: 1, minDistance: 2, maxDistance: 100, orbit: { radius: 20 }, syncCamera() {},
@@ -136,6 +137,30 @@ test('the lazy zoom loader finds the controller in the runtime API', () => {
  const api = { setup() {} }, env = { window: { __gosx_runtime_api: { scene3DZoom: api } } };
  vm.runInNewContext(source, env);
  assert.equal(env.sceneGatedFeatureAPI('zoom'), api);
+});
+
+test('optical lens magnifies without moving or detaching a sailing camera and restores the prior zoom', () => {
+  for (const mode of ['first-person','orbit','stern','wheel']) {
+    const h=harness(mode,true), before=h.controller.currentCamera(), navigation=h.controller.zoomScale;
+    h.canvas.emit('gosx:scene3d:optical-zoom',{detail:{factor:3}});
+    const after=h.controller.currentCamera(); near(Math.tan(after.fov*Math.PI/360),Math.tan(before.fov*Math.PI/360)/3);
+    for(const key of ['x','y','z'])assert.equal(after[key],before[key]);
+    assert.equal(h.controller.zoomScale,navigation);assert.equal(h.frames.size,0,'lens uses the existing render scheduler');
+    if(h.base.state)assert.equal(h.base.state.mode,'sailing');
+    h.canvas.emit('gosx:scene3d:optical-zoom',{detail:{factor:1}});assert.equal(h.controller.currentCamera().fov,before.fov);
+    h.canvas.emit('gosx:scene3d:optical-zoom',{detail:{factor:3}});h.controller.applyCamera({fov:70});assert.equal(h.controller.currentCamera().fov,70);
+    h.base.dispose();assert.equal(h.canvas.listeners.length,0);
+  }
+});
+
+test('optical lens honors portrait FOV, rejects malformed and foreign events, and resets with the scene', () => {
+  const h=harness('stern',true);h.helpers.fov=c=>c._gosxZoomFOV?c.fov:70;
+  h.canvas.emit('gosx:scene3d:optical-zoom',{detail:{factor:3}});
+  const expected=360/Math.PI*Math.atan(Math.tan(70*Math.PI/360)/3);near(h.controller.currentCamera().fov,expected);
+  for(const factor of [NaN,Infinity,0,9,'3',null]) {h.canvas.emit('gosx:scene3d:optical-zoom',{detail:{factor}});near(h.controller.currentCamera().fov,expected);}
+  h.canvas.emit('gosx:scene3d:optical-zoom',{target:{},detail:{factor:1}});near(h.controller.currentCamera().fov,expected);
+  let resets=0;h.canvas.addEventListener('gosx:scene3d:optical-zoom-state',e=>{if(e.detail.factor===1)resets++;});
+  h.base.reset();assert.equal(h.controller.currentCamera().fov,75);assert.equal(resets,1);
 });
 
 

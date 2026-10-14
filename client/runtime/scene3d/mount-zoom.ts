@@ -1,5 +1,26 @@
 // Opt-in zoom shares the controls scheduler; animated scenes keep their frame cap.
 interface SceneZoomState { value: number; target: number; min: number; max: number; }
+// Optical magnification never moves the camera or takes over vessel controls.
+function szSetupLens(canvas: any, helpers: any, listen: any): any {
+  const mount = canvas.closest('[data-gosx-engine="GoSXScene3D"]') || canvas;
+  let factor = 1;
+  function publish(): void {
+    mount.dispatchEvent(new CustomEvent('gosx:scene3d:optical-zoom-state', { bubbles: true, detail: { factor } }));
+  }
+  listen(mount, 'gosx:scene3d:optical-zoom', (event: CustomEvent) => {
+    const value = event.detail && event.detail.factor;
+    if (event.target !== mount || typeof value !== 'number' || !Number.isFinite(value) || value < 1 || value > 8) return;
+    factor = value; publish(); helpers.schedule('controls-optical-zoom');
+  }, false);
+  return {
+    reset: () => { if (factor !== 1) { factor = 1; publish(); } },
+    camera: (camera: any) => {
+      if (factor === 1 || camera.kind === 'orthographic') return camera;
+      const fov = Number(helpers.fov ? helpers.fov(camera) : camera.fov) || 75;
+      return Object.assign({}, camera, { fov: 360 / Math.PI * Math.atan(Math.tan(fov * Math.PI / 360) / factor), _gosxZoomFOV: true });
+    },
+  };
+}
 (function() {
   function clamp(value: number, min: number, max: number): number { return Math.max(min, Math.min(max, value)); }
   function create(value: number, min: number, max: number): SceneZoomState {
@@ -28,6 +49,7 @@ interface SceneZoomState { value: number; target: number; min: number; max: numb
     const originalCurrent = controller.currentCamera, originalApply = controller.applyCamera;
     const media = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
     const pointers = new Map<number, PointerEvent>(), listeners: Array<[any, string, any, any]> = [], pan = szSetupPan(canvas, props, base, helpers, listen);
+    const optical = szSetupLens(canvas, helpers, listen);
     let state: SceneZoomState, view = '', initial = 75, frame = 0, last = 0, pinching = false, span = 0, disposed = false;
     const oldAction = canvas.style.touchAction, oldShortcuts = canvas.getAttribute('aria-keyshortcuts');
     canvas.style.touchAction = 'none';
@@ -46,7 +68,7 @@ interface SceneZoomState { value: number; target: number; min: number; max: numb
         initial = Number(next !== 'wheel' && helpers.fov ? helpers.fov(read()) : read().fov) || 75; state = szOptical(initial, props);
       }
     }
-    function reset(): void { view = ''; select(); }
+    function reset(): void { optical.reset(); view = ''; select(); }
     base.resetZoom = reset;
     function apply(): void {
       if (view === 'orbit') orbit.orbit.radius = state.value;
@@ -70,7 +92,7 @@ interface SceneZoomState { value: number; target: number; min: number; max: numb
     }
     controller.currentCamera = () => {
       select(); const camera = read();
-      return view === 'orbit' || view === 'stern' ? camera : Object.assign({}, camera, { fov: state.value, _gosxZoomFOV: true });
+      return optical.camera(view === 'orbit' || view === 'stern' ? camera : Object.assign({}, camera, { fov: state.value, _gosxZoomFOV: true }));
     };
     controller.applyCamera = (camera: any) => {
       if (originalApply) originalApply(camera); else helpers.apply(camera);

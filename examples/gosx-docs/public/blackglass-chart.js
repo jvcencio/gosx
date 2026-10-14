@@ -14,6 +14,11 @@
     const exit=JSON.parse(root.dataset.coastHarborExit);
     const bearingTo=point=>((Math.atan2(point.x-state.position.x,-(point.z-state.position.z))*180/Math.PI)+360)%360;
     const places=JSON.parse(root.dataset.coastChartPlaces);
+    root.addEventListener('blackglass:plot-course',event=>{
+      const place=places.find(p=>p.island&&p.view===event.detail?.view);
+      if(event.target!==root||!place)return;
+      route(place);chart.open=true;journal.open=false;input.focus({preventScroll:true});
+    });
     function route(place) {
       if(state?.course!==null)command('release-course');
       destination=place;arrival=false;departure=!!state&&Math.hypot(state.position.x-places.find(p=>p.view==="ship").x,state.position.z-places.find(p=>p.view==="ship").z)<45;

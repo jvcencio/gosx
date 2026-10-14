@@ -102,7 +102,19 @@ func Page() Node {
 				</details>
 				<p class="bgb__journal-status" role="status" data-coast-status>Explore at your own pace.</p>
 			</details>
+			<button class="bgb__spyglass-toggle" type="button" data-coast-spyglass aria-pressed="false" aria-controls="coast-spyglass" disabled>Spyglass</button>
 		</div>
+		<section class="bgb__spyglass" id="coast-spyglass" aria-label="Spyglass instruments" hidden>
+			<div class="bgb__spyglass-lens" aria-hidden="true"><span></span></div>
+			<div class="bgb__spyglass-instruments">
+				<p class="bgb__spyglass-label">COASTAL SPYGLASS <span>3×</span></p>
+				<output class="bgb__spyglass-bearing" data-coast-sight-bearing aria-label="Looking bearing">000° N</output>
+				<p data-coast-sight-name>Open sea</p>
+				<p class="bgb__spyglass-range" data-coast-sight-range>Drag to look · bearings follow your view</p>
+				<button type="button" data-coast-sight-plot disabled>Plot island landing</button>
+				<button type="button" data-coast-spyglass-close>Put away · Esc</button>
+			</div>
+		</section>
 		<dialog class="bgb__handheld-dialog" aria-label="Pocket handheld">
 			<button class="bgb__handheld-close" type="button" data-coast-put-away>Put away · Esc</button>
 			<p class="bgb__handheld-sailing" data-coast-handheld-sailing hidden>Course held · the ship is sailing</p>

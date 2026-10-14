@@ -746,7 +746,7 @@
     "../runtime/scene3d/webgl-contact-shadows.ts": 63,
     "../runtime/scene3d/webgpu-contact-shadows.ts": 75,
     "../runtime/scene3d/webgl-taa.ts": 143,
-    "../runtime/scene3d/mount-zoom.ts": 123,
+    "../runtime/scene3d/mount-zoom.ts": 145,
     "../runtime/scene3d/pipeline-recovery.ts": 32,
     "../runtime/scene3d/webgpu-selena-textures.ts": 56,
     "../runtime/scene3d/webgl-specular-bloom.ts": 26,
@@ -1299,23 +1299,23 @@
     },
     {
       "source": "../runtime/scene3d/mount-zoom.ts",
-      "name": "anonymous@3:2",
-      "lines": 121,
+      "name": "anonymous@24:2",
+      "lines": 122,
       "cyclomatic": 70,
       "cognitive": 82,
       "maxNesting": 3,
       "parameters": 0,
-      "reason": "The scoped zoom authority owns input normalization, damped state, focus-scoped keys, pinch handoff and teardown. Aggregate metrics include the nested handlers; each handler remains independently inventoried. Portrait framing supplies the default FOV and cannot overwrite optical zoom."
+      "reason": "The scoped zoom authority owns input normalization, damped state, focus-scoped keys, pinch handoff and teardown. Aggregate metrics include the nested handlers; each handler remains independently inventoried. Portrait framing supplies the default FOV and cannot overwrite optical zoom. A separate bounded lens helper adds projection-only magnification; existing control complexity limits remain unchanged."
     },
     {
       "source": "../runtime/scene3d/mount-zoom.ts",
-      "name": "setup@25:3",
-      "lines": 97,
+      "name": "setup@46:3",
+      "lines": 98,
       "cyclomatic": 62,
       "cognitive": 73,
       "maxNesting": 3,
       "parameters": 5,
-      "reason": "The scoped zoom authority owns input normalization, damped state, focus-scoped keys, pinch handoff and teardown. Aggregate metrics include the nested handlers; each handler remains independently inventoried. Portrait framing supplies the default FOV and cannot overwrite optical zoom."
+      "reason": "The scoped zoom authority owns input normalization, damped state, focus-scoped keys, pinch handoff and teardown. Aggregate metrics include the nested handlers; each handler remains independently inventoried. Portrait framing supplies the default FOV and cannot overwrite optical zoom. A separate bounded lens helper adds projection-only magnification; existing control complexity limits remain unchanged."
     }
   ],
   "symbols": [
