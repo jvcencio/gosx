@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"errors"
 	"io"
@@ -52,6 +53,7 @@ func CompressionMiddlewareWithOptions(options CompressionOptions) Middleware {
 	if level < gzip.HuffmanOnly || level > gzip.BestCompression {
 		panic("gosx: invalid gzip compression level")
 	}
+	bodyCache := newCompressedBodyCache(16<<20, 1024)
 	pool := &sync.Pool{New: func() any { writer, _ := gzip.NewWriterLevel(io.Discard, level); return writer }}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +73,7 @@ func CompressionMiddlewareWithOptions(options CompressionOptions) Middleware {
 			} else if requestAcceptsGzip(r) {
 				encoding = "gzip"
 			}
-			cw := &compressionWriter{gzipPool: pool, ResponseWriter: w, encoding: encoding, identityRejected: !requestAcceptsEncoding(r, "identity"), http11: r.ProtoAtLeast(1, 1)}
+			cw := &compressionWriter{bodyCache: bodyCache, shareRequest: r.Method == http.MethodGet && r.Header.Get("Cookie") == "" && r.Header.Get("Authorization") == "", gzipPool: pool, ResponseWriter: w, encoding: encoding, identityRejected: !requestAcceptsEncoding(r, "identity"), http11: r.ProtoAtLeast(1, 1)}
 			var writer http.ResponseWriter = cw
 			_, flush := w.(http.Flusher)
 			_, flushError := w.(interface{ FlushError() error })
@@ -85,6 +87,11 @@ func CompressionMiddlewareWithOptions(options CompressionOptions) Middleware {
 }
 
 type compressionWriter struct {
+	bodyCache                    *compressedBodyCache
+	shareRequest, cacheCandidate bool
+	cacheReplay                  []byte
+	cacheCapture                 *bytes.Buffer
+
 	gzipPool *sync.Pool
 	http.ResponseWriter
 	encoding         string
@@ -110,6 +117,7 @@ func (w *compressionWriter) WriteHeader(status int) {
 	}
 	w.status = status
 	w.headers = w.Header().Clone()
+	w.cacheCandidate = w.shareRequest && w.bodyCache != nil && status == http.StatusOK && w.encoding != "" && shareableCompressedHTML(w.headers)
 	if status == http.StatusNotModified {
 		addAcceptEncodingVary(w.headers)
 		if w.encoding != "" {
@@ -133,6 +141,18 @@ func (w *compressionWriter) Write(data []byte) (int, error) {
 	}
 	if w.status == 0 {
 		w.WriteHeader(http.StatusOK)
+	}
+	if w.cacheCandidate && !w.started {
+		if len(w.buffer)+len(data) <= maxCachedHTMLBody {
+			w.buffer = append(w.buffer, data...)
+			return len(data), nil
+		}
+		w.cacheCandidate = false
+		if len(w.buffer) >= httpcompress.MinimumSize {
+			if err := w.start(true); err != nil {
+				return 0, err
+			}
+		}
 	}
 	if w.started {
 		return w.bodyWriter().Write(data)
@@ -189,7 +209,12 @@ func (w *compressionWriter) start(compress bool) error {
 		h.Set("Content-Encoding", w.encoding)
 		weakenETag(h)
 		w.output.Writer = w.ResponseWriter
-		if w.encoding == "br" {
+		if w.cacheCapture != nil {
+			w.output.Writer = io.MultiWriter(w.ResponseWriter, w.cacheCapture)
+		}
+		if w.cacheReplay != nil {
+			// Cached bytes already have the selected encoding.
+		} else if w.encoding == "br" {
 			br := brotliWriterPool.Get().(*brotli.Writer)
 			br.Reset(&w.output)
 			w.compressor = br
@@ -224,6 +249,13 @@ func (w *compressionWriter) start(compress bool) error {
 	}
 	w.started = true
 	w.ResponseWriter.WriteHeader(w.status)
+	if w.cacheReplay != nil {
+		body := w.cacheReplay
+		w.cacheReplay = nil
+		w.buffer = nil
+		_, err := w.ResponseWriter.Write(body)
+		return err
+	}
 	if len(w.buffer) > 0 {
 		_, err := w.bodyWriter().Write(w.buffer)
 		w.buffer = nil
@@ -244,6 +276,9 @@ func (w *compressionWriter) bodyWriter() io.Writer {
 
 func (w *compressionWriter) finish() {
 	if w.hijacked {
+		return
+	}
+	if w.finishShareable() {
 		return
 	}
 	_ = w.start(len(w.buffer) >= httpcompress.MinimumSize)
@@ -292,10 +327,11 @@ func (w *compressionWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if hijacker == nil {
 		return nil, nil, http.ErrNotSupported
 	}
+	w.cacheCandidate = false
 	// Flush, rather than close, the compressor: a failed takeover must leave
 	// the current stream writable for the handler's fallback response.
 	if w.status != 0 || w.started {
-		if err := w.start(false); err != nil {
+		if err := w.start(len(w.buffer) >= httpcompress.MinimumSize); err != nil {
 			return nil, nil, err
 		}
 		if w.compressor != nil {
@@ -357,6 +393,7 @@ type compressionFlushWriter struct{ *compressionWriter }
 func (w *compressionFlushWriter) Flush() { _ = w.FlushError() }
 
 func (w *compressionFlushWriter) FlushError() error {
+	w.cacheCandidate = false
 	if err := w.start(len(w.buffer) >= httpcompress.MinimumSize); err != nil {
 		return err
 	}
