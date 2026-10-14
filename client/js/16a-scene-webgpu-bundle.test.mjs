@@ -567,3 +567,36 @@ test("the bundle state reaches the diagnostics attributes", () => {
     assert.ok(webgpuSource.includes(name), `${name} must be published`);
   }
 });
+
+test("renderer source reader erases optional parameter types without moving executable source", () => {
+  const fixture = "function probe(value?: number): number { return value ?? 1; }\n";
+  const source = readSceneRendererBackendSrc("webgpu", { readSource: () => fixture });
+  assert.equal(source.indexOf("return value"), fixture.indexOf("return value"));
+  const context = vm.createContext({});
+  vm.runInContext(source, context);
+  assert.equal(context.probe(), 1);
+  assert.equal(context.probe(7), 7);
+});
+
+
+test("alternating Selena bindings stop consecutive bundle re-encodes and recover once stable", () => {
+  const cache = api().createSceneWebGPUBundleCache();
+  const pipeline = { label: "selena" };
+  const groups = [{ label: "storage-A" }, { label: "storage-B" }];
+  let encodes = 0, direct = 0;
+  for (let frame = 0; frame < 20; frame++) {
+    const plan = cache.plan(LAYOUT, target => {
+      target.setPipeline(pipeline);
+      target.setBindGroup(0, groups[frame % 2]);
+      target.draw(3);
+    });
+    if (plan.eligible && !plan.reusable) { cache.adopt(LAYOUT, {}); encodes++; }
+    if (!plan.eligible) { assert.equal(plan.reason, "binding-thrash"); direct++; }
+  }
+  assert.ok(encodes <= 4, `bounded encodes: ${encodes}`);
+  assert.ok(direct >= 16);
+  const stable = target => { target.setPipeline(pipeline); target.setBindGroup(0, groups[0]); target.draw(3); };
+  cache.plan(LAYOUT, stable);
+  const recovered = cache.plan(LAYOUT, stable);
+  assert.ok(recovered.eligible, "stable commands can bundle again");
+});

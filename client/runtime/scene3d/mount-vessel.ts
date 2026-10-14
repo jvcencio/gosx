@@ -39,7 +39,7 @@
     if(props.walk) {walk.surfaces=walk.surfaces||[];walk.surfaces.push(surface);}
     const mount=canvas.closest('[data-gosx-engine="GoSXScene3D"]')||canvas.parentElement;
     const read=()=>helpers.current(base.controller,sceneState.camera,sceneState._scrollCamera);
-    const controller={get zoomScale(){return base.controller.zoomScale||1;},set zoomScale(value: number){base.controller.zoomScale=value;},mode:'first-person',touched:false,get active(){return state.mode==='sailing'||!!base.controller.active;},currentCamera:()=>state.mode==='sailing'&&!state.detached?state.camera||read():read(),
+    const controller={get zoomScale(){return base.controller.zoomScale||1;},set zoomScale(value: number){base.controller.zoomScale=value;},mode:'first-person',touched:false,get active(){return state.mode==='sailing'||!!base.controller?.active;},currentCamera:()=>state.mode==='sailing'&&!state.detached?state.camera||read():read(),
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
       syncCamera:camera=>base.controller?.syncCamera?.(camera),
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
@@ -70,7 +70,7 @@
     if(base.bindReset)base.bindReset(reset);
     sceneState._gosxMotionController=controller;
     const wake=window.__gosx_scene3d_vessel_wake&&props.vessel.wake!==false?window.__gosx_scene3d_vessel_wake.create(sceneState,helpers,props.vessel):null;
-    function reset() {leave();window.__gosx_scene3d_vessel_input.clear(controls.input);if(wake)wake.reset();if(base.reset)base.reset();Object.assign(state,physics.create(props.vessel,ocean,walk));first=true;lastBob=0;helpers.schedule('vessel-reset');}
+    function reset() {leave();window.__gosx_scene3d_vessel_input.clear(controls.input);if(wake)wake.reset();if(base.reset)base.reset();Object.assign(state,physics.create(props.vessel,ocean,walk));physics.presentation(state,true);first=true;lastBob=0;helpers.schedule('vessel-reset');}
   // @ts-ignore TS7006 -- plain JS method parameters are exercised without transpilation.
     return {controller,state,zoomController:base.controller,reset,cancelTouch:()=>{if(base.cancelTouch)base.cancelTouch();window.__gosx_scene3d_vessel_input.clear(controls.input);},stopInertia:()=>false,advance(dt,seconds,detail,paused,waterSeconds=seconds) {
       if(disposed)return;
@@ -80,19 +80,20 @@
       lastBob=0;
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
       const q=helpers.lowHardware()?low:high,sample=(x,z)=>query.sample(q,x,z,waterSeconds);
-      if(first) {state.y=sample(state.x,state.z).y;first=false;}
+      if(first) {state.y=sample(state.x,state.z).y;physics.presentation(state,true);first=false;}
       const input=window.__gosx_scene3d_vessel_input.value(controls.input,true);
       physics.look(state,input.lookYaw*Math.min(.1,dt)*1.4,input.lookPitch*Math.min(.1,dt)*1.4);
       if(!paused)physics.advance(state,dt,seconds,input,sample,floor);
-      deck(state,physics,surface);
+      const pose=physics.presentation(state);
+      deck(pose,physics,surface);
       if(local&&Math.abs(local.x)<surface.sizeX/2+.3&&Math.abs(local.z)<surface.sizeZ/2+.3&&Math.abs(local.y-state.helm.y)<2) {
-        const p=physics.localPoint(state,local.x,local.y,local.z);
+        const p=physics.localPoint(pose,local.x,local.y,local.z);
         lastBob=physics.deckBob(state,seconds);p.y+=lastBob;
         if(base.controller&&base.controller.carryCamera)base.controller.carryCamera(Object.assign({},camera,p));
       }
-      if(state.mode==='sailing'&&!state.detached)state.camera=physics.camera(state,camera,dt,seconds);
-      model.update(state,controller.currentCamera(),seconds,detail);
-      if(wake)wake.update(state,seconds,sample,detail,controller.currentCamera());
+      if(state.mode==='sailing'&&!state.detached)state.camera=physics.camera(state,camera,dt,seconds,pose);
+      model.update(pose,controller.currentCamera(),seconds,detail);
+      if(wake)wake.update(pose,seconds,sample,detail,controller.currentCamera());
       controls.refresh(state.config.quickBoard||physics.canBoard(state,read()));
       if(mount.getAttribute('data-gosx-scene3d-vessel')!==state.mode)mount.setAttribute('data-gosx-scene3d-vessel',state.mode);
       if(navigation)navigation.advance(dt);

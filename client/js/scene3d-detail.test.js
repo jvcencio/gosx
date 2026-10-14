@@ -92,9 +92,9 @@ test("WebGL detail is a cached compile variant with nil source unchanged", () =>
 test("WebGPU detail preserves the nil shader and uses a separate array binding", () => {
   const c = detailContext("webgpu"); const base = vm.runInContext("WGSL_PBR_FRAGMENT", c);
   assert.equal(c.sceneWebGPUDetailFragment(base, null), base);
-  // Reviewed optics/MRT base: thickness, geometric AA and reflected-radiance output.
+  // Reviewed optics/MRT base and explicit environment-map LOD for seam-free reflections.
   // The browser optics oracle covers behavior; nil detail must keep this base exact.
-  assert.equal(crypto.createHash("sha256").update(base).digest("hex"), "4b6ef60279df5c93caf81692696fdd71c60144899d0185d548bcf590ac52124d");
+  assert.equal(crypto.createHash("sha256").update(base).digest("hex"), "8865456a17f7928ce0cd550c17c8dd0fd1ee1b939ca7ca518bf0e0d9e8ae08ab");
   const shader = c.sceneWebGPUDetailFragment(base, true);
   assert.match(shader, /textureSampleGrad\(detailAtlas/);
   assert.match(shader, /@group\(2\) @binding\(1\) var detailAtlas: texture_2d_array/);

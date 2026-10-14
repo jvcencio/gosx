@@ -451,7 +451,7 @@ wire-gate:
 
 # wire-gate-update rewrites perf/budgets/wire.json to the current measurements.
 # Limits only move down; a raise needs `-allow-raise` and a reason in the
-# route's raise map, which the CI ratchet check enforces.
+# route's raiseReason or raise map, which the CI ratchet check enforces.
 wire-gate-update:
 	WIRE_GATE_MODE=update $(SHELL) ./scripts/wire-gate.sh
 

@@ -241,7 +241,6 @@ function isRendererOwnedChunkSource(backend, source) {
   }
   return false;
 }
-
 function readSceneRendererBackendSrc(backend, options = {}) {
   const root = options.root || clientJS;
   const readSource = options.readSource || ((source) => fs.readFileSync(path.join(root, source), "utf8"));
@@ -259,6 +258,7 @@ function readSceneRendererBackendSrc(backend, options = {}) {
     if (ts.isAsExpression(node) || ts.isSatisfiesExpression(node)) {
       ranges.push([node.expression.end, node.end]);
     }
+    if (ts.isParameter(node) && node.questionToken) ranges.push([node.questionToken.getStart(tree), node.questionToken.end]);
     if (node.type && (ts.isParameter(node) || ts.isVariableDeclaration(node) || (ts.isFunctionLike(node) && node.body))) {
       const colon = source.lastIndexOf(":", node.type.getStart(tree));
       ranges.push([colon, node.type.end]);

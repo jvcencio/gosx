@@ -27,7 +27,7 @@ const {
 test("Scene3D animation loop supports foreground frame caps", () => {
   const mount = readSceneMountSrc();
 
-  assert.match(mount, /function sceneAnimationFrameIntervalMS\(\)/);
+  assert.match(mount, /function sceneAnimationFrameIntervalMS\(reason\)/);
   assert.match(mount, /props && props\.frameIntervalMS/);
   assert.match(mount, /props && props\.maxFrameRate/);
   assert.match(mount, /props && props\.maxFPS/);
@@ -90,8 +90,8 @@ test("Scene3D WebGPU Selena mesh pipeline honors obj.doubleSided (cullMode: none
   assert.match(webgpu, /var pipelineCullMode = options && typeof options\.cullMode === "string" && options\.cullMode \? options\.cullMode : "back";/);
   assert.match(webgpu, /var reflectedDirect = obj\.directVertices && sceneAffineDeterminant\(obj\.modelMatrix, 0\) < 0;/);
   assert.match(webgpu, /var selenaPipelineOptions = obj\.doubleSided\s*\? \{ cullMode: "none" \}\s*:\s*\(reflectedDirect \? \{ frontFace: "cw" \} : null\);/);
-  assert.match(webgpu, /getSelenaPipeline\(mat, blendMode, depthWrite, selenaPipelineOptions\)/);
-  assert.match(webgpu, /getSelenaSkinnedPipeline\(mat, blendMode, depthWrite, selenaPipelineOptions\)/);
+  assert.match(webgpu, /getSelenaPipeline\(material, blend, depth, options\)/);
+  assert.match(webgpu, /getSelenaSkinnedPipeline\(material, blend, depth, options\)/);
 });
 
 test("Scene3D world lines and textured surfaces are WebGPU-native", () => {

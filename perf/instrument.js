@@ -43,6 +43,7 @@
 
   // --- 2. Enable Scene3D frame instrumentation ---
   window.__gosx_scene3d_perf = true;
+  window.__gosx_scene3d_webgpu_pass_timing = true;
 
   // --- 3. Observe scene frames + detect first frame ---
   try {

@@ -2,6 +2,7 @@ package island
 
 import (
 	"encoding/json"
+	"m31labs.dev/gosx/internal/sceneprobe"
 	"net/url"
 	"path"
 	"regexp"
@@ -14,7 +15,7 @@ var perfKTX2Source = regexp.MustCompile(`(?i)\.ktx2(?:[?#]|$)`)
 
 // These mount gates supplement the emitted scripts/preloads, which can start
 // a request even when a scene's mount does not use the advertised feature.
-func (r *Renderer) perfSceneStartupGates() (map[string]bool, bool, error) {
+func (r *Renderer) legacyPerfSceneStartupGates() (map[string]bool, bool, error) {
 	gates, models := map[string]bool{}, false
 	for _, entry := range r.manifest.Engines {
 		if !strings.EqualFold(strings.TrimSpace(entry.Component), "GoSXScene3D") {
@@ -129,4 +130,93 @@ func perfJSTruthy(value any) bool {
 	default:
 		return true
 	}
+}
+
+// Healthy Scene3D entries reuse the same decoded snapshot as preload emission.
+func (r *Renderer) perfSceneStartupGates() (map[string]bool, bool, error) {
+	gates, models := map[string]bool{}, false
+	for i := range r.manifest.Engines {
+		entry := &r.manifest.Engines[i]
+		if !strings.EqualFold(strings.TrimSpace(entry.Component), "GoSXScene3D") {
+			continue
+		}
+		p := sceneProbe(entry)
+		if p.Err != nil {
+			return r.legacyPerfSceneStartupGates()
+		}
+		list := func(top, nested []sceneprobe.Record) []sceneprobe.Record {
+			if nested != nil {
+				return nested
+			}
+			return top
+		}
+		scene := p.Scene
+		if scene == nil {
+			scene = p
+		}
+		mode := strings.ToLower(strings.TrimSpace(p.Controls))
+		gates["zoom"] = gates["zoom"] || p.ControlZoom
+		gates["walk"] = gates["walk"] || p.Walk != nil && (mode == "first-person" || mode == "firstperson" || mode == "fps")
+		gates["vessel"] = gates["vessel"] || p.Vessel != nil && p.Vessel.NodeID != ""
+		gates["ocean-query"] = gates["vessel"]
+		particles, meshes := p.ComputeParticles, p.InstancedMeshes
+		points, animations := p.Points, p.Animations
+		regular, crowds := p.Models, p.InstancedGLBMeshes
+		if p.Scene != nil {
+			particles = list(particles, p.Scene.ComputeParticles)
+			meshes = list(meshes, p.Scene.InstancedMeshes)
+			points = list(points, p.Scene.Points)
+			if p.Scene.Animations != nil {
+				animations = p.Scene.Animations
+			}
+			regular = list(regular, p.Scene.Models)
+			crowds = list(crowds, p.Scene.InstancedGLBMeshes)
+		}
+		gates["compute"] = gates["compute"] || len(particles) > 0 || len(meshes) > 0
+		gates["decompress"] = gates["decompress"] || p.Compression.Truthy
+		compressed := func(records []sceneprobe.Record) bool {
+			for _, row := range records {
+				if row.PerfNeedsDecompress() {
+					return true
+				}
+			}
+			return false
+		}
+		gates["decompress"] = gates["decompress"] || compressed(points) || compressed(meshes)
+		for _, clip := range animations {
+			gates["decompress"] = gates["decompress"] || compressed(clip.Channels)
+		}
+		for _, records := range [][]sceneprobe.Record{regular, crowds} {
+			for _, model := range records {
+				src := model.Src
+				if model.Progressive && strings.TrimSpace(model.PreviewSrc) != "" && strings.TrimSpace(model.FullSrc) != "" {
+					src = model.PreviewSrc
+				}
+				if strings.TrimSpace(src) == "" {
+					continue
+				}
+				models = true
+				pathname := strings.SplitN(strings.SplitN(strings.TrimSpace(src), "?", 2)[0], "#", 2)[0]
+				if parsed, err := url.Parse(strings.TrimSpace(src)); err == nil {
+					pathname = parsed.Path
+				}
+				ext := strings.ToLower(path.Ext(pathname))
+				gates["gltf"] = gates["gltf"] || ext == ".glb" || ext == ".gltf"
+			}
+		}
+		ibl := scene.Environment.IBL
+		ktx := func(src string) bool { return perfKTX2Source.MatchString(strings.TrimSpace(src)) }
+		gates["gltf"] = gates["gltf"] || strings.TrimSpace(ibl.Radiance.URI) != "" && strings.TrimSpace(ibl.Irradiance.URI) != "" && strings.TrimSpace(ibl.BRDFLUT.URI) != "" || ktx(scene.Environment.EnvMap)
+		for _, records := range [][]sceneprobe.Record{scene.Objects, scene.Models, scene.InstancedMeshes, scene.Points, scene.Sprites} {
+			for _, record := range records {
+				for _, src := range []string{record.Texture, record.NormalMap, record.RoughnessMap, record.MetalnessMap, record.OcclusionMap, record.EmissiveMap, record.SpecularIntensityMap, record.SpecularColorMap} {
+					gates["gltf"] = gates["gltf"] || ktx(src)
+				}
+				for _, descriptor := range record.TextureDescriptors {
+					gates["gltf"] = gates["gltf"] || ktx(descriptor.URI)
+				}
+			}
+		}
+	}
+	return gates, models, nil
 }

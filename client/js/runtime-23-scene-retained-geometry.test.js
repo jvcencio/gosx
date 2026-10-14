@@ -602,7 +602,7 @@ for (const fixture of [
   { label: "source", fresh: true },
   { label: "generated", fresh: false },
 ]) {
-test(`Scene3D WebGPU ${fixture.label} retained meshes retire material uniforms with geometry`, async () => {
+test(`Scene3D WebGPU ${fixture.label} retained meshes keep material uniforms until their source leaves`, async () => {
   const harness = await createBoardWebGPUHarness({ fresh: fixture.fresh });
   harness.env.context.__gosx_scene3d_webgpu_render_bundles = false;
   const api = harness.env.context.__gosx_scene3d_api;
@@ -634,8 +634,8 @@ test(`Scene3D WebGPU ${fixture.label} retained meshes retire material uniforms w
   harness.renderer.render(renderBundle(api, object, 2), viewport);
   const revisedMaterialBuffer = latestPBRMaterialBuffer(harness.fake);
   const dirtyRetainedStats = harness.renderer.diagnostics().retainedGeometry;
-  assert.equal(firstMaterialBuffer.destroyed, true, "revision retirement must destroy the old material uniform buffer");
-  assert.notEqual(revisedMaterialBuffer, firstMaterialBuffer, "revision retirement must allocate a fresh material owner");
+  assert.notEqual(firstMaterialBuffer.destroyed, true, "a live source keeps its material buffer across geometry revisions");
+  assert.equal(revisedMaterialBuffer, firstMaterialBuffer, "geometry revisions preserve the live material owner");
   assert.notEqual(revisedMaterialBuffer.destroyed, true);
   assert.equal(dirtyRetainedStats.uploadCalls, secondRetainedStats.uploadCalls + 4, "explicit revision must refresh all retained GPU attributes");
   assert.equal(dirtyRetainedStats.revisionInvalidations, 1);
@@ -682,7 +682,7 @@ for (const fresh of [true, false]) {
       harness.renderer.render(bundle, viewport);
       const bindings = harness.fake.state.renderPasses.slice(start).flatMap(pass => pass.vertexBuffers);
       for (const [slot, values] of [bundle.worldMeshPositions, bundle.worldMeshNormals, bundle.worldMeshUVs, bundle.worldMeshTangents].entries()) {
-        const binding = bindings.find(b => b.slot === slot && b.size === values.byteLength);
+        const binding = bindings.find(b => b.slot === slot && (b.offset || 0) === 0 && (b.size ?? b.buffer.size) === values.byteLength);
         assert.ok(binding, `baked attribute slot ${slot} must be bound`);
         const write = harness.fake.state.writeBufferCalls.filter(w => w.buffer === binding.buffer).at(-1);
         const data = write ? write.data : new Float32Array(binding.buffer.getMappedRange());

@@ -16,7 +16,8 @@
 #   WIRE_GATE_BASE_BUDGET=FILE   base-branch budget for the ratchet check, or
 #                                "none" when the base tree has no budget file.
 #   WIRE_GATE_ALLOW_RAISE=1      with update, also raise limits; the ratchet
-#                                then needs a reason in each raise map.
+#                                then needs a route-level raiseReason or
+#                                a reason in each raise map.
 #   WIRE_GATE_REUSE_DOCS=1       reuse an existing examples/gosx-docs/dist.
 #   WIRE_GATE_OUT=DIR            report directory (default build/wire-gate).
 set -eu

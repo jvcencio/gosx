@@ -418,15 +418,16 @@ func clonePerfAssetUses(uses *buildmanifest.PerfAssetUses) *buildmanifest.PerfAs
 }
 
 func (r *Renderer) perfSceneBackendAllowed(backend string) bool {
-	for _, entry := range r.manifest.Engines {
+	for i := range r.manifest.Engines {
+		entry := &r.manifest.Engines[i]
 		if !strings.EqualFold(entry.Component, "GoSXScene3D") {
 			continue
 		}
-		var props scenePreloadProbe
-		if len(entry.Props) != 0 && json.Unmarshal(entry.Props, &props) != nil {
+		props := sceneProbe(entry)
+		if props.PreloadErr != nil {
 			return false
 		}
-		gpu, gl := props.backends()
+		gpu, gl := props.WebGPU, props.WebGL
 		if backend == "webgpu" && !gpu || backend == "webgl2" && !gl {
 			return false
 		}
@@ -435,12 +436,13 @@ func (r *Renderer) perfSceneBackendAllowed(backend string) bool {
 }
 
 func (r *Renderer) perfSceneAllowsWebGLFallback() bool {
-	for _, entry := range r.manifest.Engines {
+	for i := range r.manifest.Engines {
+		entry := &r.manifest.Engines[i]
 		if !strings.EqualFold(strings.TrimSpace(entry.Component), "GoSXScene3D") {
 			continue
 		}
-		var props scenePreloadProbe
-		if len(entry.Props) != 0 && json.Unmarshal(entry.Props, &props) != nil {
+		props := sceneProbe(entry)
+		if props.PreloadErr != nil {
 			return false
 		}
 		// Device-loss fallback follows sceneBackendCapsAllowsKind, regardless

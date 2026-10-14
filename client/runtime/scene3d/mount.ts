@@ -41,6 +41,12 @@
       if (!scene3DFactoryCurrent()) return {};
     }
     const sceneAttr = name => "data-gosx-scene3d-" + name;
+    // Probe an explicit WebGPU preference before GPU classification so a
+    // usable WebGPU device needs no throwaway WebGL context.
+    if (scenePrefersWebGPU(props)) {
+      await ensurePreferredWebGPUBackend(props, null);
+      if (!scene3DFactoryCurrent()) return {};
+    }
     const capability = sceneCapabilityProfile(props);
     const viewportBase = sceneViewportBase(props);
     const adaptiveQuality = createSceneAdaptiveQualityState(props, viewportBase, capability);
@@ -175,16 +181,10 @@
       if (runtimeScene) {
         return { wants: true, reason: "runtime-program" };
       }
-      if (sceneBool(props.autoRotate, false)) {
-        return { wants: true, reason: "auto-rotate" };
-      }
       if (Array.isArray(sceneState.computeParticles) && sceneState.computeParticles.length > 0) {
         return { wants: true, reason: "compute-particles" };
       }
       if (sceneState.environment && sceneState.environment.ocean) return { wants: true, reason: "ocean" };
-      const sky = sceneState.environment && sceneState.environment.sky;
-      const clouds = sky && sky.mode === "physical" && sky.clouds;
-      if (clouds && clouds.coverage > 0 && clouds.opacity > 0 && clouds.speed > 0 && sceneAtmosphereQuality({ atmosphereTier: sceneAtmosphereTier(adaptiveQuality, capability.tier), qualityEnabled: adaptiveQuality.enabled, qualityProfile: adaptiveQuality.activeProfile }).clouds) return { wants: true, reason: "clouds" };
       if (Array.isArray(sceneState.waterSystems) && sceneState.waterSystems.length > 0) {
         if (sceneWaterSystemsPaused(sceneState)) {
           return { wants: false, reason: "water-paused" };
@@ -193,6 +193,12 @@
       }
       if (sceneHasActiveModelAnimations(sceneState)) {
         return { wants: true, reason: "model-animation" };
+      }
+      const sky = sceneState.environment && sceneState.environment.sky;
+      const clouds = sky && sky.mode === "physical" && sky.clouds;
+      if (clouds && clouds.coverage > 0 && clouds.opacity > 0 && clouds.speed > 0 && sceneAtmosphereQuality({ atmosphereTier: sceneAtmosphereTier(adaptiveQuality, capability.tier), qualityEnabled: adaptiveQuality.enabled, qualityProfile: adaptiveQuality.activeProfile }).clouds) return { wants: true, reason: "clouds" };
+      if (sceneBool(props.autoRotate, false)) {
+        return { wants: true, reason: "auto-rotate" };
       }
       if (Array.isArray(sceneState.points) && sceneState.points.some(function(p) {
         return sceneNumber(p.spinX, 0) !== 0 || sceneNumber(p.spinY, 0) !== 0 || sceneNumber(p.spinZ, 0) !== 0;
@@ -779,12 +785,8 @@
     }
 
     function readSceneWebGPUProgress() {
-      const seq = Number(sceneDebugAttr(mount, sceneAttr("webgpu-frame-seq")));
-      const at = Number(sceneDebugAttr(mount, sceneAttr("webgpu-frame-at")));
-      return {
-        seq: Number.isFinite(seq) ? seq : 0,
-        at: Number.isFinite(at) ? at : 0,
-      };
+      const progress = renderer && typeof renderer.getFrameProgress === "function" ? renderer.getFrameProgress() : null;
+      return { seq: progress && progress.frameSeq || 0, at: progress && progress.frameAt || 0 };
     }
 
     /* @ts-expect-error TS2367 -- sceneWebGLFallbackOwner is a tri-state sentinel: 0 | null | false | the owning renderer instance */ function publishSceneRenderWatchdogState(reason, stalledFor) {
@@ -1420,7 +1422,8 @@
       setAttrValue(mount, sceneAttr("frame-pacing-cost-ms"), framePacingCostMS > 0 ? framePacingCostMS.toFixed(2) : "");
     }
 
-    function sceneAnimationFrameIntervalMS() {
+    let sceneActiveInputUntil = 0;
+    function sceneAnimationFrameIntervalMS(reason) {
       var interval = sceneNumber(props && props.frameIntervalMS, 0);
       if (!(interval > 0)) {
         var fps = sceneNumber(props && props.maxFrameRate, 0);
@@ -1430,6 +1433,13 @@
         if (fps > 0) {
           interval = 1000 / Math.min(240, Math.max(1, fps));
         }
+      }
+      // The default cap applies only to ambient work. Interactive simulation,
+      // transitions and the shared input window keep the display cadence.
+      if (!(interval > 0)) {
+        var activeUntil = Math.max(sceneActiveInputUntil, sceneNumber(sceneState._scrollCamera?._activeInputUntil, 0));
+        var ambient = /^(auto-rotate|clouds|point-spin|material-clock|(?:object|label|sprite|html)-animation)$/.test(reason);
+        if (ambient && activeUntil < sceneNowMilliseconds() && !(sceneState._gosxMotionController && sceneState._gosxMotionController.active)) interval = 1000 / 60;
       }
       // Scroll-driven camera scenes need to track the display while input is
       // active even when their idle animation is intentionally capped (for
@@ -1481,7 +1491,7 @@
           framePacingTick2 = framePacingTick1;
           framePacingTick1 = rawTickDeltaMS;
           var vsyncSampleMS = sceneFramePacingMedianOf3(framePacingTick1, framePacingTick2, framePacingTick3);
-          var advanced = sceneFramePacingAdvanceOnTick(vsyncSampleMS, framePacingVsyncMS, framePacingCostMS, framePacingActiveK, framePacingPendingK, framePacingPendingStreak, framePacingTicksSinceRender, sceneAnimationFrameIntervalMS());
+          var advanced = sceneFramePacingAdvanceOnTick(vsyncSampleMS, framePacingVsyncMS, framePacingCostMS, framePacingActiveK, framePacingPendingK, framePacingPendingStreak, framePacingTicksSinceRender, sceneAnimationFrameIntervalMS(""));
           framePacingVsyncMS = advanced.vsyncEstimateMS;
           framePacingActiveK = advanced.activeK;
           framePacingPendingK = advanced.pendingK;
@@ -1499,7 +1509,7 @@
           return;
         }
         if (animation.wants) {
-          var interval = sceneAnimationFrameIntervalMS();
+          var interval = sceneAnimationFrameIntervalMS(animation.reason);
           // Keep the fractional display tick after a capped frame. Resetting
           // the clock to `now` turns a 60 FPS cap on a 100 Hz display into 50 FPS.
           // A changed cap starts a new phase; it must not inherit old time debt.
@@ -2004,6 +2014,7 @@
       if (disposed || sceneWebGLFallbackOwner === false || sceneWebGLFallbackOwner === renderer) {
         return;
       }
+      if (/^(controls|controls-inertia|controls-reset|controls-keyboard|controls-pan|controls-zoom|camera|signal-camera|scroll|gizmo-drag|vessel-helm|vessel-camera|vessel-look|vessel-reset|vessel-command)$/.test(reason || "")) sceneActiveInputUntil = sceneNowMilliseconds() + 180;
       lastRenderReason = reason || "refresh";
       recordScenePerfCounter("schedule:" + (reason || "refresh"));
       // A runtime program or a scene command can add a particle system or an

@@ -73,6 +73,9 @@ func WriteHTML(w http.ResponseWriter, res HTMLResponse) {
 
 	html := basepath.HTML(basepath.FromRequest(res.Request), gosx.RenderHTML(res.Node))
 	streaming := res.Deferred != nil && res.Deferred.HasDeferred()
+	if streaming {
+		disableCompressedBodyCache(w)
+	}
 
 	if res.Cache.SharedCacheable() {
 		// Handler and layout nodes can capture the request nonce before they mark
