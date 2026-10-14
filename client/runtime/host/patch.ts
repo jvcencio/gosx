@@ -831,8 +831,9 @@
   function legacyDispatchAttrs() {
     // A versioned patch URL can serve this chunk to an older bootstrap/WASM.
     // Those runtimes predate dispatch opcodes and send markers as ops 1/2.
-    var contract = window.__gosx_runtime_contract;
-    return contract && typeof contract.abiVersion === "number" && contract.abiVersion < 4;
+    // ABI-3 bootstraps already publish this version from the generated contract.
+    var support = gosxRuntime.support;
+    return support && typeof support.abiVersion === "number" && support.abiVersion < 4;
   }
 
   /**

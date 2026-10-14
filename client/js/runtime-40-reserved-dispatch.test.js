@@ -9,14 +9,22 @@ const {
 
 const reserved = ["data-gosx-handler", "data-gosx-path", "data-gosx-on-click", "DATA-GOSX-ON-INPUT", "data-gosx-on-"];
 
-test("current patch chunk accepts legacy dispatch markers only for an ABI-3 runtime", () => {
+test("current patch chunk accepts ABI-3 markers through the published runtime contract", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
   for (const abiVersion of [undefined, 3, 4]) {
     const wrapper = new FakeElement("div", null);
     wrapper.id = "island";
     const button = new FakeElement("button", null);
     wrapper.appendChild(button);
     const env = createContext({ elements: [wrapper] });
-    if (abiVersion !== undefined) env.context.__gosx_runtime_contract = { abiVersion };
+    if (abiVersion !== undefined) {
+      runScript(fs.readFileSync(path.join(__dirname, "../runtime/host/compatibility.ts"), "utf8"), env.context, "compatibility.ts");
+      runScript(fs.readFileSync(path.join(__dirname, "../runtime/generated/runtime-abi.ts"), "utf8"), env.context, "runtime-abi.ts");
+      env.context.__gosx_runtime_contract = { ...env.context.__gosx_runtime_contract, abiVersion };
+      runScript(fs.readFileSync(path.join(__dirname, "../runtime/wasm/abi.ts"), "utf8"), env.context, "abi.ts");
+      assert.equal(env.context.__gosx.runtime.support.abiVersion, abiVersion);
+    }
     runScript(patchSource, env.context, "patch.ts");
     const apply = ops => env.context.__gosx_apply_patches("island", JSON.stringify(ops));
     for (const name of reserved) {
