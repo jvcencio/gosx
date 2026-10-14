@@ -2297,8 +2297,8 @@ function createContext(options) {
         this.onload = null;
         this.onerror = null;
         this.complete = false;
-        this.naturalWidth = 1;
-        this.naturalHeight = 1;
+        this.width = this.naturalWidth = 1;
+        this.height = this.naturalHeight = 1;
         this._src = "";
       }
 
@@ -4261,11 +4261,25 @@ function makeFakeGPUDevice(options) {
       return pipeline;
     },
     createComputePipelineAsync(desc) {
-      return Promise.resolve({ __kind: "computePipeline", label: desc && desc.label });
+      return Promise.resolve().then(() => device.createComputePipeline(desc));
     },
     createRenderPipeline(desc) {
       validateRenderPipelineDesc(desc);
-      const pipeline = { __kind: "renderPipeline", desc };
+      const pipeline = { __kind: "renderPipeline", desc, getBindGroupLayout(index) {
+        if (desc.layout !== "auto") return desc.layout.desc.bindGroupLayouts[index];
+        const declarations = parseWGSLBindingKinds([desc.vertex?.module?.code, desc.fragment?.module?.code].join("\n"));
+        const entries = [];
+        for (const [key, kind] of declarations) {
+          const [group, binding] = key.split(":").map(Number);
+          if (group !== index) continue;
+          const entry = { binding, visibility: 3 };
+          if (kind === "texture") entry.texture = {};
+          else if (kind === "sampler") entry.sampler = {};
+          else entry.buffer = { type: kind === "uniform" ? "uniform" : kind === "storage-read" ? "read-only-storage" : "storage" };
+          entries.push(entry);
+        }
+        return device.createBindGroupLayout({ entries });
+      } };
       state.renderPipelines.push(pipeline);
       return pipeline;
     },
@@ -4833,6 +4847,17 @@ function deviceCallDelta(before, after) {
   };
 }
 
+// Retry the same frame after builtin pipeline compilation settles. Authored
+// shader fallback/recovery remains visible to tests after the first submission.
+async function renderPreparedFrame(renderer, ...args) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const result = renderer.render(...args);
+    if (result !== "pending") return result;
+    await flushAsyncWork();
+  }
+  assert.fail("frame stayed pending after pipeline preparation");
+}
+
 // renderWaterPerfShapeFrames renders N consecutive frames of one scenario
 // (`duck` true/false) against a FRESH harness (fresh device + renderer), and
 // returns the per-frame device-call delta array. Each frame rebuilds the
@@ -4862,7 +4887,7 @@ async function renderWaterPerfShapeFrames(duck, frameCount, resolution) {
       objects, [], [], [], [], {}, frame * 0.016, [], [], [], state.waterSystems, [], 0, false,
     );
     const before = deviceCallSnapshot(harness.fake);
-    harness.renderer.render(bundle, { width: 64, height: 64 }, {
+    await renderPreparedFrame(harness.renderer, bundle, { width: 64, height: 64 }, {
       nowMS: frame * 17,
       displayDeltaMS: frame === 0 ? 0 : 17,
       active: true,
@@ -5209,6 +5234,13 @@ function makeFakeGPUDeviceForCompute(options) {
 // createBoardWebGPUHarness but injects a caller-supplied fake device instead
 // of the default makeFakeGPUDevice(), enabling per-test async pipeline control.
 async function createComputeParticleHarness(fakeDevice, options) {
+  // Callers inject authored-shader failures. Builtin parallel preparation has
+  // its own coverage in scene3d-webgpu-first-frame.test.js.
+  const authoredRenderAsync = fakeDevice.createRenderPipelineAsync;
+  if (typeof authoredRenderAsync === "function") fakeDevice.createRenderPipelineAsync = function(desc) {
+    if (/^gosx-(?:points-authored|particle-render-authored|selena-post)/.test(desc.label || "")) return authoredRenderAsync.call(fakeDevice, desc);
+    return Promise.resolve().then(() => fakeDevice.createRenderPipeline(desc));
+  };
   const opts = options || {};
   const env = createContext({
     enableWebGPU: true,
@@ -5310,6 +5342,9 @@ function makeFakeGPUDeviceForPoints(options) {
     return Promise.resolve(null);
   };
   device.createRenderPipelineAsync = function(desc) {
+    if (!/^gosx-(?:points-authored|particle-render-authored|selena-post)/.test(desc.label || "")) {
+      return Promise.resolve().then(() => device.createRenderPipeline(desc));
+    }
     renderPipelineAsyncCalls.push(desc);
     if (typeof opts.pipelineAsyncBehavior === "function") {
       return opts.pipelineAsyncBehavior(desc);
@@ -5640,7 +5675,7 @@ async function createCullSystemHarness(fakeDevice) {
 
 // bundleMeshScene builds a mesh-only scene. Mesh-only matters: water, points,
 // labels, screen lines, surfaces and world lines all keep the direct path.
-function bundleMeshScene(api, objects) {
+function bundleMeshScene(api, objects, rendererCapabilities) {
   const state = api.createSceneState({
     scene: {
       materials: [{ id: "m", color: "#8de1ff", roughness: 0.4, metalness: 0.1 }],
@@ -5651,7 +5686,7 @@ function bundleMeshScene(api, objects) {
   return api.createSceneRenderBundle(
     64, 64, "#000000",
     { x: 0, y: 0, z: 4, fov: 60, near: 0.05, far: 128 },
-    withMaterials, [], [], [], [], {}, 0, [], [], [], [], [], 0, false,
+    withMaterials, [], [], [], [], {}, 0, [], [], [], [], [], 0, false, rendererCapabilities,
   );
 }
 
@@ -5941,6 +5976,7 @@ module.exports = {
   deviceCallSnapshot,
   deviceCallDelta,
   renderWaterPerfShapeFrames,
+  renderPreparedFrame,
   waterComputeKernelPipeline,
   assertWaterComputeKernelBindings,
   loadBoardLabels,

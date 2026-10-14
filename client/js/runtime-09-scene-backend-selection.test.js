@@ -302,7 +302,7 @@ test("Scene3D WebGPU render watchdog recreates stalled animated renderer", async
 
   assert.equal(mount.getAttribute("data-gosx-scene3d-renderer"), "webgpu");
   assert.equal(createCount, 1);
-  assert.equal(renderCount, 1);
+  assert.equal(renderCount, 2, "WebGPU starts without an extra animation frame");
   assert.equal(raf.count(), 1);
 
   now = 8000;
@@ -550,7 +550,7 @@ test("Scene3D WebGPU device loss falls back to WebGL on a replacement canvas", a
   assert.equal(mount.getAttribute("data-gosx-scene3d-renderer"), "webgpu");
   assert.equal(firstCanvas.getAttribute("data-gosx-scene3d-canvas"), "true");
   assert.equal(env.context.__testWebGPUCreateCount, 1);
-  assert.equal(env.context.__testWebGPURenderCount, 1);
+  assert.equal(env.context.__testWebGPURenderCount, 2, "WebGPU starts without an extra animation frame");
 
   env.context.__testWebGPUDeviceLost = true;
   now = 4000;
@@ -1865,7 +1865,8 @@ test("Scene3D device-lost WebGL fallback stays typed and command-capable until e
   const firstCanvas = mount.children[0];
   assert.equal(mount.getAttribute("data-gosx-scene3d-renderer"), "webgpu");
   assert.equal(env.context.__testWebGPUCreateCount, 1);
-  assert.equal(env.context.__testWebGPUInstances[0].renderCount, 1);
+  const rendersBeforeLoss = env.context.__testWebGPUInstances[0].renderCount;
+  assert.equal(rendersBeforeLoss, 2, "WebGPU starts without an extra animation frame");
 
   // --- Device lost -> the watchdog's forceFallback path swaps to WebGL,
   // exactly like the sibling non-recovery test above. ---
@@ -1940,7 +1941,7 @@ test("Scene3D device-lost WebGL fallback stays typed and command-capable until e
   assert.notEqual(mount.__gosxScene3DState, stickyState);
   assert.notEqual(mount.__gosxScene3DHandle, stickyHandle);
   assert.ok(env.context.__testWebGPUInstances[1].renderCount >= 1);
-  assert.equal(env.context.__testWebGPUInstances[0].renderCount, 1, "disposed lost generation must never render again");
+  assert.equal(env.context.__testWebGPUInstances[0].renderCount, rendersBeforeLoss, "disposed lost generation must never render again");
 });
 
 test("Scene3D WebGPU device loss counts once (not twice) against the probe's reprobe backoff, and the loss reason survives a later successful reprobe", async () => {
