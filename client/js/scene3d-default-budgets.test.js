@@ -77,8 +77,10 @@ test("transitions retain display cadence alongside ambient spin", async () => {
 });
 
 test("Canvas2D draws CSS coordinates at the capped backing scale below DPR 1", async () => {
-  const { canvas } = await mountScene({ width: 2560, height: 1440 },
+  const s = await mountScene({ width: 2560, height: 1440 },
     { enableWebGL2: false, disableCanvas2D: false, devicePixelRatio: 1 });
+  s.tick(1017);
+  const { canvas } = s;
   assert.equal(canvas.width, 1920);
   assert.equal(canvas.height, 1080);
   const scales = canvas._canvasContext.ops.filter(op => op[0] === "scale");
