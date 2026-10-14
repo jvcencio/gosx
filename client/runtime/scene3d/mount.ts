@@ -11,7 +11,7 @@
 
     let props=ctx.props||{};
     const needsExperience=props.experienceRef||props.presentation||props.dayCycle||props.exploration||props.metricsSignal;
-    if(needsExperience&&!window.__gosx_runtime_api.scene3DExperience)await ensureSceneGatedFeatureLoaded("command","gosxScene3dCommandUrl","");
+    if(needsExperience&&!window.__gosx_runtime_api.scene3DExperience)await ensureSceneGatedFeatureLoaded("experience","gosxScene3dExperienceUrl","");
     const experience=window.__gosx_runtime_api.scene3DExperience;
     if(needsExperience)props=await experience.load(props,ctx.signal);
     if (!scene3DFactoryCurrent()) return {};

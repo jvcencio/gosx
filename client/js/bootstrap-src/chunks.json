@@ -309,9 +309,14 @@
       ]
     },
     {
+      "name": "bootstrap-feature-scene3d-experience.js",
+      "sources": [
+        "../runtime/scene3d/mount-presentation.ts"
+      ]
+    },
+    {
       "name": "bootstrap-feature-scene3d-command.js",
       "sources": [
-        "../runtime/scene3d/mount-presentation.ts",
         "../runtime/scene3d/command-runtime.ts"
       ]
     },

@@ -56,6 +56,8 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 // WebGPU and combined route totals are recorded in the qualification evidence.
 // Only exhausted targets move to measured minima; allowance policy is fixed.
 const budgets = [
+  // Typed world controls are advertised only by scenes that request them.
+  { file: "bootstrap-feature-scene3d-experience.js", raw: 10701, gzip: 4578, brotli: 4115 },
   // Finite choreography remains demand-loaded; existing route limits are unchanged.
   { file: "bootstrap-feature-scene3d-timeline.js", raw: 5_400, gzip: 2_400, brotli: 2_200 },
   // The opt-in chunk now includes fixed-camera pan, touch centroid tracking and
@@ -801,7 +803,7 @@ const budgets = [
     // Frame review repairs on sailing main measure 1,941,865 raw bytes. Raise the target by exactly 1,147 bytes; keep the 65,536-byte allowance.
     // WebGPU image mip chains merged with the reserved-dispatch and spread guards measure 1,944,367 raw bytes. Raise the target by exactly 1,736 bytes; keep the 65,536-byte allowance.
     // Merged lazy pipelines measure 1,950,775 raw bytes; raise only this target by 6,408 B under the unchanged allowance.
-    file: "bootstrap.js", raw: 1902661, gzip: 527255,
+    file: "bootstrap.js", raw: 1902728, gzip: 527272,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->
