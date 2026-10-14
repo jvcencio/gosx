@@ -12,6 +12,11 @@
 - Add splitpane, dock, tabs and collapsible UI recipes. Layout signals can persist
   through controller storage; document the controls in `docs/workbench.md`.
 
+- Keep the entire `data-gosx-*` framework namespace out of attribute spreads.
+  Write trusted framework attributes explicitly. Declarative attribute bindings
+  now refuse framework targets, inline event handlers, style, and unsafe URL
+  schemes, including JavaScript URLs hidden by ASCII control characters.
+
 - Reuse template, CSS, metadata, and runtime-manifest lookups in production
   mode (`GOSX_ENV=production` or `prod`). Restart after replacing build files;
   `GOSX_DEV=1` keeps file-change checks active.

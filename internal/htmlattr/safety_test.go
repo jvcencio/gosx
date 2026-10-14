@@ -52,7 +52,7 @@ func TestReservedDispatchName(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"data-gosx-link", "data-gosx-region", "data-gosx-handlers", "data-gosx-pathology", "data-gosx-on"} {
-		if ReservedDispatchName(name) || !SafeAuthoredName(name) || !SafeSpreadName(name) {
+		if ReservedDispatchName(name) || !SafeAuthoredName(name) || SafeSpreadName(name) {
 			t.Errorf("ordinary name refused: %q", name)
 		}
 	}
@@ -63,6 +63,19 @@ func TestReservedDispatchNameUsesASCIIOnly(t *testing.T) {
 		want := name == "data-gosx-on-İnput" // the event suffix does not affect prefix ownership
 		if got := ReservedDispatchName(name); got != want {
 			t.Errorf("ReservedDispatchName(%q)=%v want %v", name, got, want)
+		}
+	}
+}
+
+func TestSafeSpreadNameRejectsFrameworkNamespace(t *testing.T) {
+	for _, name := range []string{"data-gosx-", "data-gosx-bind-source", "DATA-GOSX-BIND-ATTR", "data-gosx-action", "data-gosx-action-target", "data-gosx-on-click", "data-gosx-live-bind-attr"} {
+		if SafeSpreadName(name) {
+			t.Errorf("framework attribute accepted from spread: %s", name)
+		}
+	}
+	for _, name := range []string{"data-app-id", "data-gosx", "aria-label", "href"} {
+		if !SafeSpreadName(name) {
+			t.Errorf("ordinary attribute rejected: %s", name)
 		}
 	}
 }

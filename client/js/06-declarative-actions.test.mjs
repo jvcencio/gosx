@@ -808,11 +808,12 @@ test("declarative attribute bindings cannot overwrite or remove dispatch markers
         "data-gosx-bind-source": ".active",
         "data-gosx-bind-attr": `${name}:data-value;data-gosx-link:data-value`,
         [name]: "real",
+        "data-gosx-link": "trusted",
       });
       const { ctx } = runModule({ queryMap: { ".active": source }, queryAll: { "[data-gosx-bind-source]": [root] } });
       ctx.window.__gosx.actions.refreshBindings();
       assert.equal(root.getAttribute(name), "real", name);
-      assert.equal(root.getAttribute("data-gosx-link"), value || null);
+      assert.equal(root.getAttribute("data-gosx-link"), "trusted");
     }
   }
 });
@@ -827,4 +828,29 @@ test("declarative toggles cannot inject or remove reserved dispatch markers", ()
       assert.equal(target.getAttribute(name), existing, name);
     }
   }
+});
+
+test("attribute bindings refuse executable and framework targets before mutation", () => {
+ for (const name of ["onclick", "OnError", "ONLOAD", "style", "STYLE", "data-gosx-action", "DATA-GOSX-BIND-ATTR", "data-gosx-on-click", "x y", "x=onclick"]) {
+  for (const value of ["alert(1)", "", null]) {
+   const source = makeEl(value === null ? {} : { "data-value": value });
+   const root = makeEl({ "data-gosx-bind-source": ".active", "data-gosx-bind-attr": name+":data-value", [name]: "original" });
+   const { ctx } = runModule({ queryMap: { ".active": source }, queryAll: { "[data-gosx-bind-source]": [root] } });
+   ctx.window.__gosx.actions.refreshBindings();
+   assert.equal(root.getAttribute(name), "original", name+"="+value);
+  }
+ }
+});
+
+test("attribute bindings refuse unsafe URLs and retain safe values", () => {
+ for (const name of ["href", "HREF", "src", "action", "formaction", "poster"]) {
+  for (const value of ["javascript:alert(1)", " JaVaScRiPt:alert(1)", "java\tscript:alert(1)", "java\nscript:alert(1)", "\u0000javascript:alert(1)", "data:text/html,x", "vbscript:x", "/safe", "https://example.com/img", "../img", "#item", "?q=javascript:x"]) {
+   const source = makeEl({ "data-value": value });
+   const root = makeEl({ "data-gosx-bind-source": ".active", "data-gosx-bind-attr": name+":data-value", [name]: "/original" });
+   const { ctx } = runModule({ queryMap: { ".active": source }, queryAll: { "[data-gosx-bind-source]": [root] } });
+   ctx.window.__gosx.actions.refreshBindings();
+   const safe = value.startsWith("/") || value.startsWith("https:") || value.startsWith("../") || value.startsWith("#") || value.startsWith("?");
+   assert.equal(root.getAttribute(name), safe ? value : "/original", name+"="+value);
+  }
+ }
 });

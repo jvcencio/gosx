@@ -66,10 +66,10 @@ func ValidTag(name string) bool {
 }
 
 // SafeSpreadName permits data-driven attributes without executable handlers
-// or CSS. Authors can supply trusted style explicitly instead of in a spread.
+// or CSS or framework behavior. Authors can supply trusted attributes explicitly.
 func SafeSpreadName(name string) bool {
 	name = strings.ToLower(name)
-	return SafeAuthoredName(name) && !strings.HasPrefix(name, "on") && name != "style"
+	return SafeAuthoredName(name) && !strings.HasPrefix(name, "on") && name != "style" && !strings.HasPrefix(name, "data-gosx-")
 }
 
 // FilterURL allows web, email and telephone URLs and relative references.

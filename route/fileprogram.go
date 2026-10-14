@@ -1956,6 +1956,11 @@ func attrValue(attrs []ir.Attr, env fileRenderEnv, names ...string) any {
 				return true
 			}
 		}
+		// Filter spread names before using their values to activate framework
+		// behavior, as well as before writing their HTML attributes.
+		if !htmlattr.SafeSpreadName(normalizeFileAttrName(name)) {
+			continue
+		}
 		for _, attr := range attrs {
 			if attr.Kind != ir.AttrSpread {
 				continue

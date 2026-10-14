@@ -456,6 +456,19 @@
     });
   }
 
+  function bindingTargetAllowed(name, value) {
+    var lower = name.replace(/[A-Z]/g, function(c) { return String.fromCharCode(c.charCodeAt(0) + 32); });
+    if (!/^[a-z_:][a-z0-9_.:-]*$/.test(lower) || lower.indexOf("on") === 0 || lower === "style" || lower.indexOf("data-gosx-") === 0) return false;
+    if (/^(href|src|action|formaction|xlink:href|poster)$/.test(lower) && value !== null) {
+      // Match the server URL filter before assigning a DOM attribute. Browsers
+      // ignore ASCII controls in schemes, including embedded tabs/newlines.
+      var clean = String(value).trim().replace(/[\u0000-\u0020\u007f]/g, "");
+      var colon = clean.indexOf(":");
+      if (colon >= 0 && !/[/?#]/.test(clean.slice(0, colon)) && !/^(https?|mailto|tel)$/i.test(clean.slice(0, colon))) return false;
+    }
+    return true;
+  }
+
   function bindAttribute(target, spec, source) {
     String(spec || "").split(";").forEach(function (mapping) {
       var split = mapping.indexOf(":");
@@ -463,7 +476,7 @@
       var targetName = mapping.slice(0, split).trim();
       var sourceName = mapping.slice(split + 1).trim();
       var value = source.getAttribute(sourceName);
-      if (!targetName || gosxHost.attributes.isReservedDispatchName(targetName)) return;
+      if (!bindingTargetAllowed(targetName, value)) return;
       if (value === null || value === "") target.removeAttribute(targetName);
       else target.setAttribute(targetName, value);
     });
