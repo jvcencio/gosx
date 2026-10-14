@@ -784,7 +784,9 @@ const budgets = [
     // minimum reviewed target under the unchanged 65,536-byte allowance.
     // Retained scene caches and transferred frame buffers add 737 raw bytes
     // beyond the previous allowance; compressed targets remain unchanged.
-    file: "bootstrap.js", raw: 1874338, gzip: 524100,
+    // Colour lifetime and frame-cached snapshots measure 1,940,344 raw bytes.
+    // Raise only the raw target by 470 B to the exact minimum; keep the 65,536 B allowance.
+    file: "bootstrap.js", raw: 1874808, gzip: 524100,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->
