@@ -182,3 +182,31 @@ test("browser chord grammar mirrors the Go grammar", async () => {
     assert.equal(parse(text), null, text);
   }
 });
+
+test("submit actions call requestSubmit on a form or on a button's form", async () => {
+  const form = new FakeElement("form", null), button = new FakeElement("button", null);
+  form.id = "undo-form"; button.id = "undo-button"; button.form = form;
+  const calls = [];
+  form.requestSubmit = (submitter) => calls.push(submitter === undefined ? "form" : submitter);
+  const manifest = { commands: [
+    { id: "edit.undo", title: "Undo", keys: ["Mod+Z"], action: { submit: "#undo-form" } },
+    { id: "edit.redo", title: "Redo", action: { submit: "#undo-button" } },
+    { id: "edit.gone", title: "Gone", action: { submit: "#nothing" } },
+  ] };
+  const env = bootWorkbench({ elements: [form, button], manifest, platform: "Win32" });
+  await flushAsyncWork();
+  const api = env.context.__gosx.commands;
+  const seen = [], errors = [];
+  env.document.addEventListener("gosx:command", e => seen.push(e.detail.id));
+  env.document.addEventListener("gosx:command:error", e => errors.push(e.detail));
+  assert.equal(keydown(env, { key: "z", ctrlKey: true }).prevented, true);
+  assert.deepEqual(calls, ["form"]);
+  assert.deepEqual(seen, ["edit.undo"]);
+  assert.equal(api.run("edit.redo"), true);
+  assert.deepEqual(calls, ["form", button]);
+  assert.doesNotThrow(() => api.run("edit.gone"));
+  assert.equal(calls.length, 2);
+  assert.equal(JSON.stringify(errors), JSON.stringify([{ id: "edit.gone", reason: "submit-target" }]));
+  assert.deepEqual(seen, ["edit.undo", "edit.redo", "edit.gone"]);
+  assert.equal(api.list()[0].submit, "#undo-form");
+});

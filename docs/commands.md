@@ -61,7 +61,8 @@ public API. Use it to reserve an action that the application has not implemented
 ## Actions and command elements
 
 An `Action` can write `Signal` with `Value`, open the disclosure selected by
-`Open`, close the disclosure selected by `Close`, or combine these operations.
+`Open`, close the disclosure selected by `Close`, submit the form named by
+`Submit`, or combine these operations.
 Omitting `Value`, or supplying null, writes `{id, at}`. Use GoSX's disclosure
 markup for open/close actions. A nonreserved command needs at least one action.
 Every successful run dispatches `gosx:command` on `document` with `{id, at}`;
@@ -79,9 +80,28 @@ marks reserved command elements with `aria-disabled="true"`. Generate the server
 attribute with `command.KeyShortcuts("Mod+Z")`, which includes both Mod
 alternatives. Give commands without a chord a button or another activation path.
 
+### Submit a form
+
+`Action{Submit: "#undo-form"}` makes a command submit a form. `Submit` is a CSS
+selector. When it matches a `form`, the workbench calls `form.requestSubmit()`.
+When it matches a submit button inside a form, the workbench calls
+`form.requestSubmit(button)`, so the button's name and value are sent. Any other
+result, including no match, dispatches `gosx:command:error` on `document` with
+`{id, reason: "submit-target"}`. The `gosx:command` event still fires once.
+
+```go
+command.Command{ID: "edit.undo", Title: "Undo", Keys: []string{"Mod+Z"},
+	Action: command.Action{Submit: "#undo-form"}}
+```
+
+The form must be a managed form, such as an action form. Then a chord submits it
+exactly as a click on its submit button would, and the submit keeps the
+revision and queue semantics of the managed form path. A reserved command
+cannot carry `Submit`.
+
 `window.__gosx.commands` provides `list()`, `run(id)`, `available(id)`,
 `platformMod()` (`"ctrl"` or `"meta"`), and `chord(text)` (a parsed chord or null).
-`list()` returns ID, title, keys, group, reserved, and current availability.
+`list()` returns ID, title, keys, group, submit selector, reserved, and current availability.
 `run(id)` returns false for missing, reserved, or conditionally unavailable
 commands. It applies the same action as a keyboard shortcut or button.
 
