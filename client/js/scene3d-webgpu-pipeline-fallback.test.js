@@ -68,7 +68,7 @@ for (const [label, kind] of [
     assert.equal(h.events.filter(event => event.message === "pipeline-failed").length, 1);
     assert.equal(h.warnings.length, 1);
     assert.equal(h.events.find(event => event.message === "pipeline-failed").detail.error, validationMessage);
-    assert.ok(h.fake.state.renderPasses.some(pass => pass.draws.some(draw => draw.pipeline && draw.pipeline.desc.label === "gosx-post-fxaa")));
+    assert.ok(h.fake.state.renderPasses.some(pass => pass.draws.some(draw => draw.pipeline && /^gosx-post-(canvas-)?fxaa$/.test(draw.pipeline.desc.label))));
     assert.equal(h.fake.state.renderPasses.some(pass => pass.pipelines.some(pipeline => pipeline.desc.label === "gosx-post-" + label)), false);
     assert.ok(h.fake.state.submitCount > 10, "raw scene and remaining effects must keep presenting frames");
     assert.equal(h.stack.length, 0, "aborted frames must pop the frame scope");
@@ -160,7 +160,7 @@ test("a newly enabled post pass preserves water simulation commands while its pi
     await flushAsyncWork();
   }
   assert.equal(dispatches("gosx-water-seed-drops"), 1, "retries must preserve the simulation seed state");
-  assert.ok(h.fake.state.renderPasses.some(pass => pass.draws.some(draw => draw.pipeline && draw.pipeline.desc.label === "gosx-post-fxaa")));
+  assert.ok(h.fake.state.renderPasses.some(pass => pass.draws.some(draw => draw.pipeline && /^gosx-post-(canvas-)?fxaa$/.test(draw.pipeline.desc.label))));
   assert.equal(h.renderer.getFailureReason(), "");
   assert.equal(h.events.filter(event => event.message === "pipeline-failed").length, 0);
   h.renderer.dispose();
@@ -384,4 +384,18 @@ test("disposing before validation settles leaves the retired renderer silent", a
   await flushAsyncWork();
   assert.equal(h.events.filter(event => event.message === "pipeline-failed").length, 0);
   assert.equal(h.warnings.length, 0);
+});
+
+
+test("WebGPU canvas post pipeline rejection keeps HDR effects and disables only direct output", async t => {
+  const h = await failureHarness(/^gosx-post-canvas-toneMapping$/);
+  t.after(() => h.renderer.dispose());
+  h.scene.postEffects = [{ kind: "bloom" }, { kind: "toneMapping" }];
+  await frames(h);
+  const diagnostic = h.renderer.diagnostics();
+  assert.equal(h.renderer.getFailureReason(), "");
+  assert.deepEqual(Array.from(diagnostic.disabledPipelinePasses), ["directOutput"]);
+  assert.equal(h.mount.__gosxScene3DWebGPUStats.postEffects, 2);
+  assert.equal(h.fake.state.renderPasses.at(-1).draws[0].pipeline.desc.label, "gosx-post-present");
+  assert.ok(h.fake.state.renderPasses.some(pass => pass.draws.some(draw => draw.pipeline?.desc.label === "gosx-post-toneMapping")));
 });

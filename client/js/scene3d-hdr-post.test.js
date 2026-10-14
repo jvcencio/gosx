@@ -61,7 +61,7 @@ test("HDR post targets survive water, MSAA, resize, and post toggles", async () 
         "both bloom textures retain values above the threshold");
       const last = passes.at(-1);
       assert.equal(last.descriptor.colorAttachments[0].view.__kind, "canvasTextureView");
-      assert.equal(last.draws[0].pipeline.desc.fragment.module.label, "post-present");
+      assert.equal(last.draws[0].pipeline.desc.fragment.module.label, size === 64 ? "post-fxaa" : "post-present");
     }
     assert.notEqual(h.configureCalls.at(-1).format, "rgba16float", "the canvas keeps its presentation format");
   }
