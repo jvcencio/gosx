@@ -41,6 +41,7 @@
   runtime and WASM together when updating. ABI version 4 rejects older WASM;
   the current WASM also negotiates dispatch op support with the separately
   loaded patch chunk and falls back to legacy attribute ops when needed.
+  Current patch chunks also accept legacy marker ops from an ABI-3 bootstrap.
   Handwritten `RenderIsland` content can bind trusted handlers with
   `gosx.DispatchAttr("click", "handler")`; ordinary attributes and spreads
   cannot manufacture these markers.

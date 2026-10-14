@@ -1534,19 +1534,7 @@ func (vm *VM) resolveElementAttrs(attrs []program.Attr) (resolved, domAttrs []Re
 	}
 
 	// Append the event markers after the static prefix.
-	for _, event := range events {
-		eventType := eventAttrType(event.Name)
-		domAttrs = append(domAttrs, ResolvedAttr{
-			Name:  eventMarkerAttr(eventType),
-			Value: event.Handler,
-		})
-		if eventType == "click" {
-			domAttrs = append(domAttrs, ResolvedAttr{
-				Name:  "data-gosx-handler",
-				Value: event.Handler,
-			})
-		}
-	}
+	domAttrs = appendGeneratedDispatchAttrs(domAttrs, events)
 	return
 }
 

@@ -678,7 +678,7 @@
    */
   function applyRemoveAttr(target, op) {
     var name = op.attrName;
-    if (gosxHost.attributes.isReservedDispatchName(name)) return;
+    if (gosxHost.attributes.isReservedDispatchName(name) && !legacyDispatchAttrs()) return;
 
     target.removeAttribute(name);
 
@@ -828,6 +828,13 @@
   // Attribute helpers
   // ---------------------------------------------------------------------------
 
+  function legacyDispatchAttrs() {
+    // A versioned patch URL can serve this chunk to an older bootstrap/WASM.
+    // Those runtimes predate dispatch opcodes and send markers as ops 1/2.
+    var contract = window.__gosx_runtime_contract;
+    return contract && typeof contract.abiVersion === "number" && contract.abiVersion < 4;
+  }
+
   /**
    * Set an attribute or DOM property on an element.
    *
@@ -839,7 +846,7 @@
    * @param {string}  value - Attribute value as a string.
    */
   function setAttr(el, name, value) {
-    if (gosxHost.attributes.isReservedDispatchName(name)) return;
+    if (gosxHost.attributes.isReservedDispatchName(name) && !legacyDispatchAttrs()) return;
     var normalized = String(name).toLowerCase();
     value = publicAttribute(normalized, value);
     if (normalized === "hidden" && String(value).toLowerCase() === "until-found") {

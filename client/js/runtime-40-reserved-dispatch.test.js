@@ -9,6 +9,28 @@ const {
 
 const reserved = ["data-gosx-handler", "data-gosx-path", "data-gosx-on-click", "DATA-GOSX-ON-INPUT", "data-gosx-on-"];
 
+test("current patch chunk accepts legacy dispatch markers only for an ABI-3 runtime", () => {
+  for (const abiVersion of [undefined, 3, 4]) {
+    const wrapper = new FakeElement("div", null);
+    wrapper.id = "island";
+    const button = new FakeElement("button", null);
+    wrapper.appendChild(button);
+    const env = createContext({ elements: [wrapper] });
+    if (abiVersion !== undefined) env.context.__gosx_runtime_contract = { abiVersion };
+    runScript(patchSource, env.context, "patch.ts");
+    const apply = ops => env.context.__gosx_apply_patches("island", JSON.stringify(ops));
+    for (const name of reserved) {
+      apply([{ kind: 1, path: "", attrName: name, text: "edit" }]);
+      assert.equal(button.getAttribute(name), abiVersion === 3 ? "edit" : null);
+      button.setAttribute(name, "edit");
+      apply([{ kind: 1, path: "", attrName: name, text: "save" }]);
+      assert.equal(button.getAttribute(name), abiVersion === 3 ? "save" : "edit");
+      apply([{ kind: 2, path: "", attrName: name }]);
+      assert.equal(button.getAttribute(name), abiVersion === 3 ? null : "edit");
+    }
+  }
+});
+
 test("island attribute patches cannot inject or remove reserved dispatch markers", () => {
   const wrapper = new FakeElement("div", null);
   wrapper.id = "island";

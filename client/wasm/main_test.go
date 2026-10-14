@@ -1224,10 +1224,12 @@ func TestPatchMailboxFallsBackForStalePatchChunk(t *testing.T) {
 			}
 			// The current patch chunk must retain the protected dispatch opcodes.
 			facade := js.Global().Get("__gosx")
-			facade.Get("host").Get("patch").Set("dispatchOps", 1)
-			applyPatchMailbox("island", mailbox)
-			if len(got) != 2 || got[0].Kind != vm.PatchSetDispatch || got[1].Kind != vm.PatchRemoveDispatch {
-				t.Fatalf("current chunk received legacy ops: %+v", got)
+			for _, capability := range []int{1, 2} {
+				facade.Get("host").Get("patch").Set("dispatchOps", capability)
+				applyPatchMailbox("island", mailbox)
+				if len(got) != 2 || got[0].Kind != vm.PatchSetDispatch || got[1].Kind != vm.PatchRemoveDispatch {
+					t.Fatalf("chunk with dispatchOps=%d received legacy ops: %+v", capability, got)
+				}
 			}
 		})
 	}

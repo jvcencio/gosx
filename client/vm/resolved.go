@@ -100,6 +100,12 @@ func materializeDOMAttrs(attrs []ResolvedAttr, events []ResolvedEvent) []Resolve
 			out = append(out, attr)
 		}
 	}
+	return appendGeneratedDispatchAttrs(out, events)
+}
+
+// appendGeneratedDispatchAttrs is the only constructor for privileged DOM
+// markers, shared by VM evaluation and lazy resolved-node materialization.
+func appendGeneratedDispatchAttrs(out []ResolvedAttr, events []ResolvedEvent) []ResolvedAttr {
 	for _, event := range events {
 		eventType := eventAttrType(event.Name)
 		out = append(out, ResolvedAttr{

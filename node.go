@@ -125,13 +125,17 @@ func Attr(name string, value any) nodeAttr {
 }
 
 // DispatchAttr explicitly binds a trusted handler to a DOM event in handwritten
-// RenderIsland content. Use event types such as "click" or "input". Unlike Attr
+// RenderIsland content. Use event types such as "click", "input", or
+// "document-keydown". Unlike Attr
 // and Spread, this constructor can emit framework dispatch metadata.
 func DispatchAttr(event, handler string) nodeAttr {
 	if event == "" {
 		return nodeAttr{}
 	}
 	for _, c := range event {
+		if c == '-' && (event == "document-keydown" || event == "document-keyup" || event == "window-resize") {
+			continue
+		}
 		if c < 'a' || c > 'z' {
 			return nodeAttr{}
 		}

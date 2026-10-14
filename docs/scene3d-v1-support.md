@@ -154,7 +154,7 @@ props and fetched only for first-person walking. Evidence lives in
 | `hub-command-diff` | enforced | Diffable fields produce a lossless command stream. |
 | `hub-remount-atomic-reject` | enforced | Remount fields reject before mutation or watcher notification. |
 | `scene-p95-budget-route` | blocked | Add a dedicated corpus route and measured p95/p99 evidence. |
-| `generic-adapter-command-envelope` | enforced | ABI 3 returns a strict versioned initial-command envelope; real WebGL2/WebGPU WASM mounts prove stale suppression, targeted hub application, and atomic remount rejection. |
+| `generic-adapter-command-envelope` | enforced | ABI 4 returns a strict versioned initial-command envelope; real WebGL2/WebGPU WASM mounts prove stale suppression, targeted hub application, and atomic remount rejection. |
 
 ## Explicit non-goals
 

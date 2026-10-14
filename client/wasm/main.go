@@ -354,7 +354,7 @@ func applyPatchMailbox(islandID string, mailbox []byte) {
 			}
 		}
 	}
-	dispatchOps := patch.Type() == js.TypeObject && patch.Get("dispatchOps").Type() == js.TypeNumber && patch.Get("dispatchOps").Int() == 1
+	dispatchOps := patch.Type() == js.TypeObject && patch.Get("dispatchOps").Type() == js.TypeNumber && patch.Get("dispatchOps").Int() >= 1
 	if apply.Type() == js.TypeFunction && dispatchOps {
 		apply.Invoke(islandID, bytesToUint8Array(mailbox))
 		return
