@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add opt-in workbench drag handles with pointer capture, cancellation, fine
+  adjustment, reset, keyboard controls and synchronized ARIA values. Share the
+  input chunk's pointer gesture helper with controller drag-and-drop.
+- Bind CSS custom properties to shared signals and data attributes, upgrade plain
+  tab links to accessible tabs, and mirror native details to shared open state.
+  Bind new elements after region swaps and publish the hashed input URL on
+  workbench pages without controllers.
+- Add splitpane, dock, tabs and collapsible UI recipes. Layout signals can persist
+  through controller storage; document the controls in `docs/workbench.md`.
+
 - Reuse template, CSS, metadata, and runtime-manifest lookups in production
   mode (`GOSX_ENV=production` or `prod`). Restart after replacing build files;
   `GOSX_DEV=1` keeps file-change checks active.
