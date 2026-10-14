@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `command.Action.Submit`, a CSS selector for a managed form or its submit
+  button. The workbench calls `requestSubmit` on it, so a chord submits through
+  the page's managed form path. `commands.list()` rows carry `submit`.
 - Add opt-in workbench drag handles with pointer capture, cancellation, fine
   adjustment, reset, keyboard controls and synchronized ARIA values. Share the
   input chunk's pointer gesture helper with controller drag-and-drop.
