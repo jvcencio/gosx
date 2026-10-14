@@ -48,6 +48,9 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 // 65,536-byte monolith allowance, 5% policy and all other targets stay fixed.
 // Dispatch marker ownership and ABI-4 compatibility add measured bytes on main.
 // Only five exhausted targets move to exact minima; allowance policy stays fixed.
+// Declarative binding target and URL allowlists measure 1,942,631 monolith raw
+// bytes and 151,413 raw / 37,946 Brotli lite bytes. Only these three exhausted
+// targets move to exact minima; shared allowances stay fixed.
 const budgets = [
   // Finite choreography remains demand-loaded; existing route limits are unchanged.
   { file: "bootstrap-feature-scene3d-timeline.js", raw: 5_400, gzip: 2_400, brotli: 2_200 },
@@ -792,7 +795,7 @@ const budgets = [
     // Raise only the raw target by 470 B to the exact minimum; keep the 65,536 B allowance.
     // Combined main plus shared sailing presentation measures 1,940,718 raw bytes; only the exhausted raw target rises.
     // Frame review repairs on sailing main measure 1,941,865 raw bytes. Raise the target by exactly 1,147 bytes; keep the 65,536-byte allowance.
-    file: "bootstrap.js", raw: 1876680, gzip: 524100,
+    file: "bootstrap.js", raw: 1877095, gzip: 524100,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->
@@ -937,7 +940,7 @@ const budgets = [
   // The complete motion fix measures 147,576 / 41,324 / 36,551. Reviewed
   // hard-limit headroom is 1,944 / 1,096 / 1,039 bytes.
   // The lite core carries the same document liveness guard: +961 raw / +294 Brotli.
-  { file: "bootstrap-lite.js", raw: 143861, gzip: 40400, brotli: 36094 },
+  { file: "bootstrap-lite.js", raw: 144202, gzip: 40400, brotli: 36139 },
   // Bumped raw 510_000 -> 512_000 for the WebGL Selena executor. Bumped gzip
   // 140_000 -> 140_500 for static GLB live model records and transform
   // reprojection used by baked computed meshes.
