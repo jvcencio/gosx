@@ -231,6 +231,7 @@ function wgpuOceanDraw(resources, pass, opts) {
     }
     state = resources.renderer ? resources.renderer.draw(pass, opts) : "unavailable";
   }
-  if (opts.mount && opts.mount.setAttribute) opts.mount.setAttribute("data-gosx-scene3d-ocean", state);
+  if (opts.publishAttribute) opts.publishAttribute("data-gosx-scene3d-ocean", state);
+  else if (opts.mount && opts.mount.setAttribute) opts.mount.setAttribute("data-gosx-scene3d-ocean", state);
   return state !== "none";
 }
