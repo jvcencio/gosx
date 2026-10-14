@@ -15448,7 +15448,7 @@
         : (obj && obj.vertices && typeof obj.vertices === "object" ? obj.vertices : obj);
     }
 
-    function webGPURetireRetainedMaterialOwner(owner) {
+    function webGPURetireRetainedMaterialOwner(owner: any) {
       if (!owner) return;
       var slots = ["_gosxWGPUMaterialUniform", "_gosxWGPUMaterialShadowUniform"];
       for (var slotIndex = 0; slotIndex < slots.length; slotIndex++) {
@@ -15469,7 +15469,7 @@
       retainedMaterialOwnerSources.delete(owner);
     }
 
-    function webGPURetainedMaterialOwner(obj) {
+    function webGPURetainedMaterialOwner(obj: any) {
       var vertices = obj && obj.vertices;
       var entry = vertices && retainedMeshAttributeCache.get(vertices);
       if (entry && entry.revision !== obj.geometryRevision) {
