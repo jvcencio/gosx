@@ -790,8 +790,9 @@ const budgets = [
     // Raise only the raw target by 470 B to the exact minimum; keep the 65,536 B allowance.
     // Combined main plus shared sailing presentation measures 1,940,718 raw bytes; only the exhausted raw target rises.
     // Frame review repairs on sailing main measure 1,941,865 raw bytes. Raise the target by exactly 1,147 bytes; keep the 65,536-byte allowance.
-    // Image mip generation retains its existing 1,006 B raw-target increase on top of main.
-    file: "bootstrap.js", raw: 1877335, gzip: 524100,
+    // Combined upload, frame and mip runtime measures 1,943,601 B after regeneration.
+    // Set the exact minimum raw target; retain the 65,536 B allowance and compressed targets.
+    file: "bootstrap.js", raw: 1878065, gzip: 524100,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->
