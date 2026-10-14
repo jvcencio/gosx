@@ -2014,7 +2014,7 @@
       if (disposed || sceneWebGLFallbackOwner === false || sceneWebGLFallbackOwner === renderer) {
         return;
       }
-      if (/^(controls|controls-inertia|controls-reset|controls-keyboard|camera|signal-camera|scroll|gizmo-drag|vessel-helm|vessel-camera|vessel-look|vessel-reset)$/.test(reason || "")) sceneActiveInputUntil = sceneNowMilliseconds() + 180;
+      if (/^(controls|controls-inertia|controls-reset|controls-keyboard|controls-pan|controls-zoom|camera|signal-camera|scroll|gizmo-drag|vessel-helm|vessel-camera|vessel-look|vessel-reset|vessel-command)$/.test(reason || "")) sceneActiveInputUntil = sceneNowMilliseconds() + 180;
       lastRenderReason = reason || "refresh";
       recordScenePerfCounter("schedule:" + (reason || "refresh"));
       // A runtime program or a scene command can add a particle system or an

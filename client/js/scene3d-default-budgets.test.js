@@ -20,7 +20,7 @@ async function mountScene(extra = {}, environment = {}) {
   const canvas = mount.children[0];
   const renders = () => canvas._webglContext.ops.filter(op => op[0] === "clear").length;
   const tick = time => { now = time; raf.flush(now); };
-  return { mount, canvas, tick, renders };
+  return { mount, canvas, tick, renders, env };
 }
 
 test("main canvas defaults to at most 2073600 backing pixels at DPR 2", async () => {
@@ -108,3 +108,16 @@ test("an authored minimum DPR overrides only the default pixel budget", async ()
   const capped = await mountScene({ minDevicePixelRatio: 2, maxPixels: 2073600 });
   assert.ok(capped.canvas.width * capped.canvas.height <= 2073600);
 });
+
+for (const reason of ["motion-frame", "motion-binding", "motion-dispose"]) {
+  test(`${reason} does not extend the user-input window`, async () => {
+    const s = await mountScene();
+    for (let i = 1; i <= 120; i++) s.tick(1000 + i * 1000 / 120);
+    s.env.context.__gosx_scene3d_command_bridge = {applyMountedMotionFrame: (_state, _batches, _update, schedule) => schedule(reason)};
+    s.mount.__gosxScene3DHandle.applyMotionFrame([]);
+    s.tick(2000 + 1000 / 120);
+    const before = s.renders();
+    for (let i = 2; i <= 13; i++) s.tick(2000 + i * 1000 / 120);
+    assert.equal(s.renders() - before, 6);
+  });
+}
