@@ -1253,7 +1253,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "publishWebGPUFrameStats@17480:5",
+      "name": "mirrorWebGPUFrameAttributes@17651:5",
       "lines": 313,
       "cyclomatic": 257,
       "cognitive": 257,
