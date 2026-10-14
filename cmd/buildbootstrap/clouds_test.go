@@ -9,9 +9,7 @@ import (
 )
 
 func TestSelenaCloudSurfaceLinksBothBackends(t *testing.T) {
-	result, err := selena.Compile(scene.SelenaCloudSource, selena.CompileOptions{
-		Targets: []selena.Target{selena.TargetGLSL, selena.TargetWGSL},
-	})
+	result, err := compileCloudSurface()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,6 +31,26 @@ func TestSelenaCloudSurfaceLinksBothBackends(t *testing.T) {
 		}
 		if strings.Contains(linked, "u.") || strings.Contains(linked, "gl_FragColor") {
 			t.Fatalf("%s retained entry-point state", artifact.Target)
+		}
+	}
+}
+
+func TestCloudHelpersBindRepeatedHashIntermediates(t *testing.T) {
+	baseline, err := selena.Compile(scene.SelenaCloudSource, selena.CompileOptions{Targets: []selena.Target{selena.TargetGLSL, selena.TargetWGSL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, err := compileCloudSurface()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, artifact := range bound.Artifacts {
+		before, after := baseline.Artifacts[i].Fragment, artifact.Fragment
+		if artifact.Target == selena.TargetWGSL {
+			before, after = baseline.Artifacts[i].Source, artifact.Source
+		}
+		if len(after)*5 >= len(before)*4 {
+			t.Errorf("%s repeated hash expressions remain: %d -> %d bytes", artifact.Target, len(before), len(after))
 		}
 	}
 }

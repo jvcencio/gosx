@@ -25,3 +25,17 @@ test('experience descriptors require the same origin, bound bytes and preserve a
  h.ctx.fetch=async()=>({ok:true,text:async()=> 'x'.repeat(131073)});await assert.rejects(h.ctx.load(props),/descriptor budget/);
  const inline={scene:geometry};assert.equal(await h.ctx.load(inline),inline);
 });
+
+test('night lighting fades with the solar cycle and a held day avoids repeated Go signal writes',()=>{
+ const h=harness(),sun={color:'#fff',castShadow:true},night={color:'#a8c4e8',castShadow:false};
+ const state={environment:{sky:{mode:'physical'},haze:{}},lights:new Map([['sun',sun],['night',night]])};
+ const cycle=h.api.cycle({initialHour:0,sunLightId:'sun',nightLightId:'night',nightIntensity:.28,nightEnvIntensity:.075,inputSignal:'$clock',outputSignal:'$day'},state,{light:l=>l.intensity,environment:()=>5});
+ cycle.advance(0);assert.equal(sun.intensity,0);assert.equal(night.intensity,.28);assert.equal(night._lightHash,.28);assert.ok(night.directionY<0);assert.equal(night.color,'#a8c4e8');assert.equal(night.castShadow,false);assert.equal(state.environment.envIntensity,.075);
+ cycle.seek(12);cycle.advance(0);assert.equal(night.intensity,0);assert.ok(sun.intensity>8);assert.equal(sun.castShadow,true);
+ h.subscriptions.get('$clock')(false);cycle.advance(2);const count=h.records.length;
+ for(let seconds=3;seconds<=63;seconds++)cycle.advance(seconds);
+ assert.equal(h.records.length,count,'holding unchanged light should not rerender Go islands every fifth of a second');
+ assert.equal(h.records.at(-1).value.Automatic,false);assert.equal(h.records.at(-1).value.Hour,12);
+ cycle.seek(0);cycle.advance(64);assert.equal(night.intensity,.28);assert.equal(h.records.at(-1).value.Hour,0);
+ cycle.dispose();assert.equal(h.subscriptions.size,0);
+});
