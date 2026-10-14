@@ -32,12 +32,18 @@
   Before this, HTML kept the first duplicate, so an authored
   `data-gosx-on-click={expr}` beat the real marker and a runtime value could
   choose which handler fired. Other `data-gosx-*` names (`data-gosx-link`,
-  `data-gosx-region`) are unchanged. A `{...spread}` is not checked at compile
-  time; the renderer drop covers it. Server component renderers and the WASM
+  `data-gosx-region`) are unchanged. Island components reject `{...spread}`
+  at compile time; server renderers also filter reserved names from spreads.
+  Server component renderers and the WASM
   VM also discard these names. Browser attribute patches, navigation and
   declarative bindings cannot change dispatch markers; generated event
   bindings use dedicated dispatch patch operations. Regenerate the browser
-  runtime and WASM together when updating.
+  runtime and WASM together when updating. ABI version 4 rejects older WASM;
+  the current WASM also negotiates dispatch op support with the separately
+  loaded patch chunk and falls back to legacy attribute ops when needed.
+  Handwritten `RenderIsland` content can bind trusted handlers with
+  `gosx.DispatchAttr("click", "handler")`; ordinary attributes and spreads
+  cannot manufacture these markers.
 
 ## v0.57.15
 

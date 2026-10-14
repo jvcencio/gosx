@@ -57,3 +57,12 @@ func TestReservedDispatchName(t *testing.T) {
 		}
 	}
 }
+
+func TestReservedDispatchNameUsesASCIIOnly(t *testing.T) {
+	for _, name := range []string{"data-goſx-handler", "data-gosx-on-İnput", "data-goſx-path"} {
+		want := name == "data-gosx-on-İnput" // the event suffix does not affect prefix ownership
+		if got := ReservedDispatchName(name); got != want {
+			t.Errorf("ReservedDispatchName(%q)=%v want %v", name, got, want)
+		}
+	}
+}

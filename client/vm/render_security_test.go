@@ -79,3 +79,15 @@ func TestReconcileReservedAttrsUsesOnlyGeneratedDispatch(t *testing.T) {
 		t.Fatalf("eventless authored markers leaked: %+v", ops)
 	}
 }
+
+func TestReconcileCallerDOMAttrsCannotGenerateDispatchOps(t *testing.T) {
+	before := &ResolvedTree{Nodes: []ResolvedNode{{Tag: "button", DOMAttrs: []ResolvedAttr{{Name: "data-gosx-handler", Value: "edit"}}}}}
+	after := &ResolvedTree{Nodes: []ResolvedNode{{Tag: "button", DOMAttrs: []ResolvedAttr{{Name: "data-gosx-handler", Value: "save"}}}}}
+	for _, pair := range [][2]*ResolvedTree{{before, after}, {before, {Nodes: []ResolvedNode{{Tag: "button"}}}}} {
+		for _, op := range ReconcileTrees(pair[0], pair[1], nil) {
+			if op.Kind == PatchSetDispatch || op.Kind == PatchRemoveDispatch {
+				t.Fatalf("caller attrs acquired generated privilege: %+v", op)
+			}
+		}
+	}
+}

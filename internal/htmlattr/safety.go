@@ -21,9 +21,26 @@ func ValidName(name string) bool {
 // ReservedDispatchName identifies attributes owned by island event dispatch.
 // Match HTML names without case sensitivity, including the bare event prefix.
 func ReservedDispatchName(name string) bool {
-	return strings.EqualFold(name, "data-gosx-handler") ||
-		strings.EqualFold(name, "data-gosx-path") ||
-		(len(name) >= len("data-gosx-on-") && strings.EqualFold(name[:len("data-gosx-on-")], "data-gosx-on-"))
+	return equalFoldASCII(name, "data-gosx-handler") ||
+		equalFoldASCII(name, "data-gosx-path") ||
+		(len(name) >= len("data-gosx-on-") && equalFoldASCII(name[:len("data-gosx-on-")], "data-gosx-on-"))
+}
+
+// HTML attribute names fold ASCII letters only.
+func equalFoldASCII(name, want string) bool {
+	if len(name) != len(want) {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // SafeAuthoredName permits HTML names that cannot replace dispatch metadata.

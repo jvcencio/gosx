@@ -1078,6 +1078,7 @@
   }
 
   gosxHost.patch = Object.assign(gosxHost.patch || {}, {
+    dispatchOps: 1,
     apply: applyPatchOperations,
     applyJSON: applyPatchesJSON,
     applyMailbox: applyPatchMailbox,

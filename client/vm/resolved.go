@@ -58,6 +58,8 @@ type ResolvedAttr struct {
 	Name  string
 	Value string
 	Bool  bool
+	// generatedDispatch is set only when materializing framework event bindings.
+	generatedDispatch bool
 }
 
 // ResolvedEvent is a delegated DOM event binding attached to a concrete node.
@@ -101,13 +103,15 @@ func materializeDOMAttrs(attrs []ResolvedAttr, events []ResolvedEvent) []Resolve
 	for _, event := range events {
 		eventType := eventAttrType(event.Name)
 		out = append(out, ResolvedAttr{
-			Name:  eventMarkerAttr(eventType),
-			Value: event.Handler,
+			generatedDispatch: true,
+			Name:              eventMarkerAttr(eventType),
+			Value:             event.Handler,
 		})
 		if eventType == "click" {
 			out = append(out, ResolvedAttr{
-				Name:  "data-gosx-handler",
-				Value: event.Handler,
+				generatedDispatch: true,
+				Name:              "data-gosx-handler",
+				Value:             event.Handler,
 			})
 		}
 	}

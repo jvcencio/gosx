@@ -3,6 +3,7 @@ package route
 import (
 	"fmt"
 	"m31labs.dev/gosx"
+	"m31labs.dev/gosx/internal/htmlattr"
 	"m31labs.dev/gosx/ir"
 	"math"
 	"strings"
@@ -171,7 +172,22 @@ func TestServerRenderDropsReservedDispatchAttrs(t *testing.T) {
 		}
 		var b strings.Builder
 		r := &fileProgramRenderer{}
-		r.renderResolvedAttrs(&b, "button", []RenderAttr{{Name: name, Value: "evil"}, {Name: "data-gosx-link", Value: "true"}})
+		r.renderAttrsWithProfile(&b, "button", []ir.Attr{
+			{Kind: ir.AttrStatic, Name: name, Value: "evil"},
+			{Kind: ir.AttrExpr, Name: name, Expr: "evil"},
+			{Kind: ir.AttrBool, Name: name},
+			{Kind: ir.AttrStatic, Name: "data-gosx-link", Value: "true"},
+		}, fileRenderEnv{}, "", func(tag string, attrs []RenderAttr) []RenderAttr {
+			for _, attr := range attrs {
+				if htmlattr.ReservedDispatchName(attr.Name) {
+					t.Errorf("authored reserved name reached hook: %s", attr.Name)
+				}
+			}
+			return attrs
+		})
+		if r.err != nil {
+			t.Fatalf("authored reserved name failed render: %v", r.err)
+		}
 		if b.String() != ` data-gosx-link="true"` {
 			t.Fatalf("profile output: %s", b.String())
 		}
@@ -179,5 +195,16 @@ func TestServerRenderDropsReservedDispatchAttrs(t *testing.T) {
 		if strings.Contains(fallback, "evil") {
 			t.Fatalf("fallback output: %s", fallback)
 		}
+	}
+}
+
+func TestRenderProfileStillRejectsIntroducedDispatchAttrs(t *testing.T) {
+	var b strings.Builder
+	r := &fileProgramRenderer{}
+	r.renderAttrsWithProfile(&b, "button", nil, fileRenderEnv{}, "", func(string, []RenderAttr) []RenderAttr {
+		return []RenderAttr{{Name: "data-gosx-on-click", Value: "evil"}}
+	})
+	if r.err == nil || strings.Contains(b.String(), "evil") {
+		t.Fatalf("profile-introduced marker accepted: %q, %v", b.String(), r.err)
 	}
 }

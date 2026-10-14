@@ -89,3 +89,29 @@ test("binary mailbox attribute patches cannot overwrite dispatch markers", () =>
   env.context.__gosx.host.patch.applyMailbox("island", new Uint8Array());
   for (const name of reserved) assert.equal(button.getAttribute(name), null, name);
 });
+
+
+test("patch chunk advertises dispatch ops and uses ASCII name matching", () => {
+ const env = createContext({});
+ runScript(patchSource, env.context, "patch.ts");
+ assert.equal(env.context.__gosx.host.patch.dispatchOps, 1);
+ const reserved = env.context.__gosx.host.attributes.isReservedDispatchName;
+ assert.equal(reserved("DATA-GOSX-HANDLER"), true);
+ assert.equal(reserved("data-goſx-handler"), false);
+ assert.equal(reserved("data-gosx-on-İnput"), true);
+});
+
+
+test("current bootstrap rejects pre-dispatch-op WASM in the handshake", () => {
+ const fs = require("node:fs");
+ const path = require("node:path");
+ const env = createContext({});
+ runScript(fs.readFileSync(path.join(__dirname, "../runtime/generated/runtime-abi.ts"), "utf8"), env.context, "runtime-abi.ts");
+ runScript(fs.readFileSync(path.join(__dirname, "../runtime/host/compatibility.ts"), "utf8"), env.context, "compatibility.ts");
+ runScript(fs.readFileSync(path.join(__dirname, "../runtime/wasm/abi.ts"), "utf8"), env.context, "abi.ts");
+ const contract = env.context.__gosx_runtime_contract;
+ const handshake = { abiVersion: 3, mailboxVersion: contract.mailboxVersion, manifestHash: contract.manifestHash, variant: "core", featureMask: contract.variants.core };
+ assert.equal(env.context.__gosx.runtime.support.validationError(handshake), "runtime ABI version mismatch");
+ handshake.abiVersion = contract.abiVersion;
+ assert.equal(env.context.__gosx.runtime.support.validationError(handshake), "");
+});

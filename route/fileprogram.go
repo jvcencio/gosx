@@ -1607,6 +1607,11 @@ const formErrorDescribedbyAttr = "data-gosx-form-error-describedby"
 func resolveFileAttrs(attrs []ir.Attr, env fileRenderEnv, excludeSpreadKey string) []RenderAttr {
 	out := make([]RenderAttr, 0, len(attrs))
 	for _, attr := range attrs {
+		// Authored dispatch names are inert data; only names introduced by a
+		// trusted AttrWriter can fail the profile render.
+		if attr.Kind != ir.AttrSpread && htmlattr.ReservedDispatchName(attr.Name) {
+			continue
+		}
 		switch attr.Kind {
 		case ir.AttrStatic:
 			out = append(out, RenderAttr{Name: attr.Name, Value: attr.Value})

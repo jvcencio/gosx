@@ -149,7 +149,7 @@ gosxHost.lifecycle = gosxHost.lifecycle || {
 // dispatch metadata; framework event bindings use dedicated patch operations.
 gosxHost.attributes = gosxHost.attributes || {
   isReservedDispatchName: function(name) {
-    var lower = String(name).toLowerCase();
-    return lower === "data-gosx-handler" || lower === "data-gosx-path" || lower.indexOf("data-gosx-on-") === 0;
+    var lower = String(name).replace(/[A-Z]/g, c => c.toLowerCase());
+    return /^data-gosx-(handler$|path$|on-)/.test(lower);
   }
 };
