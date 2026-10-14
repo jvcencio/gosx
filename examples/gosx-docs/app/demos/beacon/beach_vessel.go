@@ -5,7 +5,7 @@ import (
 	"m31labs.dev/gosx/scene"
 )
 
-const blackglassWakeTextureSrc = blackglassBeachModelRoot + "wake-foam.png?v=0013e0d81460"
+const blackglassWakeTextureSrc = blackglassBeachModelRoot + "wake-foam.png?v=9d1797f91df0"
 
 func blackglassBeachVessel() *scene.Vessel {
 	return &scene.Vessel{
