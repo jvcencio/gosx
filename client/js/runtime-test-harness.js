@@ -2297,8 +2297,8 @@ function createContext(options) {
         this.onload = null;
         this.onerror = null;
         this.complete = false;
-        this.naturalWidth = 1;
-        this.naturalHeight = 1;
+        this.width = this.naturalWidth = 1;
+        this.height = this.naturalHeight = 1;
         this._src = "";
       }
 
