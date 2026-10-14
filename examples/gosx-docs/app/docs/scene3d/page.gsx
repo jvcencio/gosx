@@ -1469,7 +1469,7 @@ func Page() Node {
 					<span class="inline-code">Props.MaxPixels</span>
 					and
 					<span class="inline-code">MaxDevicePixelRatio</span>
-					— cap the main render target.
+					— cap the main render target at 2,073,600 backing pixels (1080p) by default. Set MaxPixels to scene.MaxPixelsUnbounded to opt out, or supply another positive budget.
 				</li>
 				<li>
 					<span class="inline-code">Props.MSAASamples</span>
@@ -1481,7 +1481,7 @@ func Page() Node {
 					<span class="inline-code">MaxFPS</span>
 					, and
 					<span class="inline-code">FrameIntervalMS</span>
-					— throttle the loop.
+					— override the default 60 fps ambient loop cap. Input and transitions follow the display by default; set MaxFrameRate above 60 to raise the ambient cap.
 				</li>
 				<li>
 					<span class="inline-code">Props.FramePacing</span>

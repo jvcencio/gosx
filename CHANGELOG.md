@@ -56,6 +56,12 @@
   Handwritten `RenderIsland` content can bind trusted handlers with
   `gosx.DispatchAttr("click", "handler")`; ordinary attributes and spreads
   cannot manufacture these markers.
+- Cap Scene3D main canvases at 2,073,600 backing pixels and ambient animation
+  at 60 fps by default. Input and transitions follow the display. Set
+  `Props.MaxPixels` to another positive budget or `scene.MaxPixelsUnbounded`,
+  an explicit `Props.MinDevicePixelRatio` overrides the default pixel budget.
+  Set `Props.MaxFrameRate` above 60 or use `FramePacing: "vsync-divisor"`
+  to opt out of the ambient cap.
 
 - Upgrade gotreesitter to v0.56.0. Explicit generic signal constructors that
   were silently dropped now lower correctly, and valid Go that previously

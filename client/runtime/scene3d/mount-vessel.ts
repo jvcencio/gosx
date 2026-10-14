@@ -39,7 +39,7 @@
     if(props.walk) {walk.surfaces=walk.surfaces||[];walk.surfaces.push(surface);}
     const mount=canvas.closest('[data-gosx-engine="GoSXScene3D"]')||canvas.parentElement;
     const read=()=>helpers.current(base.controller,sceneState.camera,sceneState._scrollCamera);
-    const controller={get zoomScale(){return base.controller.zoomScale||1;},set zoomScale(value: number){base.controller.zoomScale=value;},mode:'first-person',touched:false,get active(){return state.mode==='sailing'||!!base.controller.active;},currentCamera:()=>state.mode==='sailing'&&!state.detached?state.camera||read():read(),
+    const controller={get zoomScale(){return base.controller.zoomScale||1;},set zoomScale(value: number){base.controller.zoomScale=value;},mode:'first-person',touched:false,get active(){return state.mode==='sailing'||!!base.controller?.active;},currentCamera:()=>state.mode==='sailing'&&!state.detached?state.camera||read():read(),
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
       syncCamera:camera=>base.controller?.syncCamera?.(camera),
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.

@@ -203,6 +203,8 @@ type Props struct {
 	// trackpad movement, then automatically returns to the idle cap after the
 	// input quiets. Zero preserves the authored idle cadence for back-compat.
 	ScrollFrameRate float64 `json:"scrollFrameRate,omitempty"`
+	// MaxFrameRate overrides the default 60 FPS cap for ambient animation.
+	// Input and transitions follow the display unless a rate is authored.
 	MaxFrameRate    float64 `json:"maxFrameRate,omitempty"`
 	MaxFPS          float64 `json:"maxFPS,omitempty"`
 	FrameIntervalMS float64 `json:"frameIntervalMS,omitempty"`
@@ -227,15 +229,18 @@ type Props struct {
 	// remains an upper bound on the paced rate: k grows past 4 when the
 	// authored cap needs a longer interval than four vsync ticks. An
 	// empty value, or any other string, keeps the existing
-	// fixed-interval behavior.
+	// fixed-interval behavior. Vsync-divisor replaces the default ambient cap;
+	// only authored frame-rate caps constrain its divisor.
 	FramePacing string `json:"framePacing,omitempty"`
 	// MaxDevicePixelRatio overrides the automatic 1.5 DPR cap on phones
 	// (coarse pointer and a screen short side of at most 600 CSS pixels).
 	// Capability, adaptive-quality and MaxPixels budgets still apply.
 	MaxDevicePixelRatio float64 `json:"maxDevicePixelRatio,omitempty"`
 	// MaxPixels caps the render target by total backing pixels after DPR.
-	// Zero leaves the render target governed by the DPR cap alone.
-	MaxPixels             int     `json:"maxPixels,omitempty"`
+	// Zero defaults to 2,073,600 pixels (1080p). MaxPixelsUnbounded opts out.
+	MaxPixels int `json:"maxPixels,omitempty"`
+	// MinDevicePixelRatio overrides the default pixel budget. An explicit
+	// positive MaxPixels still takes precedence over this minimum.
 	MinDevicePixelRatio   float64 `json:"minDevicePixelRatio,omitempty"`
 	AdaptiveQuality       *bool   `json:"adaptiveQuality,omitempty"`
 	AdaptiveTargetFrameMS float64 `json:"adaptiveTargetFrameMS,omitempty"`
@@ -316,6 +321,9 @@ type Compression struct {
 	LOD          bool    `json:"lod,omitempty"`
 	LODThreshold float64 `json:"lodThreshold,omitempty"` // camera distance threshold; objects farther use preview. Default 20.
 }
+
+// MaxPixelsUnbounded opts out of the main canvas pixel budget.
+const MaxPixelsUnbounded = -1
 
 // ShadowMaxPixelsUnbounded opts out of the shadow map pixel cap entirely.
 // Set Shadows.MaxPixels to this constant when you explicitly need the
@@ -2010,7 +2018,7 @@ func (p Props) legacyBaseProps() map[string]any {
 	setBool(out, "modelPreparation", p.ModelPreparation)
 	setString(out, "framePacing", p.FramePacing)
 	setNumeric(out, "maxDevicePixelRatio", p.MaxDevicePixelRatio)
-	if p.MaxPixels > 0 {
+	if p.MaxPixels > 0 || p.MaxPixels == MaxPixelsUnbounded {
 		out["maxPixels"] = p.MaxPixels
 	}
 	setNumeric(out, "minDevicePixelRatio", p.MinDevicePixelRatio)
