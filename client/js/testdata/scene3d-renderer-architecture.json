@@ -657,7 +657,7 @@
         "../runtime/scene3d/webgl-contact-shadows.ts",
         "../runtime/scene3d/webgl-taa.ts"
       ],
-      "maxLines": 12502,
+      "maxLines": 12505,
       "maxFileLines": 11297
     },
     "webgpu": {
@@ -710,7 +710,7 @@
         "../runtime/scene3d/webgpu-bloom.ts",
         "../runtime/scene3d/webgpu-contact-shadows.ts"
       ],
-      "maxLines": 21015,
+      "maxLines": 21018,
       "maxFileLines": 19615
     }
   },
@@ -721,8 +721,8 @@
     "../runtime/scene3d/hydrate-input.ts": 90,
     "../runtime/scene3d/mount-webgl.ts": 5390,
     "../runtime/scene3d/mount.ts": 3938,
-    "../runtime/scene3d/webgl-ocean.ts": 242,
-    "../runtime/scene3d/webgpu-ocean.ts": 233,
+    "../runtime/scene3d/webgl-ocean.ts": 243,
+    "../runtime/scene3d/webgpu-ocean.ts": 236,
     "../runtime/scene3d/webgl-bloom.ts": 114,
     "../runtime/scene3d/webgpu-bloom.ts": 125,
     "../runtime/scene3d/mount-walk.ts": 395,
@@ -735,11 +735,11 @@
     "../runtime/scene3d/ocean-query.ts": 84,
     "../runtime/scene3d/ocean-waves.ts": 27,
     "../runtime/scene3d/walk-surfaces.ts": 14,
-    "../runtime/scene3d/vessel-physics.ts": 175,
+    "../runtime/scene3d/vessel-physics.ts": 191,
     "../runtime/scene3d/vessel-input.ts": 171,
     "../runtime/scene3d/vessel-model.ts": 103,
     "../runtime/scene3d/vessel-wake.ts": 127,
-    "../runtime/scene3d/mount-vessel.ts": 106,
+    "../runtime/scene3d/mount-vessel.ts": 107,
     "../runtime/scene3d/webgpu-transmission.ts": 111,
     "../runtime/scene3d/webgl-transmission.ts": 98,
     "../runtime/scene3d/webgl-depth-post.ts": 68,
@@ -767,22 +767,22 @@
     {
       "source": "../runtime/scene3d/mount-vessel.ts",
       "name": "anonymous@2:2",
-      "lines": 105,
+      "lines": 106,
       "cyclomatic": 73,
       "cognitive": 77,
       "maxNesting": 2,
       "parameters": 0,
-      "reason": "Measured paced-loop orchestration for bathymetry, dynamic deck, walker ownership, helm transitions, reset and landing. Look feeds the existing camera authority without another RAF. Stable vessel attributes and helm layout avoid per-frame DOM writes; deck carry reads the pose directly without allocating a matrix copy. Wave sampling uses the rendered animation clock, while simulation and foam aging retain elapsed time."
+      "reason": "Measured paced-loop orchestration for bathymetry, dynamic deck, walker ownership, helm transitions, reset and landing. Look feeds the existing camera authority without another RAF. Stable vessel attributes and helm layout avoid per-frame DOM writes; deck carry reads the pose directly without allocating a matrix copy. Wave sampling uses the rendered animation clock, while simulation and foam aging retain elapsed time. Hull, deck, camera and wake use one interpolated presentation pose."
     },
     {
       "source": "../runtime/scene3d/mount-vessel.ts",
       "name": "setup@25:3",
-      "lines": 80,
+      "lines": 81,
       "cyclomatic": 66,
       "cognitive": 69,
       "maxNesting": 2,
       "parameters": 5,
-      "reason": "Measured paced-loop orchestration for bathymetry, dynamic deck, walker ownership, helm transitions, reset and landing. Look feeds the existing camera authority without another RAF. Stable vessel attributes and helm layout avoid per-frame DOM writes; deck carry reads the pose directly without allocating a matrix copy. Wave sampling uses the rendered animation clock, while simulation and foam aging retain elapsed time."
+      "reason": "Measured paced-loop orchestration for bathymetry, dynamic deck, walker ownership, helm transitions, reset and landing. Look feeds the existing camera authority without another RAF. Stable vessel attributes and helm layout avoid per-frame DOM writes; deck carry reads the pose directly without allocating a matrix copy. Wave sampling uses the rendered animation clock, while simulation and foam aging retain elapsed time. Hull, deck, camera and wake use one interpolated presentation pose."
     },
     {
       "source": "../runtime/scene3d/mount-walk.ts",
@@ -808,11 +808,11 @@
       "source": "../runtime/scene3d/vessel-input.ts",
       "name": "anonymous@2:2",
       "lines": 170,
-      "cyclomatic": 108,
-      "cognitive": 146,
+      "cyclomatic": 109,
+      "cognitive": 148,
       "maxNesting": 4,
       "parameters": 0,
-      "reason": "Measured cumulative input installer with independent rudder, sail and look pointer ownership, focused arrow controls, cancellation and disposal. Helm layout updates only on mode changes and readout text only when its displayed value changes. A separate bounded helper adds a spring-centered mobile rudder pad, held arrows and a value indicator. Pointer cancellation, hidden tabs and leaving the helm neutralize input; slider keyboard input remains separate from camera arrows. Dragging releases the cursor for instruments; mounted input tests cover simultaneous touch and course-preserving look."
+      "reason": "Measured cumulative input installer with independent rudder, sail and look pointer ownership, focused arrow controls, cancellation and disposal. Helm layout updates only on mode changes and readout text only when its displayed value changes. A separate bounded helper adds a spring-centered mobile rudder pad, held arrows and a value indicator. Pointer cancellation, hidden tabs and leaving the helm neutralize input; slider keyboard input remains separate from camera arrows. Dragging releases the cursor for instruments; mounted input tests cover simultaneous touch and course-preserving look. A three-pixel touch dead zone prevents accidental manual takeover at the centered helm."
     },
     {
       "source": "../runtime/scene3d/vessel-input.ts",
@@ -837,12 +837,12 @@
     {
       "source": "../runtime/scene3d/vessel-physics.ts",
       "name": "anonymous@2:2",
-      "lines": 174,
-      "cyclomatic": 117,
-      "cognitive": 131,
+      "lines": 190,
+      "cyclomatic": 124,
+      "cognitive": 141,
       "maxNesting": 3,
       "parameters": 0,
-      "reason": "Measured cumulative fixed-step physics helpers for propulsion, buoyancy, hull collision and deck carry. Bounded yaw and pitch offsets add independent wheel look and chase orbit without changing the course or trim; physics tests cover finite input, limits, mode ownership and neutral-camera parity."
+      "reason": "Measured cumulative fixed-step physics helpers for propulsion, buoyancy, hull collision and deck carry. Bounded yaw and pitch offsets add independent wheel look and chase orbit without changing the course or trim; physics tests cover finite input, limits, mode ownership and neutral-camera parity. A reused presentation pose interpolates the last two physics transforms without mutating voyage state; tests cover frame partitioning, shared hull/camera transforms, heading wrap and reset."
     },
     {
       "source": "../runtime/scene3d/vessel-wake.ts",

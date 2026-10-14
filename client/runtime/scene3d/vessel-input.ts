@@ -10,7 +10,7 @@
     return false;
   }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
-  function move(input,id,x) { if(id===input.rudderID) input.rudder=Math.max(-1,Math.min(1,(x-input.origin)/55)); }
+  function move(input,id,x) { if(id===input.rudderID) {const delta=x-input.origin;input.rudder=Math.abs(delta)<=3?0:Math.max(-1,Math.min(1,delta/55));} }
   // @ts-ignore TS7006 -- this governed module is also evaluated as plain JS in Node tests.
   function up(input,id) {
     if(id===input.rudderID) {input.rudderID=-1;input.rudder=0;}

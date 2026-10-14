@@ -67,7 +67,9 @@ const budgets = [
   // 10,713 gzip and 9,814 Brotli bytes; only the exhausted targets move.
   // Visible mobile rudder, cancellation and thumb feedback measure [30762, 11691, 10677] bytes (raw/gzip/Brotli).
   // Only this optional chunk's exhausted targets change; allowances stay fixed.
-  { file: "bootstrap-feature-scene3d-vessel.js", raw: 28714, gzip: 10667, brotli: 9653 },
+  // Shared render interpolation, stable foam and the touch dead zone measure 31,260 / 11,914 / 10,914 bytes.
+  // Only exhausted targets rise to the measured minimum; allowances remain fixed.
+  { file: "bootstrap-feature-scene3d-vessel.js", raw: 29212, gzip: 10890, brotli: 9890 },
   // bootstrap.js raw bumped 806_000 -> 812_000 for 28-video-sync-fallback.ts
   // (parity-locked JS drift engine on the brain-absent video path). gzip/brotli
   // headroom unchanged.
@@ -786,7 +788,8 @@ const budgets = [
     // beyond the previous allowance; compressed targets remain unchanged.
     // Colour lifetime and frame-cached snapshots measure 1,940,344 raw bytes.
     // Raise only the raw target by 470 B to the exact minimum; keep the 65,536 B allowance.
-    file: "bootstrap.js", raw: 1874808, gzip: 524100,
+    // Combined main plus shared sailing presentation measures 1,940,718 raw bytes; only the exhausted raw target rises.
+    file: "bootstrap.js", raw: 1875182, gzip: 524100,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->
@@ -1175,7 +1178,8 @@ const budgets = [
     // Merge with main preserves sampler wrapping and signed normal-map scales: raw 290400 -> 290800 (measured 305260); gzip 83500 -> 83600 (measured 87766). Governed allowances stay fixed.
     // BLEND texture coverage with current main measures 73,953 Brotli bytes. Use the
     // minimum target under the unchanged 5% allowance; retain raw and gzip.
-    file: "bootstrap-feature-scene3d-webgl.js", raw: 290800, gzip: 83600, brotli: 70449 },
+    // Wind-ripple warping measures 73,997 Brotli bytes; the minimum target rises by 24 bytes.
+    file: "bootstrap-feature-scene3d-webgl.js", raw: 290800, gzip: 83600, brotli: 70473 },
   // Bumped raw 723_000 -> 730_000, gzip 198_000 -> 201_000, brotli 163_000 ->
   // 166_000 for procedural point clouds (11b-scene-points-generate.ts) — the
   // same canonical math kernel and box-scatter expander added to bootstrap.js
