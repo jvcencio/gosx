@@ -752,6 +752,22 @@ func (l *lowerer) computedInfoForAssignedExpr(varName string, rightExpr *gotrees
 }
 
 func (l *lowerer) signalSourceType(call *gotreesitter.Node, source string) string {
+	// gotreesitter v0.56 parses signal.New[T](x) as a call_expression whose
+	// function is index_expression(operand, index=T), not a call with a
+	// type_arguments field. Read the explicit type from the index field.
+	if gt := l.conversionGenericType(call); gt != nil && l.nodeType(call) == "type_conversion_expression" {
+		if types := l.childByField(gt, "type_arguments"); types != nil {
+			if types.NamedChildCount() != 1 {
+				return ""
+			}
+			return strings.TrimSpace(l.text(types.NamedChild(0)))
+		}
+	}
+	if fn := l.childByField(call, "function"); fn != nil && l.nodeType(fn) == "index_expression" {
+		if idx := l.childByField(fn, "index"); idx != nil {
+			return strings.TrimSpace(l.text(idx))
+		}
+	}
 	if types := l.childByField(call, "type_arguments"); types != nil {
 		// An explicit type controls the signal's Go type. Preserve its spelling
 		// for diagnostics. The host checker resolves the actual type.
@@ -768,8 +784,7 @@ func (l *lowerer) signalSourceType(call *gotreesitter.Node, source string) strin
 }
 
 func (l *lowerer) computedSourceType(args *gotreesitter.Node) string {
-	for i := 0; i < int(args.NamedChildCount()); i++ {
-		fn := args.NamedChild(i)
+	for _, fn := range l.argNodes(args) {
 		if l.nodeType(fn) == "func_literal" {
 			if result := l.childByField(fn, "result"); result != nil {
 				name := l.text(result)
@@ -865,7 +880,20 @@ func (l *lowerer) signalCallKind(funcNode *gotreesitter.Node, lex *LexicalScope)
 }
 
 func (l *lowerer) signalCallExpr(n *gotreesitter.Node, lex *LexicalScope) (signalCall, *gotreesitter.Node, bool) {
-	if n == nil || l.nodeType(n) != "call_expression" {
+	if n == nil {
+		return signalCallUnknown, nil, false
+	}
+	if l.nodeType(n) == "type_conversion_expression" {
+		// gotreesitter v0.56 may parse a one-argument explicit instantiation
+		// such as sig.New[int](0) as type_conversion_expression(generic_type,
+		// operand). Treat a generic type as the callee and return the whole
+		// node as the argument holder; argNodes skips its leading type.
+		if gt := l.conversionGenericType(n); gt != nil {
+			return l.signalCallKind(gt, lex), n, true
+		}
+		return signalCallUnknown, nil, false
+	}
+	if l.nodeType(n) != "call_expression" {
 		return signalCallUnknown, nil, false
 	}
 	funcNode := l.childByField(n, "function")
@@ -884,6 +912,27 @@ func (l *lowerer) callName(funcNode *gotreesitter.Node) (string, string) {
 			return "", ""
 		}
 		return l.text(funcNode.NamedChild(0)), l.text(funcNode.NamedChild(1))
+	case "generic_type":
+		// pkg.Name[T] or Name[T] parsed as a type: the callee is its base type.
+		if funcNode.NamedChildCount() < 1 {
+			return "", ""
+		}
+		return l.callName(funcNode.NamedChild(0))
+	case "qualified_type":
+		if funcNode.NamedChildCount() < 2 {
+			return "", ""
+		}
+		return l.text(funcNode.NamedChild(0)), l.text(funcNode.NamedChild(1))
+	case "type_identifier":
+		return "", l.text(funcNode)
+	case "index_expression":
+		// gotreesitter v0.56 parses an explicit instantiation such as
+		// sig.NewShared[int](...) as index_expression(selector, type) rather
+		// than a call_expression with type_arguments. Resolve the callee.
+		if funcNode.NamedChildCount() < 1 {
+			return "", ""
+		}
+		return l.callName(funcNode.NamedChild(0))
 	default:
 		return "", ""
 	}
@@ -895,13 +944,43 @@ func (l *lowerer) extractArg(argsNode *gotreesitter.Node, index int) string {
 	if index < 0 {
 		return ""
 	}
-	for i := 0; i < int(argsNode.NamedChildCount()); i++ {
-		child := argsNode.NamedChild(i)
-		if i == index {
-			return l.text(child)
-		}
+	args := l.argNodes(argsNode)
+	if index < len(args) {
+		return l.text(args[index])
 	}
 	return ""
+}
+
+// conversionGenericType returns the generic_type of a type_conversion_expression
+// or nil when the conversion's type is not a generic instantiation.
+func (l *lowerer) conversionGenericType(n *gotreesitter.Node) *gotreesitter.Node {
+	if n == nil || n.NamedChildCount() < 1 {
+		return nil
+	}
+	if first := n.NamedChild(0); first != nil && l.nodeType(first) == "generic_type" {
+		return first
+	}
+	return nil
+}
+
+// argNodes lists the argument expressions held by argsNode: the children of an
+// argument_list, or the operand of a type_conversion_expression that stands in
+// for a one-argument generic call.
+func (l *lowerer) argNodes(argsNode *gotreesitter.Node) []*gotreesitter.Node {
+	if argsNode == nil {
+		return nil
+	}
+	start := 0
+	if l.nodeType(argsNode) == "type_conversion_expression" {
+		start = 1
+	}
+	var out []*gotreesitter.Node
+	for i := start; i < int(argsNode.NamedChildCount()); i++ {
+		if c := argsNode.NamedChild(i); c != nil {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func (l *lowerer) normalizeSharedSignalName(expr string) string {
@@ -929,12 +1008,12 @@ func (l *lowerer) normalizeSharedSignalName(expr string) string {
 // from silently discarding setup or control-flow statements.
 func (l *lowerer) extractDeriveBody(argsNode *gotreesitter.Node) (string, error) {
 	var funcLit *gotreesitter.Node
-	if argsNode.NamedChildCount() != 1 {
+	argList := l.argNodes(argsNode)
+	if len(argList) != 1 {
 		return "", fmt.Errorf("requires exactly one function literal argument")
 	}
-	for i := 0; i < int(argsNode.NamedChildCount()); i++ {
-		child := argsNode.NamedChild(i)
-		if child != nil && l.nodeType(child) == "func_literal" {
+	for _, child := range argList {
+		if l.nodeType(child) == "func_literal" {
 			funcLit = child
 		}
 	}
