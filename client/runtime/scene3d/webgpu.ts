@@ -4650,7 +4650,7 @@
       return ssaoLayout;
     }
 
-    function getPipeline(name, fragmentSource, layout, outputFormat: string = targetFormat) {
+    function getPipeline(name: string, fragmentSource: string, layout: any, outputFormat: string = targetFormat) {
       if (name === "present") { outputFormat = presentationFormat; layout = getPostBlitLayout(); }
       var cacheKey = name + ":" + outputFormat;
       if (pipelines[cacheKey]) return pipelines[cacheKey];
@@ -4664,7 +4664,7 @@
       return pipeline;
     }
 
-    function getParamBuffer(name, byteSize) {
+    function getParamBuffer(name: string, byteSize: number) {
       if (postParamBuffers[name] && postParamBuffers[name].size >= byteSize) {
         return postParamBuffers[name];
       }
@@ -17629,7 +17629,7 @@
       return stats;
     }
 
-    function publishWebGPUFrameStats(stats) {
+    function publishWebGPUFrameStats(stats: any) {
       var mount = canvas && canvas.parentNode;
       if (!mount) return;
       webGPUFrameSeq += 1;
