@@ -170,7 +170,7 @@ async function load(bytes, name, importedRAM = null, expectedHash = "") {
   play(allowedToRun);if(allowedToRun)canvas.focus({preventScroll:true});
 }
 await init();
-note("Load your Pokémon Yellow .gb cartridge to switch on.");
+note("Load a .gb or .gbc cartridge to switch on.");
 listen(speedControl,"change",()=>{
   speed=speedControl.value==="1"?1:3;speedControl.value=String(speed);
   canvas.dataset.emulationSpeed=String(speed);last=0;elapsed=0;stopAudio();
@@ -189,7 +189,7 @@ listen(root.querySelector("[data-save]"),"click",()=>{
   if(!gb)return;const data=gb.ram_data_eager();
   if(!data.length){note("This cartridge does not have battery-save memory.");return;}
   const url=URL.createObjectURL(new Blob([data],{type:"application/octet-stream"}));
-  const link=document.createElement("a");link.href=url;link.download=(document.body.dataset.cartridge||"blackglass").replace(/\.(gb|gbc)$/i,"")+".sav";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const link=document.createElement("a");link.href=url;link.download=(document.body.dataset.cartridge||"cartridge").replace(/\.(gb|gbc)$/i,"")+".sav";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 listen(sound,"click",async()=>{
   try{if(!audio)audio=new AudioContext();muted=!muted;stopAudio();if(!muted&&running)await audio.resume();else await audio.suspend();sound.textContent=muted?"Sound off":"Sound on";sound.setAttribute("aria-pressed",String(!muted));}
