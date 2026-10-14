@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"m31labs.dev/gosx/internal/htmlattr"
 	"m31labs.dev/gosx/island/program"
 )
 
@@ -872,6 +873,9 @@ func (l *islandLowerer) composableViewTreeError(componentName string, id NodeID,
 	for _, attr := range node.Attrs {
 		if attr.Kind == AttrSpread {
 			return fmt.Errorf("pure-view component <%s> contains a spread attribute; v1 island composition requires explicit attributes", componentName)
+		}
+		if htmlattr.ReservedDispatchName(attr.Name) {
+			return fmt.Errorf("pure-view component <%s> contains reserved attribute %q: the island renderer generates it for event dispatch; use a non-reserved name such as data-app-%s", componentName, attr.Name, strings.TrimPrefix(strings.ToLower(attr.Name), "data-gosx-"))
 		}
 		if attr.IsEvent || (attr.Kind == AttrStatic && strings.HasPrefix(strings.ToLower(strings.TrimSpace(attr.Name)), "data-on-")) {
 			return fmt.Errorf("pure-view component <%s> contains handler attribute %q; keep behavior in the parent island and pass only scalar view data", componentName, attr.Name)

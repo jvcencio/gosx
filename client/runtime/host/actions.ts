@@ -389,6 +389,7 @@
     var target = targetFor(selector);
     if (!target) return false;
     var attribute = trigger.getAttribute("data-gosx-toggle-attribute") || "data-gosx-open";
+    if (gosxHost.attributes.isReservedDispatchName(attribute)) return false;
     var open = forceClose ? false : !target.hasAttribute(attribute);
     if (open) target.setAttribute(attribute, "true");
     else target.removeAttribute(attribute);
@@ -455,6 +456,21 @@
     });
   }
 
+  function bindingTargetAllowed(name, value) {
+    var lower = name.replace(/[A-Z]/g, function(c) { return String.fromCharCode(c.charCodeAt(0) + 32); });
+    if (!/^[a-z_][-a-z0-9_.]*$/.test(lower) || lower.indexOf("data-gosx-") === 0 || lower === "data-csrf" || lower === "data-csrf-token") return false;
+    // Match live bindings: permit inert targets explicitly rather than trying
+    // to enumerate every executable HTML and SVG attribute.
+    if (/^(title|value|datetime|disabled|hidden)$/.test(lower) || lower.indexOf("data-") === 0 || lower.indexOf("aria-") === 0) return true;
+    if (lower !== "href") return false;
+    if (value === null) return true;
+    // Browsers ignore ASCII controls in schemes and normalize backslashes in
+    // web URLs. Check the URL they resolve, including network-path references.
+    var clean = String(value).replace(/[\u0000-\u0020\u007f]/g, "").replace(/\\/g, "/");
+    if (/^[a-z][a-z0-9+.-]*:/i.test(clean)) return /^https?:/i.test(clean);
+    return clean.indexOf("//") !== 0;
+  }
+
   function bindAttribute(target, spec, source) {
     String(spec || "").split(";").forEach(function (mapping) {
       var split = mapping.indexOf(":");
@@ -462,7 +478,7 @@
       var targetName = mapping.slice(0, split).trim();
       var sourceName = mapping.slice(split + 1).trim();
       var value = source.getAttribute(sourceName);
-      if (!targetName) return;
+      if (!bindingTargetAllowed(targetName, value)) return;
       if (value === null || value === "") target.removeAttribute(targetName);
       else target.setAttribute(targetName, value);
     });

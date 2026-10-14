@@ -186,3 +186,54 @@ test("WebGL particle attributes publish again when the mount changes", () => {
   api.publishWebGLComputeParticleStatAttr(mount(), "draws", "1");
   assert.equal(writes.length, 3);
 });
+
+test("a SwiftShader WebGPU adapter preserves constrained tier and one MSAA sample without probing WebGL", () => {
+  const api = sceneCore();
+  sourceSection("../runtime/scene3d/mount-backend.ts", "  function sceneWebGLRendererLooksSoftware", "  function sceneProbeWebGLRenderer", api);
+  sourceSection("../runtime/scene3d/mount-backend.ts", "  function sceneWebGPUOptions", "  function sceneWebGPUPresentationOptions", api);
+  sourceSection("../runtime/scene3d/mount-webgl.ts", "  function sceneCapabilityProfile(props)", "  function sceneCapabilityWebGLPreference", api);
+  let probes = 0;
+  const adapter = { info: { vendor: "google", architecture: "swiftshader", description: "SwiftShader Device" }, isFallbackAdapter: false };
+  Object.assign(api, {
+    window: { navigator: {}, __gosx_scene3d_webgpu_probe: () => ({ ready: true, adapter }) }, normalizeSceneCapabilityTier: value => value || "", gosxLowEndHardware: () => false,
+    sceneEnvironmentState: () => ({ coarsePointer: false, hover: true, lowPower: false }),
+    sceneProbeWebGLRenderer: () => { probes++; return { available: true, software: true }; },
+    sceneWebGPUAvailable: () => true, scenePrefersWebGPU: props => props.preferWebGPU === true,
+    sceneRequiresWebGL: props => props.requireWebGL === true, sceneForcesWebGL: props => props.forceWebGL === true,
+    sceneNeedsWebGLForWebGPUCoverage: () => false,
+    sceneBackendCapsOf: () => null, chooseSceneBackend: () => null,
+    sceneWebGPUPowerPreference: () => "default", sceneWebGPUPresentationOptions: () => ({}),
+  });
+  const props = { preferWebGPU: true };
+  const capability = api.sceneCapabilityProfile(props);
+  assert.equal(capability.softwareWebGL, true);
+  assert.equal(capability.lowPower, true);
+  assert.equal(capability.tier, "constrained");
+  assert.equal(api.sceneWebGPUOptions(props, capability).msaaSamples, 1);
+  assert.equal(probes, 0);
+  adapter.info = {};
+  adapter.isFallbackAdapter = true;
+  assert.equal(api.sceneCapabilityProfile(props).tier, "constrained");
+  assert.equal(probes, 0);
+  adapter.isFallbackAdapter = false;
+  assert.equal(api.sceneCapabilityProfile(props).tier, "constrained", "unknown GPU metadata retains legacy classification");
+  assert.equal(probes, 1);
+  api.sceneWebGPUAvailable = () => false;
+  assert.equal(api.sceneCapabilityProfile({ preferWebGPU: true }).softwareWebGL, true);
+  assert.equal(probes, 2);
+  api.sceneWebGPUAvailable = () => true;
+  api.sceneCapabilityProfile({ forceWebGL: true, preferWebGPU: true });
+  api.sceneCapabilityProfile({});
+  assert.equal(probes, 4, "forced WebGL and default backend classification stay unchanged");
+});
+
+test("settling WebGPU has no extra animation-frame boundary", async () => {
+  let frames = 0, prepared = 0;
+  const api = sourceSection("../runtime/scene3d/mount-webgl.ts", "  async function settlePreferredWebGPUBackend", "  async function ensurePreferredWebGPUBackend", vm.createContext({
+    ensurePreferredWebGPUBackend: async () => { prepared++; },
+    sceneWebGPUAvailable: () => true, sceneNextFrame: async () => { frames++; },
+  }));
+  await api.settlePreferredWebGPUBackend({}, {});
+  assert.equal(prepared, 1);
+  assert.equal(frames, 0);
+});

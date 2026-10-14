@@ -46,6 +46,12 @@
       if (!scene3DFactoryCurrent()) return {};
     }
     const sceneAttr = name => "data-gosx-scene3d-" + name;
+    // Probe an explicit WebGPU preference before GPU classification so a
+    // usable WebGPU device needs no throwaway WebGL context.
+    if (scenePrefersWebGPU(props)) {
+      await ensurePreferredWebGPUBackend(props, null);
+      if (!scene3DFactoryCurrent()) return {};
+    }
     const capability = sceneCapabilityProfile(props);
     const viewportBase = sceneViewportBase(props);
     const adaptiveQuality = createSceneAdaptiveQualityState(props, viewportBase, capability);
@@ -790,12 +796,8 @@
     }
 
     function readSceneWebGPUProgress() {
-      const seq = Number(sceneDebugAttr(mount, sceneAttr("webgpu-frame-seq")));
-      const at = Number(sceneDebugAttr(mount, sceneAttr("webgpu-frame-at")));
-      return {
-        seq: Number.isFinite(seq) ? seq : 0,
-        at: Number.isFinite(at) ? at : 0,
-      };
+      const progress = renderer && typeof renderer.getFrameProgress === "function" ? renderer.getFrameProgress() : null;
+      return { seq: progress && progress.frameSeq || 0, at: progress && progress.frameAt || 0 };
     }
 
     /* @ts-expect-error TS2367 -- sceneWebGLFallbackOwner is a tri-state sentinel: 0 | null | false | the owning renderer instance */ function publishSceneRenderWatchdogState(reason, stalledFor) {
