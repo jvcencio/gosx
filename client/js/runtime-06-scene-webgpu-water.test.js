@@ -46,6 +46,7 @@ test("bootstrap keeps WebGPU Scene3D PBR mesh attributes on packed scene GPU buf
   const bindSceneBuffer = source.slice(source.indexOf("function webGPUBindSceneMeshVertexBuffer"), source.indexOf("// -----------------------------------------------------------------------\n    // Draw list construction"));
   const shadowPass = source.slice(source.indexOf("function renderShadowPass"), source.indexOf("// -----------------------------------------------------------------------\n    // PBR object drawing"));
   const drawPBR = source.slice(source.indexOf("function drawPBRObjects"), source.indexOf("function instancedMeshCount"));
+  const bindWorld = source.slice(source.indexOf("function wgpuBindWorldMeshBuffers"), source.indexOf("function createSceneWebGPURenderer"));
   const skinnedBind = source.slice(source.indexOf("function webGPUBindElioSkinnedBuffers"), source.indexOf("// -----------------------------------------------------------------------\n    // Shadow Pass"));
 
   // wgpuStablePBRAttributeBuffer caches each attribute on a renderer-scoped,
@@ -64,10 +65,10 @@ test("bootstrap keeps WebGPU Scene3D PBR mesh attributes on packed scene GPU buf
   assert.doesNotMatch(shadowPass, /shadowPositionBuffer\s*=\s*wgpuEnsureBufferData/);
   assert.doesNotMatch(shadowPass, /sliceToFloat32/);
 
-  assert.match(drawPBR, /webGPUBindSceneMeshVertexBuffer\(pass,\s*0,\s*pbrBuffers && pbrBuffers\.positions/);
-  assert.match(drawPBR, /webGPUBindSceneMeshVertexBuffer\(pass,\s*1,\s*pbrBuffers && pbrBuffers\.normals/);
-  assert.match(drawPBR, /webGPUBindSceneMeshVertexBuffer\(pass,\s*2,\s*pbrBuffers && pbrBuffers\.uvs/);
-  assert.match(drawPBR, /webGPUBindSceneMeshVertexBuffer\(pass,\s*3,\s*pbrBuffers && pbrBuffers\.tangents/);
+  assert.match(drawPBR, /wgpuBindWorldMeshBuffers\(pass,\s*pbrBuffers\)/);
+  assert.match(drawPBR, /pass\.draw\(count,\s*1,\s*offset\)/);
+  assert.match(bindWorld, /\[buffers\.positions, buffers\.normals, buffers\.uvs, buffers\.tangents\]/);
+  assert.match(bindWorld, /pass\.setVertexBuffer\(slot,\s*record\.buffer,\s*0\)/);
   assert.doesNotMatch(drawPBR, /sliceToFloat32/);
   assert.doesNotMatch(drawPBR, /positionBuffer\s*=\s*wgpuEnsureBufferData/);
   assert.doesNotMatch(drawPBR, /normalBuffer\s*=\s*wgpuEnsureBufferData/);

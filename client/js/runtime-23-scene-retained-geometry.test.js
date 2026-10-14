@@ -682,7 +682,7 @@ for (const fresh of [true, false]) {
       harness.renderer.render(bundle, viewport);
       const bindings = harness.fake.state.renderPasses.slice(start).flatMap(pass => pass.vertexBuffers);
       for (const [slot, values] of [bundle.worldMeshPositions, bundle.worldMeshNormals, bundle.worldMeshUVs, bundle.worldMeshTangents].entries()) {
-        const binding = bindings.find(b => b.slot === slot && b.size === values.byteLength);
+        const binding = bindings.find(b => b.slot === slot && (b.offset || 0) === 0 && (b.size ?? b.buffer.size) === values.byteLength);
         assert.ok(binding, `baked attribute slot ${slot} must be bound`);
         const write = harness.fake.state.writeBufferCalls.filter(w => w.buffer === binding.buffer).at(-1);
         const data = write ? write.data : new Float32Array(binding.buffer.getMappedRange());
