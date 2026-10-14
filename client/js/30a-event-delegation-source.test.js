@@ -369,7 +369,7 @@ test("completed touch activates Go button handlers once and preserves drag, form
  env.context.navigator.maxTouchPoints=1;
  const entries=env.context.__gosx_test_setup_event_delegation(root,root.id,[{eventType:"click"}]);
  const emit=(type,extra={})=>{let stopped=false;const event={type,target:button,pointerType:"touch",pointerId:1,clientX:10,clientY:10,timeStamp:100,detail:0,preventDefault(){this.defaultPrevented=true},stopImmediatePropagation(){stopped=true},...extra};for(const e of entries.filter(e=>e.type===type)){e.listener(event);if(stopped)break;}return event;};
- button.click=()=>emit("click");emit("pointerdown");emit("pointerup");assert.equal(calls.length,1);emit("click",{detail:1,timeStamp:110});assert.equal(calls.length,1);emit("click",{detail:0});assert.equal(calls.length,2);
+ button.click=()=>emit("click");emit("pointerdown");emit("pointerup");assert.equal(calls.length,1);emit("click",{detail:1,timeStamp:110});assert.equal(calls.length,1);const replacement=new FakeElement("button",null);replacement.setAttribute("type","button");replacement.setAttribute("data-gosx-on-click","inverse");root.appendChild(replacement);emit("click",{target:replacement,detail:1,timeStamp:110});assert.equal(calls.length,1,"compatibility touch must not activate the replacement Go button");emit("click",{detail:0});assert.equal(calls.length,2);
  emit("pointerdown");emit("pointerup",{clientX:50});assert.equal(calls.length,2);emit("pointerdown");emit("pointercancel");emit("pointerup");assert.equal(calls.length,2);
  button.setAttribute("disabled","");emit("pointerdown");emit("pointerup");assert.equal(calls.length,2);button.removeAttribute("disabled");button.setAttribute("type","submit");emit("pointerdown");emit("pointerup");assert.equal(calls.length,2);
 });

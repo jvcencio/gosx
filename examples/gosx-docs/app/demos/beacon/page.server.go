@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	blackglassDiscoveriesStylesSrc = "/blackglass-discoveries.css?v=3e28d3f359d2"
+	blackglassDiscoveriesStylesSrc = "/blackglass-discoveries.css?v=63f19240c55b"
 )
 
 func init() {

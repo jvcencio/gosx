@@ -67,6 +67,7 @@
     }):()=>{};
     const unsubscribeDestination=config.destinationSignal&&signals?.subscribe?signals.subscribe(config.destinationSignal,value=>{if(typeof value==='string'&&value&&routes.select(value)){publish();schedule('vessel-route');}else if(value===''){routes.clear();}}):()=>{};
     return {
+      publish,
       // @ts-ignore TS7006 -- frame time stays live when the animation clock is frozen.
       advance(dt) {routes.advance(dt);elapsed+=dt;if(elapsed<.2)return;elapsed%=.2;publish();},
       dispose() {unsubscribe();unsubscribeDestination();mount.removeEventListener(commandEvent,command);},

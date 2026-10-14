@@ -274,6 +274,7 @@
     }
     listen("pointerdown", event => {
       tap = null;
+      root.__gosxButtonTap = null;
       if (event.pointerType !== "touch" || event.defaultPrevented || event.button > 0) return;
       const found = findHandlerForEvent(event.target, root, "click"), button = found && found.element;
       if (!button || button.tagName !== "BUTTON" || button.getAttribute("type") !== "button" || button.disabled || button.hasAttribute("disabled")) return;
@@ -341,7 +342,9 @@
     return function(e) {
       if (e.__gosx_handled) return;
       const tap=islandRoot.__gosxButtonTap;
-      if(eventType==="click"&&e.detail>0&&tap&&e.target===tap.button&&e.timeStamp>=tap.time&&e.timeStamp-tap.time<600){e.preventDefault();return;}
+      // A Go update may replace the tapped button before the browser emits its
+      // compatibility click. Suppress that touch click even if it retargets.
+      if(eventType==="click"&&e.detail>0&&tap&&(e.target===tap.button||e.pointerType==="touch")&&e.timeStamp>=tap.time&&e.timeStamp-tap.time<600){e.preventDefault();return;}
       const match = findHandlerForEvent(e.target, islandRoot, eventType);
       if (!match) return;
       if ((eventType === "dragover" || eventType === "drop") && typeof e.preventDefault === "function") {

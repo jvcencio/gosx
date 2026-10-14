@@ -23,14 +23,14 @@ async function sceneLoadExperience(props: any, signal: any): Promise<any> {
 // Typed presentation requests preserve the mounted simulation and its clock.
 function sceneSetupPresentation(mount: any, props: any, handle: any, schedule: any): () => void {
     const config = props.presentation;
-    if (!config || typeof gosxSubscribeSharedSignal !== 'function')
+    if (!config || typeof window.__gosx_runtime_api.gosxSubscribeSharedSignal !== 'function')
         return () => { };
     let view = String(config.initialView || ''), period = String(config.initialPeriod || '');
     let disposed = false, revision = 0, requestID = 0, controller: AbortController | null = null;
     const scope = mount.closest('[data-gosx-scene3d-control-scope]') || mount;
     function publish(): void {
         if (config.outputSignal)
-            setSharedSignalValue(config.outputSignal, { Ready: true, View: view, Period: period });
+            window.__gosx_runtime_api.setSharedSignalValue(config.outputSignal, { Ready: true, View: view, Period: period });
         scope.setAttribute('data-view', view);
         scope.setAttribute('data-period', period);
     }
@@ -100,7 +100,7 @@ function sceneSetupPresentation(mount: any, props: any, handle: any, schedule: a
                 history.pushState(null, '', url);
         }
     }
-    const unsubscribe = gosxSubscribeSharedSignal(config.inputSignal, (value: any) => {
+    const unsubscribe = window.__gosx_runtime_api.gosxSubscribeSharedSignal(config.inputSignal, (value: any) => {
         if (!value || !Number.isSafeInteger(value.Revision) || value.Revision <= revision)
             return;
         revision = value.Revision;
@@ -121,7 +121,7 @@ function sceneSetupPresentation(mount: any, props: any, handle: any, schedule: a
     return () => { disposed = true; controller?.abort(); unsubscribe(); window.removeEventListener('popstate', pop); mount.removeEventListener('keydown', home, true); };
 }
 // Slow environmental changes share the pausable scene clock and renderer state.
-function sceneCreateDayCycle(config: any, state: any): any {
+function sceneCreateDayCycle(config: any, state: any, hashes?: { light: any; environment: any }): any {
     if (!config || !state.environment?.sky || state.environment.sky.mode !== 'physical')
         return null;
     const duration = Number.isFinite(config.durationSeconds) && config.durationSeconds >= 60 ? Math.min(86400, config.durationSeconds) : 1080;
@@ -129,7 +129,7 @@ function sceneCreateDayCycle(config: any, state: any): any {
     const intensity = Math.min(30, Math.max(0, Number(config.sunIntensity) || 9));
     const phase = (Number(config.seed) >>> 0) / 4294967296 * Math.PI * 2;
     let hour = Math.max(0, Math.min(23.999, Number(config.initialHour) || 0)), automatic = true, last = 0, next = -1;
-    const unsubscribe = config.inputSignal && typeof gosxSubscribeSharedSignal === 'function' ? gosxSubscribeSharedSignal(config.inputSignal, (value: any) => { if (typeof value === 'boolean')
+    const unsubscribe = config.inputSignal && typeof window.__gosx_runtime_api.gosxSubscribeSharedSignal === 'function' ? window.__gosx_runtime_api.gosxSubscribeSharedSignal(config.inputSignal, (value: any) => { if (typeof value === 'boolean')
         automatic = value; }) : () => { };
     const mix = (a: number, b: number, t: number) => a + (b - a) * t;
     const smooth = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -170,14 +170,14 @@ function sceneCreateDayCycle(config: any, state: any): any {
             light.directionZ = -sun.z;
             light.intensity = intensity * daytime * mix(.71, 1, midday);
             light.color = color([255, 188, 133], [255, 244, 230], midday);
-            if (typeof hashLightContent === 'function')
-                light._lightHash = hashLightContent(light);
+            if (typeof hashes?.light === 'function')
+                light._lightHash = hashes.light(light);
         }
-        if (typeof hashEnvironmentContent === 'function')
-            env._envHash = hashEnvironmentContent(env);
-        if (config.outputSignal && typeof setSharedSignalValue === 'function') {
+        if (typeof hashes?.environment === 'function')
+            env._envHash = hashes.environment(env);
+        if (config.outputSignal && typeof window.__gosx_runtime_api.setSharedSignalValue === 'function') {
             const minutes = Math.floor(hour * 60), label = String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
-            setSharedSignalValue(config.outputSignal, { Hour: hour, HourLabel: label, WeatherLabel: !config.weather ? 'Fair weather' : coverage > .68 ? 'Clouds gathering' : coverage < .38 ? 'Clear spells' : 'Coastal clouds', Automatic: automatic });
+            window.__gosx_runtime_api.setSharedSignalValue(config.outputSignal, { Hour: hour, HourLabel: label, WeatherLabel: !config.weather ? 'Fair weather' : coverage > .68 ? 'Clouds gathering' : coverage < .38 ? 'Clear spells' : 'Coastal clouds', Automatic: automatic });
         }
     }
     return { advance, seek: (value: number) => { if (Number.isFinite(value) && value >= 0 && value < 24) {
@@ -216,7 +216,7 @@ function sceneSetupExploration(mount: any, props: any, state: any, handle: any, 
         for (const id of found)
             record[id] = true;
         if (config.outputSignal)
-            setSharedSignalValue(config.outputSignal, { Found: record, CountLabel: found.size + ' / ' + items.length, ActiveID: active, Notice: notice, Pocket: items.some(i => i.collect && found.has(i.id)) });
+            window.__gosx_runtime_api.setSharedSignalValue(config.outputSignal, { Found: record, CountLabel: found.size + ' / ' + items.length, ActiveID: active, Notice: notice, Pocket: items.some(i => i.collect && found.has(i.id)) });
         try {
             if (config.storageKey)
                 localStorage.setItem(config.storageKey, JSON.stringify([...found]));
@@ -290,12 +290,12 @@ function sceneSetupExploration(mount: any, props: any, state: any, handle: any, 
         publish();
         applyCollected();
         if (!item.collect && config.revealSignal) {
-            setSharedSignalValue(config.revealSignal, true);
+            window.__gosx_runtime_api.setSharedSignalValue(config.revealSignal, true);
             for (const name of (config.dismissSignals || []).slice(0, 8))
-                setSharedSignalValue(name, false);
+                window.__gosx_runtime_api.setSharedSignalValue(name, false);
         }
         if (item.collect && pocket)
-            setSharedSignalValue(pocket.openSignal, true);
+            window.__gosx_runtime_api.setSharedSignalValue(pocket.openSignal, true);
         schedule('inspection');
     }
     listen(mount, 'gosx:scene3d:input', (event: any) => { if (event.detail?.kind === 'pick' && event.detail?.input?.type === 'select')
@@ -303,18 +303,18 @@ function sceneSetupExploration(mount: any, props: any, state: any, handle: any, 
     listen(mount, 'gosx:scene3d:model-hydration-status', applyCollected);
     listen(scope, 'click', (event: any) => { const target = event.target.closest?.('[data-gosx-scene-node]'); if (target && scope.contains(target))
         observe(target.getAttribute('data-gosx-scene-node')); });
-    const unsubRequest = config.inputSignal ? gosxSubscribeSharedSignal(config.inputSignal, (value: any) => {
+    const unsubRequest = config.inputSignal ? window.__gosx_runtime_api.gosxSubscribeSharedSignal(config.inputSignal, (value: any) => {
         if (value && Number.isSafeInteger(value.Revision) && value.Revision > requestRevision) {
             requestRevision = value.Revision;
             observe(value.ID);
         }
     }, { immediate: false }) : () => { };
-    const unsubPocket = pocket ? gosxSubscribeSharedSignal(pocket.openSignal, open) : () => { };
+    const unsubPocket = pocket ? window.__gosx_runtime_api.gosxSubscribeSharedSignal(pocket.openSignal, open) : () => { };
     if (validDialog) {
         listen(validDialog, 'close', () => { pocketOpen = false; send('pause'); if (resumeBackground) {
             const clock = handle.getAnimationClock();
             handle.setAnimationClock({ timeSeconds: clock.timeSeconds, paused: false });
-        } resumeBackground = false; setSharedSignalValue(pocket.openSignal, false); });
+        } resumeBackground = false; window.__gosx_runtime_api.setSharedSignalValue(pocket.openSignal, false); });
         listen(window, 'message', (event: any) => {
             if (event.origin !== location.origin || !frame || event.source !== frame.contentWindow)
                 return;
@@ -349,7 +349,7 @@ function sceneSetupExploration(mount: any, props: any, state: any, handle: any, 
     };
 }
 function sceneMetricsSignal(name: any, read: any): any {
-    if (!name || typeof setSharedSignalValue !== 'function')
+    if (!name || typeof window.__gosx_runtime_api.setSharedSignalValue !== 'function')
         return () => { };
     const intervals: number[] = [], frames: Array<[
         number,
@@ -397,7 +397,7 @@ function sceneMetricsSignal(name: any, read: any): any {
             if (frames.length)
                 rate = 1000 * frames.reduce((a, b) => a + b[0], 0) / frames.reduce((a, b) => a + b[1], 0);
         }
-        setSharedSignalValue(name, { Ready: true, TransferLabel: Math.round(transfer / 1024).toLocaleString(), FPSLabel: now - timing.submitAtMS > 1000 ? '0' : rate > 0 ? String(Math.round(rate)) : '…' });
+        window.__gosx_runtime_api.setSharedSignalValue(name, { Ready: true, TransferLabel: Math.round(transfer / 1024).toLocaleString(), FPSLabel: now - timing.submitAtMS > 1000 ? '0' : rate > 0 ? String(Math.round(rate)) : '…' });
     };
 }
 window.__gosx_runtime_api.scene3DExperience = { load: sceneLoadExperience, presentation: sceneSetupPresentation, cycle: sceneCreateDayCycle, exploration: sceneSetupExploration, metrics: sceneMetricsSignal };

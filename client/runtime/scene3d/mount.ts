@@ -3652,7 +3652,7 @@
 
     if(experience){
       publishMetrics=experience.metrics(props.metricsSignal,()=>sceneRendererFrameTiming(renderer,renderTiming));
-      dayCycle=experience.cycle(props.dayCycle,sceneState);
+      dayCycle=experience.cycle(props.dayCycle,sceneState,{light:hashLightContent,environment:hashEnvironmentContent});
       exploration=experience.exploration(mount,props,sceneState,handle,scheduleRender,applySceneAudioCue,(commands: any)=>applySceneCommands(sceneState,commands));
     }
     handle.setDayHour = (hour: number) => { if (dayCycle) {dayCycle.seek(hour);scheduleRender("day-cycle-seek");} };
