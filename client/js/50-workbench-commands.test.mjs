@@ -185,7 +185,7 @@ test("browser chord grammar mirrors the Go grammar", async () => {
 
 test("submit actions call requestSubmit on a form or on a button's form", async () => {
   const form = new FakeElement("form", null), button = new FakeElement("button", null);
-  form.id = "undo-form"; button.id = "undo-button"; button.form = form;
+  form.id = "undo-form"; button.id = "undo-button"; button.form = form; button.type = "submit";
   const calls = [];
   form.requestSubmit = (submitter) => calls.push(submitter === undefined ? "form" : submitter);
   const manifest = { commands: [
@@ -209,4 +209,31 @@ test("submit actions call requestSubmit on a form or on a button's form", async 
   assert.equal(JSON.stringify(errors), JSON.stringify([{ id: "edit.gone", reason: "submit-target" }]));
   assert.deepEqual(seen, ["edit.undo", "edit.redo", "edit.gone"]);
   assert.equal(api.list()[0].submit, "#undo-form");
+});
+
+test("submit actions accept only forms and real submitters", async () => {
+  const form = new FakeElement("form", null);
+  form.id = "f";
+  const calls = [];
+  form.requestSubmit = (submitter) => calls.push(submitter === undefined ? "form" : submitter.id);
+  const make = (tag, id, type) => { const el = new FakeElement(tag, null); el.id = id; el.type = type; el.form = form; return el; };
+  // The DOM reports type "submit" for a button with no or an invalid type attribute.
+  const els = [
+    make("input", "text", "text"), make("button", "plain", "button"), make("input", "check", "checkbox"),
+    make("button", "default", "submit"), make("input", "sub", "submit"), make("input", "img", "image"),
+  ];
+  const commands = [["f", "#f"], ...els.map(e => [e.id, "#" + e.id])].map(([id, submit]) => ({ id: "c." + id, title: id, action: { submit } }));
+  const env = bootWorkbench({ elements: [form, ...els], manifest: { commands } });
+  await flushAsyncWork();
+  const api = env.context.__gosx.commands, errors = [];
+  env.document.addEventListener("gosx:command:error", e => errors.push(e.detail.id + ":" + e.detail.reason));
+  for (const id of ["text", "plain", "check"]) assert.doesNotThrow(() => api.run("c." + id));
+  assert.deepEqual(errors, ["c.text:submit-target", "c.plain:submit-target", "c.check:submit-target"]);
+  assert.deepEqual(calls, []);
+  for (const id of ["f", "default", "sub", "img"]) api.run("c." + id);
+  assert.deepEqual(calls, ["form", "default", "sub", "img"]);
+  form.requestSubmit = () => { throw new Error("disabled"); };
+  assert.doesNotThrow(() => api.run("c.default"));
+  assert.doesNotThrow(() => api.run("c.f"));
+  assert.deepEqual(errors.slice(3), ["c.default:submit-failed", "c.f:submit-failed"]);
 });

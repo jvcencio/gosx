@@ -103,11 +103,12 @@
           }
         }
         if (action.submit) {
-          const el = document.querySelector(action.submit);
-          const form = el && (el.tagName === "FORM" ? el : el.form);
-          if (!form || typeof form.requestSubmit !== "function") document.dispatchEvent(new CustomEvent("gosx:command:error", { detail: { id: cmd.id, reason: "submit-target" } }));
-          else if (el !== form) form.requestSubmit(el);
-          else form.requestSubmit();
+          const el = document.querySelector(action.submit), tag = el && el.tagName;
+          const fail = reason => document.dispatchEvent(new CustomEvent("gosx:command:error", { detail: { id: cmd.id, reason } }));
+          const submitter = (tag === "BUTTON" && el.type === "submit") || (tag === "INPUT" && (el.type === "submit" || el.type === "image"));
+          const form = tag === "FORM" ? el : submitter && el.form;
+          if (!form || typeof form.requestSubmit !== "function") fail("submit-target");
+          else try { if (el !== form) form.requestSubmit(el); else form.requestSubmit(); } catch (_) { fail("submit-failed"); }
         }
         return true;
       }

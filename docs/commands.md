@@ -84,10 +84,16 @@ alternatives. Give commands without a chord a button or another activation path.
 
 `Action{Submit: "#undo-form"}` makes a command submit a form. `Submit` is a CSS
 selector. When it matches a `form`, the workbench calls `form.requestSubmit()`.
-When it matches a submit button inside a form, the workbench calls
-`form.requestSubmit(button)`, so the button's name and value are sent. Any other
-result, including no match, dispatches `gosx:command:error` on `document` with
-`{id, reason: "submit-target"}`. The `gosx:command` event still fires once.
+When it matches a real submitter that belongs to a form, the workbench calls
+`form.requestSubmit(submitter)`, so the submitter's name and value are sent. A
+submitter is a `button` of type submit (the default when the `type` attribute is
+missing or invalid) or an `input` of type submit or image. Any other match, such
+as a text input or a `button type="button"`, or no match, dispatches
+`gosx:command:error` on `document` with `{id, reason: "submit-target"}`. If
+`requestSubmit` throws, for example because the submitter is disabled or left the
+document, the workbench dispatches the same event with `reason: "submit-failed"`
+and the exception does not reach the caller. The `gosx:command` event still
+fires once.
 
 ```go
 command.Command{ID: "edit.undo", Title: "Undo", Keys: []string{"Mod+Z"},
