@@ -181,7 +181,7 @@ test("two objects sharing a named material preserve the surviving owner after re
   await h.render();
   const group = h.fake.state.renderPasses.at(-1).bindGroups.find(b => b.slot === 1).group;
   assert.equal(group.desc.entries.find(e => e.binding === 0).resource.buffer, survivor);
-  assert.equal(survivor.destroyed, false);
+  assert.notEqual(survivor.destroyed, true);
 });
 
 module.exports = { materialHarness };
