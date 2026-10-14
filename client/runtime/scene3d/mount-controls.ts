@@ -1050,7 +1050,7 @@
       scheduleRender(reason);
     };
     base = setupSceneBaseControls(canvas, props, readViewport, readSourceCamera, schedule, sceneState);
-    if (props.controlZoom && !base.controller) {
+    if ((props.controlZoom || props.optics) && !base.controller) {
       // Fixed cameras retain their authored angle. Opt-in navigation must not
       // enable orbit rotation or consume single-pointer object gestures.
       const fixed = {
@@ -1067,12 +1067,14 @@
     }
     if (sceneVesselEnabled(props)) base = window.__gosx_scene3d_vessel_api.setup(canvas, props, base, sceneState, {
       schedule, current: sceneCurrentControlCamera,
+      subscribe: typeof gosxSubscribeSharedSignal === "function" ? gosxSubscribeSharedSignal : undefined,
+      publish: typeof setSharedSignalValue === "function" ? setSharedSignalValue : undefined,
       // @ts-ignore TS7006 -- renderer-neutral creation seam for the lazy wake
       addObject: (state, id, object) => state.objects.set(id, normalizeSceneObject(Object.assign({ id, kind: "mesh" }, object), id)),
       // @ts-ignore TS2339 -- Chromium deviceMemory is also used by the ocean quality gate
       lowHardware: () => gosxLowEndHardware(navigator.deviceMemory, navigator.hardwareConcurrency),
     });
-    if (!props.controlZoom || !base.controller) return base;
+    if ((!props.controlZoom && !props.optics) || !base.controller) return base;
     const controller = base.controller, current = controller.currentCamera;
     // @ts-ignore TS7006 -- plain JavaScript control adapter.
     if (!current) controller.syncCamera = camera => {
@@ -1086,6 +1088,8 @@
     };
     return window.__gosx_runtime_api.scene3DZoom.setup(canvas, props, base, {
       read,
+      subscribe: typeof gosxSubscribeSharedSignal === "function" ? gosxSubscribeSharedSignal : undefined,
+      publish: typeof setSharedSignalValue === "function" ? setSharedSignalValue : undefined,
       // @ts-ignore TS7006 -- viewport FOV is sampled at view reset, before optical zoom.
       fov: camera => sceneViewportCamera(camera, sceneState.camera || readSourceCamera(), readViewport()).fov,
       // @ts-ignore TS7006 -- plain JavaScript control adapter.

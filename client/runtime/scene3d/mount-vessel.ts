@@ -66,7 +66,7 @@
       base.controller?.applyCamera?.(Object.assign({},read(),site.position,{rotationX:0,rotationY:0}));
       return true;
     }
-    const navigation=props.vessel.navigation?window.__gosx_scene3d_vessel_navigation.setup(mount,state,props.vessel,changeHelm,helpers.schedule,land):null;
+    const navigation=props.vessel.navigation?window.__gosx_scene3d_vessel_navigation.setup(mount,state,props.vessel,changeHelm,helpers.schedule,land,helpers):null;
     if(base.bindReset)base.bindReset(reset);
     sceneState._gosxMotionController=controller;
     const wake=window.__gosx_scene3d_vessel_wake&&props.vessel.wake!==false?window.__gosx_scene3d_vessel_wake.create(sceneState,helpers,props.vessel):null;

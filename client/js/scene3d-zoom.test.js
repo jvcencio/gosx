@@ -29,17 +29,19 @@ function harness(mode = 'first-person', reduced = false, enabled = true, options
   window.__gosx_runtime_api = {};
   media.matches = reduced; window.matchMedia = () => media;
   vm.runInNewContext(source, { window, document, Map, Math, Number, Array, CustomEvent: class { constructor(type, options) { this.type=type; Object.assign(this,options); } } });
-  const api = window.__gosx_runtime_api.scene3DZoom, frames = new Map(), reasons = [];
+  const api = window.__gosx_runtime_api.scene3DZoom, frames = new Map(), reasons = [], subscribers=new Map(), signals=new Map();
   let id = 0, now = 0, pose = { x: 1, y: 2, z: 3, fov: 75 }, cancelled = 0, disposed = 0;
   const controller = { mode, target: {x:0,y:0,z:0}, touched: false, zoomScale: 1, minDistance: 2, maxDistance: 100, orbit: { radius: 20 }, syncCamera() {},
     currentCamera: () => pose, applyCamera: c => { pose = c; } };
   const base = { controller, cancelTouch: () => cancelled++, reset: () => { pose = { ...pose, fov: 75 }; }, dispose: () => disposed++ };
   const helpers = { read: () => pose, pan: d => { pose = {...pose, x:pose.x+d.x, y:pose.y+d.y, z:pose.z+d.z}; }, schedule: r => reasons.push(r), now: () => now,
+    subscribe: (name,fn) => {subscribers.set(name,fn);return ()=>subscribers.delete(name);},
+    publish: (name,value) => {signals.set(name,value);subscribers.get(name)?.(value);},
     requestFrame: fn => { frames.set(++id, fn); return id; }, cancelFrame: id => frames.delete(id) };
   if (mode === 'stern' || mode === 'wheel') { base.state = { mode: 'sailing', cameraMode: mode, length: 10 }; pose.fov = 65; }
   api.setup(canvas, { controlZoom: enabled, ...options }, base, helpers);
   const flush = () => { for (let i = 0; frames.size && i < 200; i++) { now += 16; const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn(now)); } };
-  return { api, window, canvas, handle, document, media, base, controller, frames, reasons, helpers, flush, cancelled: () => cancelled, disposed: () => disposed };
+  return { api, window, canvas, handle, document, media, base, controller, frames, reasons, helpers, signals, subscribers, setSignal:(name,value)=>helpers.publish(name,value), flush, cancelled: () => cancelled, disposed: () => disposed };
 }
 const near = (a,b) => assert.ok(Math.abs(a-b)<1e-8, `${a} != ${b}`);
 test('zoom targets clamp and easing is invariant to frame subdivision', () => {
@@ -161,6 +163,27 @@ test('optical lens honors portrait FOV, rejects malformed and foreign events, an
   h.canvas.emit('gosx:scene3d:optical-zoom',{target:{},detail:{factor:1}});near(h.controller.currentCamera().fov,expected);
   let resets=0;h.canvas.addEventListener('gosx:scene3d:optical-zoom-state',e=>{if(e.detail.factor===1)resets++;});
   h.base.reset();assert.equal(h.controller.currentCamera().fov,75);assert.equal(resets,1);
+});
+
+test('Go-authored optics uses shared signals for magnification, readings, escape and disposal',()=>{
+ const input='$survey.optics',output='$survey.reading';
+ const h=harness('wheel',false,true,{optics:{inputSignal:input,outputSignal:output,magnification:3,landmarks:[{id:'north',name:'North isle',position:{x:1,z:-100},landing:true}]}});
+ h.controller.currentCamera();assert.equal(h.signals.get(output).Ready,true);
+ h.setSignal(input,true);const c=h.controller.currentCamera(),reading=h.signals.get(output);
+ near(Math.tan(c.fov*Math.PI/360),Math.tan(65*Math.PI/360)/3);
+ assert.equal(reading.Enabled,true);assert.equal(reading.LandmarkID,'north');assert.equal(reading.CanNavigate,true);
+ assert.equal(h.base.state.mode,'sailing');assert.equal(h.frames.size,0);
+ h.canvas.emit('keydown',{key:'Escape',stopPropagation(){}});assert.equal(h.signals.get(input),false);assert.equal(h.controller.currentCamera().fov,65);
+ h.setSignal(input,true);h.base.reset();assert.equal(h.signals.get(input),false);
+ h.base.dispose();assert.equal(h.subscribers.size,0);assert.equal(h.canvas.listeners.length,0);
+});
+
+test('an optics-only fixed viewer keeps ordinary wheel and touch gestures untouched',()=>{
+ const h=harness('fixed',false,false,{optics:{inputSignal:'$lens',magnification:3}});
+ h.setSignal('$lens',true);assert.ok(h.controller.currentCamera().fov<30);
+ assert.equal(h.canvas.emit('wheel',{deltaY:100}).defaultPrevented,undefined);
+ assert.equal(h.canvas.emit('pointerdown',{pointerType:'touch',pointerId:1}).defaultPrevented,undefined);
+ h.setSignal('$lens',false);assert.equal(h.controller.currentCamera().fov,75);h.base.dispose();
 });
 
 

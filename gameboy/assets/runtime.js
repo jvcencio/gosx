@@ -1,8 +1,16 @@
-import init, { GameBoy, GameBoyMode, PadKey, StateManager, SaveStateFormat, StateFormat, FromGbOptions } from "./vendor/boytacean-0.13.2/boytacean.js";
+// Framework-owned optional cartridge engine. ROM bytes are supplied by the player or deployment.
+(function () {
+ "use strict";
+ const runtimeURL=document.currentScript?.src||new URL("/gosx/gameboy/runtime.js",location.href).href;
+ const factories = window.__gosx_engine_factories || (window.__gosx_engine_factories=Object.create(null));
+ factories.GoSXGameBoy = async function(engineContext) {
+ const root=engineContext.mount, props=engineContext.props||{}, listeners=[];
+ const listen=(target,type,fn,options)=>{target.addEventListener(type,fn,options);listeners.push([target,type,fn,options]);};
+ const {default:init,GameBoy,GameBoyMode,PadKey,StateManager,SaveStateFormat,StateFormat,FromGbOptions}=await import(new URL("./vendor/boytacean-0.13.2/boytacean.js",runtimeURL).href);
 
-const canvas = document.querySelector("canvas"), ctx = canvas.getContext("2d", { alpha:false });
-const status = document.querySelector("[data-status]"), sound = document.querySelector("[data-sound]");
-const speedControl = document.querySelector("[data-speed]"), audioSources = new Set();
+const canvas = root.querySelector("canvas"), ctx = canvas.getContext("2d", { alpha:false });
+const status = root.querySelector("[data-status]"), sound = root.querySelector("[data-sound]");
+const speedControl = root.querySelector("[data-speed]"), audioSources = new Set();
 const image = ctx.createImageData(160,144), pressed = new Set(), pendingReleases = new Set();
 const keyboard = { ArrowUp:"Up",ArrowDown:"Down",ArrowLeft:"Left",ArrowRight:"Right",KeyZ:"A",KeyJ:"A",KeyX:"B",KeyK:"B",Enter:"Start",ShiftLeft:"Select",ShiftRight:"Select" };
 let gb = null, cartridge = null, romHash = "", frame = 0, last = 0, elapsed = 0, running = false, saveAt = 0;
@@ -21,13 +29,13 @@ function release() {
   for (const key of pressed) if (gb) gb.key_lift(PadKey[key]);
   pressed.clear();
   pendingReleases.clear();
-  for (const button of document.querySelectorAll("[data-key]")) button.dataset.pressed = "false";
+  for (const button of root.querySelectorAll("[data-key]")) button.dataset.pressed = "false";
 }
 function key(name, down) {
   if (!gb || !running || !(name in PadKey)) return;
   if (down) { pendingReleases.delete(name); pressed.add(name); gb.key_press(PadKey[name]); }
   else if (pressed.has(name)) pendingReleases.add(name);
-  for (const button of document.querySelectorAll('[data-key="'+name+'"]')) button.dataset.pressed = String(down);
+  for (const button of root.querySelectorAll('[data-key="'+name+'"]')) button.dataset.pressed = String(down);
 }
 function save() {
   if (!gb || !romHash) return;
@@ -35,11 +43,11 @@ function save() {
   if (!ram.length) return;
   try {
     let binary="";for(let i=0;i<ram.length;i+=32768)binary+=String.fromCharCode(...ram.subarray(i,i+32768));
-    localStorage.setItem("gosx.blackglass.cartridge."+romHash,btoa(binary));
+    localStorage.setItem(props.batteryPrefix+romHash,btoa(binary));
   }
   catch (_) { note("Autosave is unavailable here. Export save keeps a copy."); }
 }
-const checkpointPrefix="gosx.blackglass.pocket-state.v1.",maxCheckpoint=2*1024*1024;
+const checkpointPrefix=props.checkpointPrefix,maxCheckpoint=2*1024*1024;
 function encode(data) {
   let binary="";for(let i=0;i<data.length;i+=32768)binary+=String.fromCharCode(...data.subarray(i,i+32768));
   return btoa(binary);
@@ -52,12 +60,12 @@ function checkpoint() {
     localStorage.setItem(checkpointPrefix+romHash,JSON.stringify({version:1,core:"boytacean-0.13.2",romHash,speed,savedAt:Date.now(),data:encode(data)}));
     canvas.dataset.checkpoint="saved";
     note(romName+" · pocket checkpoint saved on this device");
-    parent.postMessage({type:"blackglass-handheld-saved",ok:true},location.origin);
+    parent.postMessage({type:props.protocol+"-saved",ok:true},location.origin);
     return true;
   } catch(_) {
     canvas.dataset.checkpoint="unavailable";
     note("Pocket autosave is unavailable. This session still resumes; Export save keeps your battery save.");
-    parent.postMessage({type:"blackglass-handheld-saved",ok:false},location.origin);
+    parent.postMessage({type:props.protocol+"-saved",ok:false},location.origin);
     return false;
   }
 }
@@ -140,7 +148,7 @@ async function load(bytes, name, importedRAM = null, expectedHash = "") {
   insert(bytes,mode);
   let ram=importedRAM,restored=false,restoreFailed=false;
   try {
-    const stored=importedRAM ? null : localStorage.getItem("gosx.blackglass.cartridge."+romHash);
+    const stored=importedRAM ? null : localStorage.getItem(props.batteryPrefix+romHash);
     ram=importedRAM || (stored ? Uint8Array.from(atob(stored),c=>c.charCodeAt(0)) : null);
     if(ram && ram.length===gb.ram_data_eager().length)gb.set_ram_data(ram);
   } catch (_) {}
@@ -154,66 +162,66 @@ async function load(bytes, name, importedRAM = null, expectedHash = "") {
     }
   }
   document.body.dataset.cartridge=name;
-  document.querySelector("[data-screen-prompt]").hidden=true;
-  for(const control of document.querySelectorAll("[data-key], [data-save], [data-import-save], [data-sound]"))control.disabled=false;
+  root.querySelector("[data-screen-prompt]").hidden=true;
+  for(const control of root.querySelectorAll("[data-key], [data-save], [data-import-save], [data-sound]"))control.disabled=false;
   note(name+(restored?" · pocket checkpoint restored":restoreFailed?" · checkpoint unavailable; battery save loaded":" · saves stay on this device"));
-  document.querySelector("[data-hint]").textContent="Put away to pause and autosave your exact place. Pick up to continue. Arrows · Z/X · Enter · Shift";
+  root.querySelector("[data-hint]").textContent="Put away to pause and autosave your exact place. Pick up to continue. Arrows · Z/X · Enter · Shift";
   pixels();
   play(allowedToRun);if(allowedToRun)canvas.focus({preventScroll:true});
 }
 await init();
 note("Load your Pokémon Yellow .gb cartridge to switch on.");
-speedControl.addEventListener("change",()=>{
+listen(speedControl,"change",()=>{
   speed=speedControl.value==="1"?1:3;speedControl.value=String(speed);
   canvas.dataset.emulationSpeed=String(speed);last=0;elapsed=0;stopAudio();
 });
-document.querySelector("[data-rom]").addEventListener("change",async event=>{
+listen(root.querySelector("[data-rom]"),"change",async event=>{
   const file=event.target.files[0];if(!file)return;
   try { if(file.size>maxROM)throw new Error("This handheld accepts cartridges up to 8 MB.");await load(new Uint8Array(await file.arrayBuffer()),file.name); }
   catch(error){note(error.message);}finally{event.target.value="";}
 });
-document.querySelector("[data-import-save]").addEventListener("change",async event=>{
+listen(root.querySelector("[data-import-save]"),"change",async event=>{
   const file=event.target.files[0];if(!file||!gb)return;
   try{if(file.size!==gb.ram_data_eager().length)throw new Error("That save has a different cartridge RAM size.");const ram=new Uint8Array(await file.arrayBuffer());await load(romBytes,romName,ram);save();note("Save imported. Cartridge restarted from your battery save.");}
   catch(error){note(error.message);}finally{event.target.value="";}
 });
-document.querySelector("[data-save]").addEventListener("click",()=>{
+listen(root.querySelector("[data-save]"),"click",()=>{
   if(!gb)return;const data=gb.ram_data_eager();
   if(!data.length){note("This cartridge does not have battery-save memory.");return;}
   const url=URL.createObjectURL(new Blob([data],{type:"application/octet-stream"}));
   const link=document.createElement("a");link.href=url;link.download=(document.body.dataset.cartridge||"blackglass").replace(/\.(gb|gbc)$/i,"")+".sav";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
-sound.addEventListener("click",async()=>{
+listen(sound,"click",async()=>{
   try{if(!audio)audio=new AudioContext();muted=!muted;stopAudio();if(!muted&&running)await audio.resume();else await audio.suspend();sound.textContent=muted?"Sound off":"Sound on";sound.setAttribute("aria-pressed",String(!muted));}
   catch(_){note("Sound is unavailable. The cartridge can still play.");}
 });
-for(const button of document.querySelectorAll("[data-key]")){
-  button.addEventListener("pointerdown",event=>{event.preventDefault();button.setPointerCapture(event.pointerId);key(button.dataset.key,true);});
-  for(const type of ["pointerup","pointercancel","lostpointercapture"])button.addEventListener(type,()=>key(button.dataset.key,false));
-  button.addEventListener("keydown",event=>{if(event.code==="Space"||event.code==="Enter"){event.preventDefault();key(button.dataset.key,true);}});
-  button.addEventListener("keyup",event=>{if(event.code==="Space"||event.code==="Enter"){event.preventDefault();key(button.dataset.key,false);}});
+for(const button of root.querySelectorAll("[data-key]")){
+  listen(button,"pointerdown",event=>{event.preventDefault();button.setPointerCapture(event.pointerId);key(button.dataset.key,true);});
+  for(const type of ["pointerup","pointercancel","lostpointercapture"])listen(button,type,()=>key(button.dataset.key,false));
+  listen(button,"keydown",event=>{if(event.code==="Space"||event.code==="Enter"){event.preventDefault();key(button.dataset.key,true);}});
+  listen(button,"keyup",event=>{if(event.code==="Space"||event.code==="Enter"){event.preventDefault();key(button.dataset.key,false);}});
 }
-window.addEventListener("keydown",event=>{
-  if(event.key==="Escape"){event.preventDefault();parent.postMessage({type:"blackglass-handheld-close"},location.origin);return;}
+listen(window,"keydown",event=>{
+  if(event.key==="Escape"){event.preventDefault();parent.postMessage({type:props.protocol+"-close"},location.origin);return;}
   if(event.target.tagName==="BUTTON"||event.target.tagName==="INPUT"||event.target.tagName==="SELECT")return;
   const name=keyboard[event.code];if(name){event.preventDefault();key(name,true);}
 });
-window.addEventListener("keyup",event=>{const name=keyboard[event.code];if(name){event.preventDefault();key(name,false);}});
-window.addEventListener("blur",release);
-window.addEventListener("message",event=>{if(event.origin===location.origin&&event.source===parent&&event.data?.type==="blackglass-handheld"){allowedToRun=event.data.action==="resume";play(allowedToRun);}});
-document.addEventListener("visibilitychange",()=>{if(document.hidden){release();save();checkpoint();stopAudio();if(audio)audio.suspend().catch(()=>{});if(frame)cancelAnimationFrame(frame);frame=0;last=0;elapsed=0;}else if(running&&gb){last=0;if(audio&&!muted)audio.resume().catch(()=>{});frame=requestAnimationFrame(tick);}});
-window.addEventListener("pagehide",event=>{allowedToRun=false;play(false);if(!event.persisted){if(cartridge)cartridge.free();if(gb)gb.free();gb=null;}});
-parent.postMessage({type:"blackglass-handheld-ready"},location.origin);
+listen(window,"keyup",event=>{const name=keyboard[event.code];if(name){event.preventDefault();key(name,false);}});
+listen(window,"blur",release);
+listen(window,"message",event=>{if(event.origin===location.origin&&event.source===parent&&event.data?.type===props.protocol){allowedToRun=event.data.action==="resume";play(allowedToRun);}});
+listen(document,"visibilitychange",()=>{if(document.hidden){release();save();checkpoint();stopAudio();if(audio)audio.suspend().catch(()=>{});if(frame)cancelAnimationFrame(frame);frame=0;last=0;elapsed=0;}else if(running&&gb){last=0;if(audio&&!muted)audio.resume().catch(()=>{});frame=requestAnimationFrame(tick);}});
+listen(window,"pagehide",event=>{allowedToRun=false;play(false);if(!event.persisted){if(cartridge)cartridge.free();if(gb)gb.free();gb=null;}});
+parent.postMessage({type:props.protocol+"-ready"},location.origin);
 // A deployment may supply a cartridge without adding its bytes to Git. The
 // manifest is fetched only inside the opened pocket, and never displaces a
 // cartridge the player selected while the download was in flight.
 const defaultGeneration=activeLoad;
 try{
   const signal=AbortSignal.timeout(10000);
-  const response=await fetch("/api/blackglass-cartridge",{cache:"no-store",signal});
+  const response=props.cartridgeURL ? await fetch(props.cartridgeURL,{cache:"no-store",signal}) : {ok:false};
   if(response.ok){
     const config=await response.json();
-    if(config.available && activeLoad===defaultGeneration && /^\/api\/blackglass-cartridge\/rom\?sha256=[a-f0-9]{64}$/.test(config.url) && /^[a-f0-9]{64}$/.test(config.sha256) && config.bytes<=maxROM){
+    if(config.available && activeLoad===defaultGeneration && new URL(config.url,location.href).origin===location.origin && /^[a-f0-9]{64}$/.test(config.sha256) && config.bytes<=maxROM){
       const cartridgeResponse=await fetch(config.url,{signal});
       if(!cartridgeResponse.ok)throw new Error("The deployment cartridge is unavailable. Load a local cartridge.");
       const bytes=new Uint8Array(await cartridgeResponse.arrayBuffer());
@@ -221,3 +229,7 @@ try{
     }
   }
 }catch(error){if(activeLoad===defaultGeneration)note("Load a local cartridge. "+error.message);}
+
+ return {dispose(){allowedToRun=false;play(false);if(frame)cancelAnimationFrame(frame);release();stopAudio();if(audio)audio.close().catch(()=>{});if(cartridge)cartridge.free();if(gb)gb.free();gb=null;for(const [target,type,fn,options] of listeners)target.removeEventListener(type,fn,options);}};
+ };
+})();

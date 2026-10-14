@@ -129,6 +129,10 @@ func blackglassBeachHorizon(sky scene.Sky, exposure float32) string {
 
 // BlackglassBeachProgram renders one camera view in one light period.
 func BlackglassBeachProgram(viewID, periodID string) scene.Props {
+	return blackglassBeachProgram(viewID, periodID, true)
+}
+
+func blackglassBeachProgram(viewID, periodID string, interactive bool) scene.Props {
 	period := blackglassBeachPeriodFor(periodID)
 	view := blackglassBeachViewFor(viewID)
 	sky := beachgen.PeriodSky(period.ID)
@@ -140,6 +144,7 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 		Label:       "Blackglass Beach — " + view.Name + " at " + period.Name,
 		AriaLabel:   "A black-sand coast at " + period.Name + ": basalt cliffs, sea stacks, footprints to black glass, tide pools with marine life, a wreck and a lighthouse. A violet handheld rests beside the pools; a clipper waits at the jetty. Three offshore islands have piers, a letter cache, a tide bell and a star dial.",
 		ControlZoom: scene.Bool(true), ControlTarget: view.Target, ControlMinDistance: 2, ControlMaxDistance: 240,
+		Optics: blackglassBeachOptics(), MetricsSignal: "$blackglass.metrics",
 		Background: horizon, Controls: blackglassBeachControls(view.ID), Walk: blackglassBeachWalk(), Vessel: blackglassBeachVessel(), PointerLock: scene.Bool(true),
 		AutoRotate: scene.Bool(false), Responsive: scene.Bool(true), FillHeight: scene.Bool(true),
 		PreferWebGPU: scene.Bool(true), CanvasAlpha: scene.Bool(false), Stats: scene.Bool(false),
@@ -215,6 +220,12 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 	if view.ID == "pools" {
 		program.Camera.PortraitFOV = 95
 	}
+	if interactive {
+		program.ExperienceRef = "/api/blackglass-experience?view=" + view.ID + "&period=" + period.ID
+		program.Optics = nil
+		program.Vessel = nil
+	}
+
 	return program
 }
 
@@ -222,3 +233,18 @@ func BlackglassBeachProgram(viewID, periodID string) scene.Props {
 // All viewpoints are starting positions in the same walkable world. A visitor
 // who boards from the pools can step ashore without inheriting orbit controls.
 func blackglassBeachControls(view string) string { return scene.ControlFirstPerson }
+
+// BlackglassBeachExperience is the same typed control configuration used inline
+// by Scene3D, served as a small descriptor for this persistent world.
+func BlackglassBeachExperience(viewID, periodID string) scene.Experience {
+	view := blackglassBeachViewFor(viewID)
+	period := blackglassBeachPeriodFor(periodID)
+	hour := 17.5
+	if period.ID == beachgen.PeriodNoon {
+		hour = 12
+	}
+	if period.ID == beachgen.PeriodBlue {
+		hour = 18.3
+	}
+	return scene.Experience{Optics: blackglassBeachOptics(), Vessel: blackglassBeachVessel(), Presentation: blackglassBeachPresentation(view.ID, period.ID), Exploration: blackglassBeachExploration(), DayCycle: &scene.DayCycle{DurationSeconds: 1080, InitialHour: hour, SunLightID: "sun", SunAzimuth: 90, PeakElevation: 55, Seed: uint32(beachgen.Seed), Weather: true, InputSignal: "$blackglass.timeAutomatic", OutputSignal: "$blackglass.day"}}
+}

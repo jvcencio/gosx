@@ -312,11 +312,11 @@ test("delegation source attaches only declared de-duplicated events with legacy 
   assert.deepEqual(Array.from(documentEntries, (entry) => entry.type), ["keydown"]);
 
   const legacyEntries = env.context.__gosx_test_setup_event_delegation(legacy, legacy.id);
-  assert.equal(legacyEntries.filter((entry) => entry.target === legacy).length, 21);
+  assert.equal(legacyEntries.filter((entry) => entry.target === legacy).length, 24);
   const modernEntry = JSON.parse('{"events":[]}');
   const oldNullEntry = JSON.parse('{"events":null}');
   assert.equal(env.context.__gosx_test_setup_event_delegation(explicitNone, explicitNone.id, modernEntry.events).length, 0);
-  assert.equal(env.context.__gosx_test_setup_event_delegation(legacyNull, legacyNull.id, oldNullEntry.events).length, 21);
+  assert.equal(env.context.__gosx_test_setup_event_delegation(legacyNull, legacyNull.id, oldNullEntry.events).length, 24);
 });
 
 test("wheel, dblclick, contextmenu and lostpointercapture delegate with offsets and deltas", () => {
@@ -359,4 +359,16 @@ test("wheel, dblclick, contextmenu and lostpointercapture delegate with offsets 
   // The options object is created in the vm realm; compare properties, not identity.
   assert.equal(wheel[1] && wheel[1].capture, false, "wheel listens in the bubble phase");
   assert.equal(wheel[1] && wheel[1].passive, false, "wheel must be a non-passive listener");
+});
+
+
+test("completed touch activates Go button handlers once and preserves drag, form and keyboard behavior", () => {
+ const root=new FakeElement("div",null),button=new FakeElement("button",null);root.id="tap-island";button.setAttribute("type","button");button.setAttribute("data-gosx-on-click","raise");root.appendChild(button);
+ button.getBoundingClientRect=()=>({left:0,top:0,right:100,bottom:50});
+ const env=createContext({elements:[root]}),calls=[];env.context.__gosx_action=(...args)=>{calls.push(args);return 0;};runScript(source,env.context,"tap-events");
+ const entries=env.context.__gosx_test_setup_event_delegation(root,root.id,[{eventType:"click"}]);
+ const emit=(type,extra={})=>{let stopped=false;const event={type,target:button,pointerType:"touch",pointerId:1,clientX:10,clientY:10,timeStamp:100,detail:0,preventDefault(){this.defaultPrevented=true},stopImmediatePropagation(){stopped=true},...extra};for(const e of entries.filter(e=>e.type===type)){e.listener(event);if(stopped)break;}return event;};
+ button.click=()=>emit("click");emit("pointerdown");emit("pointerup");assert.equal(calls.length,1);emit("click",{detail:1,timeStamp:110});assert.equal(calls.length,1);emit("click",{detail:0});assert.equal(calls.length,2);
+ emit("pointerdown");emit("pointerup",{clientX:50});assert.equal(calls.length,2);emit("pointerdown");emit("pointercancel");emit("pointerup");assert.equal(calls.length,2);
+ button.setAttribute("disabled","");emit("pointerdown");emit("pointerup");assert.equal(calls.length,2);button.removeAttribute("disabled");button.setAttribute("type","submit");emit("pointerdown");emit("pointerup");assert.equal(calls.length,2);
 });

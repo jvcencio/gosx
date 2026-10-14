@@ -46,13 +46,18 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 // packed poses, measure 1,939,874 monolith raw bytes and 73,972 WebGL Brotli
 // bytes. Only these two exhausted targets move to their exact minima; the
 // 65,536-byte monolith allowance, 5% policy and all other targets stay fixed.
+// Typed experience controls remain in optional command/zoom/vessel chunks.
+// Measured raw/gzip/Brotli: zoom 8323/3504/3220, vessel 35414/13308/12201,
+// command 26767/9423/8601. Selena clouds and the mount adapter also measure
+// monolith raw 1958192 and WebGL Brotli 74292 (label route 316985).
+// Only exhausted targets move to their minimum; allowance policy is unchanged.
 const budgets = [
   // Finite choreography remains demand-loaded; existing route limits are unchanged.
   { file: "bootstrap-feature-scene3d-timeline.js", raw: 5_400, gzip: 2_400, brotli: 2_200 },
   // The opt-in chunk now includes fixed-camera pan, touch centroid tracking and
   // accessible captured handles. Its reviewed raw target grows by 400 bytes.
   // Projection-only lens: measured 6774 / 2830 / 2614 bytes. Existing allowances stay fixed.
-  { file: "bootstrap-feature-scene3d-zoom.js", raw: 4_726, gzip: 1_806, brotli: 1_590 },
+  { file: "bootstrap-feature-scene3d-zoom.js", raw: 6275, gzip: 2480, brotli: 2196 },
   { file: "bootstrap-feature-scene3d-particle-burst.js", raw: 5_600, gzip: 2_400, brotli: 2_200 },
   // Ocean-driven heel, cloth normals, rig sway, impact spray and reduced-motion
   // deck bob remain lazy. Dormant-wake guards avoid unnecessary ocean queries.
@@ -70,7 +75,7 @@ const budgets = [
   // Only this optional chunk's exhausted targets change; allowances stay fixed.
   // Shared render interpolation, stable foam and the touch dead zone measure 31,260 / 11,914 / 10,914 bytes.
   // Only exhausted targets rise to the measured minimum; allowances remain fixed.
-  { file: "bootstrap-feature-scene3d-vessel.js", raw: 29212, gzip: 10890, brotli: 9890 },
+  { file: "bootstrap-feature-scene3d-vessel.js", raw: 33366, gzip: 12284, brotli: 11177 },
   // bootstrap.js raw bumped 806_000 -> 812_000 for 28-video-sync-fallback.ts
   // (parity-locked JS drift engine on the brain-absent video path). gzip/brotli
   // headroom unchanged.
@@ -790,7 +795,7 @@ const budgets = [
     // Colour lifetime and frame-cached snapshots measure 1,940,344 raw bytes.
     // Raise only the raw target by 470 B to the exact minimum; keep the 65,536 B allowance.
     // Combined main plus shared sailing presentation measures 1,940,718 raw bytes; only the exhausted raw target rises.
-    file: "bootstrap.js", raw: 1875182, gzip: 524100,
+    file: "bootstrap.js", raw: 1892656, gzip: 524100,
     // Baseline = shipped size with #474 (decision 0014 exception, owner-approved 2026-10-07); measured 432728.
     brotli: 432800 },
   // Bumped raw 124_000 -> 126_000, gzip 34_000 -> 35_000, brotli 29_000 ->
@@ -1180,7 +1185,7 @@ const budgets = [
     // BLEND texture coverage with current main measures 73,953 Brotli bytes. Use the
     // minimum target under the unchanged 5% allowance; retain raw and gzip.
     // Wind-ripple warping measures 73,997 Brotli bytes; the minimum target rises by 24 bytes.
-    file: "bootstrap-feature-scene3d-webgl.js", raw: 290800, gzip: 83600, brotli: 70473 },
+    file: "bootstrap-feature-scene3d-webgl.js", raw: 290800, gzip: 83600, brotli: 70754 },
   // Bumped raw 723_000 -> 730_000, gzip 198_000 -> 201_000, brotli 163_000 ->
   // 166_000 for procedural point clouds (11b-scene-points-generate.ts) — the
   // same canonical math kernel and box-scatter expander added to bootstrap.js
@@ -1367,7 +1372,7 @@ const budgets = [
   // copy of the same shape. Measured: 13_839 / 3_606 / 3_158; all three caps
   // raised with narrow rounding headroom. The merged build measures
   // 13_888 / 3_631 / 3_181.
-  { file: "bootstrap-feature-scene3d-command.js", raw: 14000, gzip: 4121, brotli: 3642 },
+  { file: "bootstrap-feature-scene3d-command.js", raw: 24719, gzip: 8399, brotli: 7577 },
   // Strict initial-hydrate decoding is a separate progressive chunk. The
   // server emits it only for a shared-runtime Scene3D entry with a program
   // reference, before the main deferred Scene3D feature script. Static scenes
@@ -2241,7 +2246,7 @@ const routeBudgets = [
     raw: 1241400,
     gzip: 357200,
     // Binding PBR after the ocean changes the Brotli dictionary: measured 307,863 bytes.
-    brotli: 301375,
+    brotli: 301954,
   },
   // Volume transmission adds 12965 raw / 4142 gzip / 2712 Brotli bytes for scene capture, mip filtering and volume controls. Targets move only by this measured delta.
   // Integrated renderer changes: raw 1657700 -> 1670800 (measured 1736261); gzip 461900 -> 465500 (measured 481796); brotli 385400 -> 388000 (measured 404295). Existing allowances stay fixed.

@@ -7,36 +7,34 @@ import (
 )
 
 const (
-	blackglassDiscoveriesScriptSrc = "/blackglass-discoveries.js?v=e9d25a75d914"
-	blackglassChartScriptSrc       = "/blackglass-chart.js?v=89743eb76148"
-	blackglassViewScriptSrc        = "/blackglass-view.js?v=2d8d7472a996"
-	blackglassSpyglassScriptSrc    = "/blackglass-spyglass.js?v=3a8b2e79412e"
-	blackglassDiscoveriesStylesSrc = "/blackglass-discoveries.css?v=25fc1f5e6b6e"
+	blackglassDiscoveriesStylesSrc = "/blackglass-discoveries.css?v=3e28d3f359d2"
 )
 
 func init() {
 	docsapp.RegisterDocsPage("Blackglass Beach", "A black sand beach at golden hour, generated in Go and rendered by GoSX Scene3D on WebGPU or WebGL2.", route.FileModuleOptions{
 		Load: func(ctx *route.RouteContext, page route.FilePage) (any, error) {
 			docsapp.AddScenePosterPreload(ctx, blackglassBeachPosterSrc)
-			// The local view adapter retains the mounted world. Skip the full
+			// Scene3D presentation retains the mounted world. Skip the full
 			// docs navigation runtime; the scene bootstrap owns sustained motion.
 			ctx.SetNavigationHead(nil)
-			ctx.AddHead(server.LifecycleScript("/blackglass-content.js"))
-			ctx.AddHead(server.LifecycleScript(blackglassDiscoveriesScriptSrc))
-			ctx.AddHead(server.LifecycleScript(blackglassChartScriptSrc))
-			ctx.AddHead(server.LifecycleScript(blackglassViewScriptSrc))
-			ctx.AddHead(server.LifecycleScript(blackglassSpyglassScriptSrc))
 			ctx.AddHead(server.Stylesheet(blackglassDiscoveriesStylesSrc))
 			view := blackglassBeachViewFor(ctx.Query("view"))
 			period := blackglassBeachPeriodFor(ctx.Query("period"))
 			instructions := "Click or drag to look · WASD or arrows to walk · Shift to run · Esc to release"
 			touchInstructions := "Left thumb to move · drag the right side to look"
+			chartIslands := map[string]any{}
+			for _, place := range blackglassBeachPlaces() {
+				if place.Island {
+					chartIslands[place.View+"X"] = place.X
+					chartIslands[place.View+"Z"] = place.Z
+				}
+			}
 			return map[string]any{
 				"instructions": instructions, "touchInstructions": touchInstructions,
 				"scene": BlackglassBeachProgram(view.ID, period.ID), "posterSrc": blackglassBeachPosterSrc,
 				"view": view.ID, "period": period.ID,
 				"pickupCommands": blackglassHandheldPickupCommands(), "islandFindSites": blackglassIslandFindSites(), "harborExit": blackglassHarborExit(),
-				"chartShore": blackglassBeachChart(), "chartPlaces": blackglassBeachChartPlaces(), "poolRippleSites": blackglassBeachPoolRippleSites(),
+				"chartIslands": chartIslands, "chartShore": blackglassBeachChart(), "chartPlaces": blackglassBeachChartPlaces(), "poolRippleSites": blackglassBeachPoolRippleSites(),
 				"shoreHref":  "?view=shore&period=" + period.ID,
 				"glassHref":  "?view=glass&period=" + period.ID,
 				"cliffHref":  "?view=cliff&period=" + period.ID,

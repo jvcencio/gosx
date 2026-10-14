@@ -241,6 +241,7 @@ var outputs = []output{
 			sourceFile("../runtime/scene3d/mount-input.ts"),
 			sourceFile("../runtime/scene3d/geometry-assets.ts"),
 			sourceFile("../runtime/scene3d/mount-lifecycle.ts"),
+			sourceFile("../runtime/scene3d/mount-presentation.ts"),
 			sourceFile("../runtime/scene3d/mount.ts"),
 			// 28 installs window.__gosx_video_sync_js_create — the pure-JS drift
 			// engine the video factory (in 30b) uses on the brain-absent path. It
@@ -551,6 +552,7 @@ var outputs = []output{
 	{
 		name: "bootstrap-feature-scene3d-command.js",
 		sources: []source{
+			sourceFile("../runtime/scene3d/mount-presentation.ts"),
 			sourceFile("../runtime/scene3d/command-runtime.ts"),
 		},
 	},
@@ -621,6 +623,7 @@ var outputs = []output{
 	{
 		name: "bootstrap-feature-scene3d-vessel.js",
 		sources: []source{
+			sourceFile("../runtime/scene3d/vessel-instruments.ts"),
 			sourceFile("../runtime/scene3d/vessel-navigation.ts"),
 			sourceFile("../runtime/scene3d/vessel-physics.ts"),
 			sourceFile("../runtime/scene3d/vessel-input.ts"),
@@ -1447,6 +1450,9 @@ func run() error {
 
 	dir, err := findClientJS(*dirFlag)
 	if err != nil {
+		return err
+	}
+	if err := generateCloudLibrary(dir, *check); err != nil {
 		return err
 	}
 
