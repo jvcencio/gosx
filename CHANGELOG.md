@@ -70,6 +70,14 @@
   were silently dropped now lower correctly, and valid Go that previously
   produced ERROR nodes now parses. Parse allocations are about 98% lower.
 
+## v0.57.16
+
+- Keep typed browser audio worklet contracts independent of server HTTP asset
+  delivery. JS/WASM imports exclude the HTTP handler and its TLS dependencies;
+  unused worklets no longer initialize or retain the processor asset. Portable
+  `Path` and `Source` APIs retain the same content-addressed processor, while
+  native `Handler` serving, HEAD, cache policy and ETags remain unchanged.
+
 ## v0.57.15
 
 - Add opt-in Scene3D frame requests to atomic command batches and typed
