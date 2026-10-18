@@ -163,6 +163,8 @@
     let transport;
     try { transport = createMotionTransport(spec.transport); } catch (_error) { return; }
     programs.set(element, {record: record, transport: transport});
+    record.transport = transport;
+    for (const adapter of record.transportAdapters || []) record.stops.push(transport.attach(adapter));
     record.stops.push(function() { programs.delete(element); transport.dispose(); });
     for (const signal of spec.signals || []) if (signal.kind === "playhead") {
       const value = record.signals.get(signal.id);

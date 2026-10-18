@@ -52,10 +52,21 @@ func page(ctx *server.Context, flat, form engine.Config) gosx.Node {
 	})
 	clock := program.Playhead("clock")
 	gain := program.Curve("gain", clock, []motion.CurveStop{{At: 0, Value: .35}, {At: 4, Value: .9}, {At: 8, Value: .5}}, true)
-	turn := program.Map("turn", clock, 0, 8, 0, 3.14159)
+	progress := program.Map("pose", clock, 0, 8, 0, 1)
 	rise := program.Curve("rise", clock, []motion.CurveStop{{At: 0, Value: 16}, {At: 1.2, Value: 0}}, true)
 	program.BindStyle(rise, ".hero-copy", "transform.y", "px")
-	program.BindSceneNode(turn, "#form", "form", "rotation.y")
+	if err := program.BindSceneTransition(progress, "#form", scene.CommandTransition{
+		From: []scene.Command{
+			scene.SetTransformCommand("form", scene.TransformPatch{X: -.6, ScaleX: 1, ScaleY: 1, ScaleZ: 1}),
+			scene.SetCameraCommand(scene.PerspectiveCamera{Position: scene.Vec3(0, 0, 10), FOV: 50}),
+		},
+		To: []scene.Command{
+			scene.SetTransformCommand("form", scene.TransformPatch{X: .6, RotationY: 3.14159, ScaleX: 1, ScaleY: 1, ScaleZ: 1}),
+			scene.SetCameraCommand(scene.PerspectiveCamera{Position: scene.Vec3(0, .3, 8.5), FOV: 45}),
+		},
+	}); err != nil {
+		log.Fatal(err)
+	}
 	program.BindMaterialUniform(gain, "#tide", "ribbon", "gain")
 	program.BindMaterialUniform(gain, "#form", "form", "gain")
 	control := func(action server.MotionTransportAction, text string) gosx.Node {
@@ -77,7 +88,7 @@ func page(ctx *server.Context, flat, form engine.Config) gosx.Node {
 				gosx.El("div", gosx.Attrs(gosx.Attr("class", "study-copy")),
 					gosx.El("p", gosx.Attrs(gosx.Attr("class", "eyebrow")), gosx.Text("Move through the moment")),
 					gosx.El("h2", gosx.Text("Pause it. Turn it back.")),
-					gosx.El("p", gosx.Text("The lettering, form and shader share absolute time. Return to the crest and see the same frame.")),
+					gosx.El("p", gosx.Text("The lettering, camera, form and shader share absolute time. Return to the crest and see the same frame.")),
 					gosx.El("div", gosx.Attrs(gosx.Attr("class", "controls"), gosx.Attr("role", "group"), gosx.Attr("aria-label", "Motion playback")),
 						control(server.MotionPlay, "Play"), control(server.MotionPause, "Pause"), control(server.MotionReverse, "Reverse"),
 						server.MotionControl(server.MotionControlProps{Transport: program.ID, Action: server.MotionSeek, Label: "crest"}, gosx.Text("The crest · 3.5s")),

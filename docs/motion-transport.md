@@ -109,6 +109,62 @@ stateful water/particle compute retain wall time. A playhead does not reconstruc
 simulation history, event-driven glTF state, audio or network events; those
 systems need their own deterministic replay/checkpoints.
 
+## Prepared 3D scene transitions
+
+Use `scene.CommandTransition` when a pose includes geometry, colors, camera
+parameters or several scene command types. GoSX validates and prepares the
+endpoints once, then samples absolute progress without rebuilding command maps
+or comparing serialized JSON on every frame.
+
+```go
+progress := program.Map("pose", clock, 0, 8, 0, 1)
+err := program.BindSceneTransition(progress, "#sculpture", scene.CommandTransition{
+    From: []scene.Command{
+        scene.SetTransformCommand("form", scene.TransformPatch{
+            X: -.6, ScaleX: 1, ScaleY: 1, ScaleZ: 1,
+        }),
+        scene.SetCameraCommand(scene.PerspectiveCamera{Position: scene.Vec3(0, 0, 10), FOV: 50}),
+    },
+    To: []scene.Command{
+        scene.SetTransformCommand("form", scene.TransformPatch{
+            X: .6, RotationY: 3.14159, ScaleX: 1, ScaleY: 1, ScaleZ: 1,
+        }),
+        scene.SetCameraCommand(scene.PerspectiveCamera{Position: scene.Vec3(0, 0, 8.5), FOV: 45}),
+    },
+})
+// Handle err before rendering ctx.Runtime().MotionScope(program, ...).
+```
+
+The binding requests the optional `motion-scene` feature and adds its mount to
+an attached transport's scene clocks. It retains the latest pose during deferred
+hydration, coalesces pending command submissions and participates in
+`transport.settled()` before renderer presentation. It owns no separate frame
+loop. Avoid binding the same property with both a transition and a scalar scene
+binding; independent material uniforms can share the same playhead.
+
+Matching numeric fields, equal-length arrays and six-digit hex colors
+interpolate. Object identity, names, topology/index arrays and geometry kinds
+change discretely at the destination. Incompatible object kinds retain the
+source until the endpoint. Omitted commands retain their other endpoint; use
+explicit `RemoveObject` commands to hide actors. Zero transform/point coordinates
+and unit scales are restored explicitly on rewind. Camera commands use immediate
+poses so renderer camera easing cannot fight the shared clock. Reduced motion
+shows the exact destination pose.
+
+Each pose supports up to 10,000 commands, with a 4 MiB wire plan, 32 levels of
+value nesting and a 200,000-node input budget. Nonfinite values and unsafe object
+keys are rejected. These are declarative poses; stateful simulations still need
+replay/checkpoints. Native Go consumers can call `transition.Prepare()` once and
+`player.Sample(progress)` repeatedly; returned native data is independently
+owned. The browser uses immutable prepared snapshots and reuses unchanged poses.
+
+Framework integrations use `motion.prepareSceneTransition(from, to)` and
+`motion.bindSceneTransition(mount, plan)`. The binding exposes `sample(progress)`,
+`setTransition(plan)`, `settled()` and `dispose()`. The existing Scene3D command
+bridge owns asset resolution, readiness, cancellation and ordered application.
+Disposal aborts pending work and leaves the last applied pose in place.
+Applications author the typed Go construct rather than a browser adapter.
+
 ## SVG diagrams on the same playhead
 
 ```go

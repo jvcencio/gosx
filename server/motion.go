@@ -142,6 +142,9 @@ func (r *PageRuntime) MotionScope(program *motion.Program, args ...any) gosx.Nod
 		if program != nil && len(program.SVGMorphs) != 0 {
 			_ = r.RequireFeature("motion-svg")
 		}
+		if program != nil && len(program.SceneTransitions) != 0 {
+			_ = r.RequireFeature("motion-scene")
+		}
 	}
 	return MotionScope(program, args...)
 }

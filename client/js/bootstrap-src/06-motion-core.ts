@@ -1208,8 +1208,10 @@
       const spec = specs.get(key);
       if (spec) for (const ref of [spec.input, spec.a, spec.b, spec.weight]) visit(ref);
     };
-    for (const binding of bindings) visit(binding && binding.signal);
-    for (const binding of program.svgMorphs || []) visit(binding.signal);
+    // Optional features declare signal references without base-runtime branches.
+    for (const list of Object.values(program)) {
+      if (Array.isArray(list)) for (const binding of list === program.bindings ? bindings : list) if (binding) visit(binding.signal);
+    }
     const signals = program.signals.filter(function(spec) { return spec && needed.has(String(spec.id)); });
     return Object.assign({}, program, { signals: signals, bindings: bindings });
   }
@@ -1334,12 +1336,7 @@
         if (item.adapter) record.adapters.add(item.adapter);
         const apply = function(next) {
           item.latest = motionClone(next);
-          scheduler.queueWrite(item, function() {
-            if (item.adapter && !record.disposed) {
-              item.adapter.write(binding, motionClone(item.latest), record);
-              if (typeof item.adapter.invalidate === "function") item.adapter.invalidate("motion-binding");
-            }
-          });
+          queueSceneBinding(item, record);
         };
         record.stops.push(value.subscribe(apply));
         record.bindings.push(item);
@@ -1430,6 +1427,16 @@
     programObserver.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-gosx-motion-program"] });
   }
 
+  function queueSceneBinding(binding, record) {
+    scheduler.queueWrite(binding, function() {
+      const adapter = binding.adapter;
+      if (adapter && !record.disposed) {
+        adapter.write(binding.binding, motionClone(binding.latest), record);
+        if (typeof adapter.invalidate === "function") adapter.invalidate("motion-binding");
+      }
+    });
+  }
+
   function attachScene(mount, adapter) {
     if (!mount || !adapter || typeof adapter.write !== "function") return function() {};
     const attachment = { mount: mount, adapter: adapter };
@@ -1438,12 +1445,7 @@
       for (const binding of record.bindings) if (binding.scene === mount) {
         binding.adapter = adapter;
         record.adapters.add(adapter);
-        scheduler.queueWrite(binding, function() {
-          if (!record.disposed) {
-            adapter.write(binding.binding, motionClone(binding.latest), record);
-            if (typeof adapter.invalidate === "function") adapter.invalidate("motion-binding");
-          }
-        });
+        queueSceneBinding(binding, record);
       }
       for (const pin of record.pins) if (pin.scene === mount) {
         pin.adapter = adapter;
