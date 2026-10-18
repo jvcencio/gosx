@@ -23,7 +23,9 @@ import (
 )
 
 // The darwin counterpart of app_unsupported_test.go. The platformApp methods
-// this slice leaves to later ones must say so, not report success.
+// the implemented slices leave to later ones must say so, not report success.
+// SetMinSize, SetMaxSize, OpenURL, SetMenuBar and ShowMessage are implemented
+// (DT1) and have tests of their own.
 func TestDarwinAppUnsupportedSurface(t *testing.T) {
 	impl, err := newPlatformApp(Options{})
 	if err != nil {
@@ -51,21 +53,15 @@ func TestDarwinAppUnsupportedSurface(t *testing.T) {
 		{"SaveFileDialog", saveErr},
 		{"Clipboard", clipErr},
 		{"SetClipboard", impl.SetClipboard("ok")},
-		{"OpenURL", impl.OpenURL("https://example.test")},
 		{"SetFullscreen", impl.SetFullscreen(true)},
 		{"WindowPlacement", placementErr},
-		{"SetMinSize", impl.SetMinSize(320, 200)},
-		{"SetMaxSize", impl.SetMaxSize(2560, 1440)},
 		{"NewWindow", windowErr},
 		{"RegisterProtocol", impl.RegisterProtocol("gosx-test")},
 		{"RegisterFileType", impl.RegisterFileType(".gsx", "", "GoSX Component")},
-		{"SetMenuBar", impl.SetMenuBar(Menu{})},
 		{"SetTray", impl.SetTray(TrayOptions{})},
 		{"CloseTray", impl.CloseTray()},
 		{"Notify", impl.Notify(Notification{Title: "hello"})},
 		{"SetFileDropHandler", impl.SetFileDropHandler(func([]string) {})},
-		{"ShowMessage", func() error { _, err := ShowMessage(MessageOptions{}); return err }()},
-		{"App.ShowMessage", func() error { _, err := (&App{}).ShowMessage(MessageOptions{}); return err }()},
 		{"AcquireSingleInstance", func() error { _, _, err := AcquireSingleInstance("com.example.test"); return err }()},
 		{"ForwardToFirstInstance", ForwardToFirstInstance("com.example.test", nil, "")},
 		{"WebView2RuntimeVersion", func() error { _, err := WebView2RuntimeVersion(""); return err }()},

@@ -152,11 +152,20 @@ TEXT ·impNavigationFailed(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	$const_retainArg2, R10
 	JMP	·impRecord(SB)
 
+// void menuAction:(NSMenuItem *sender)
+// Retains the sender (a0): Go reads its tag after the method has returned, and the
+// item may be released by then if the menu bar was replaced in between.
+TEXT ·impMenuAction(SB), NOSPLIT|NOFRAME, $0-0
+	MOVQ	$const_evMenuAction, R9
+	MOVQ	$const_retainArg0, R10
+	JMP	·impRecord(SB)
+
 // impStubs publishes the C-ABI entry of each stub, in the order of the
 // impStub* constants. Read from Go as a uintptr array: the func value of an
 // assembly function points at a wrapper.
-GLOBL	·impStubs(SB), NOPTR|RODATA, $32
+GLOBL	·impStubs(SB), NOPTR|RODATA, $40
 DATA	·impStubs+0(SB)/8, $·impWindowShouldClose(SB)
 DATA	·impStubs+8(SB)/8, $·impApplicationShouldTerminate(SB)
 DATA	·impStubs+16(SB)/8, $·impNavigationFinished(SB)
 DATA	·impStubs+24(SB)/8, $·impNavigationFailed(SB)
+DATA	·impStubs+32(SB)/8, $·impMenuAction(SB)

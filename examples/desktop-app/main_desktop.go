@@ -7,10 +7,10 @@
 // Run it with `go run ./examples/desktop-app` on Windows (WebView2Loader.dll
 // must sit next to the executable or on PATH) or on macOS (AppKit and WKWebView
 // ship with the system; no cgo, no Xcode). On macOS the backend currently
-// provides the window, web view, navigation events and the startup timeline;
-// the menu bar, dialogs, bridge and the other Windows features return
-// desktop.ErrUnsupported until later slices land, and this example tolerates
-// that where it can.
+// provides the window, web view, navigation events, the startup timeline, the
+// menu bar, size limits, OpenURL and the message box; the file dialogs, the
+// page bridge and the other Windows features return desktop.ErrUnsupported until
+// later slices land, and this example tolerates that where it can.
 package main
 
 import (
@@ -165,8 +165,8 @@ func runHost(smoke bool) error {
 			{ID: "file.exit", Label: "E&xit", OnClick: func() { _ = app.Close() }},
 		}}},
 	}}); err != nil && !errors.Is(err, desktop.ErrUnsupported) {
-		// A backend without native menus (macOS until the menu slice) reports
-		// ErrUnsupported; the window works without them.
+		// A backend without native menus reports ErrUnsupported; the window works
+		// without them.
 		return err
 	}
 

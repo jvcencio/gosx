@@ -10,9 +10,9 @@ package desktop
 // syscall9 (bind_darwin.go). Those carry integer registers only, which covers
 // every BOOL, NSInteger, id, SEL and pointer argument. The few methods that take
 // a CGFloat structure go through an argument shim (msgsend_darwin_*.s): see
-// sendRect, sendFloats and postWakeEvent. Methods that return a floating-point
-// value or a structure (frame, bounds, backingScaleFactor) are not used in DT0;
-// the return shims are DT2.
+// sendRect, sendFloats, sendSize and postWakeEvent. Methods that return a
+// floating-point value or a structure (frame, bounds, backingScaleFactor) are not
+// used in DT0; the return shims are DT2.
 //
 // Every object these helpers return that Go did not alloc itself is autoreleased
 // and lives until the enclosing pool pops. The main goroutine pushes a pool per
@@ -53,10 +53,27 @@ const (
 
 	nsBackingStoreBuffered = 2
 
-	nsApplicationActivationPolicyRegular = 0
+	nsApplicationActivationPolicyRegular    = 0
+	nsApplicationActivationPolicyAccessory  = 1
+	nsApplicationActivationPolicyProhibited = 2
 
 	nsEventTypeApplicationDefined = 15
 	nsEventMaskAny                = ^uintptr(0)
+
+	// NSEventModifierFlags, as an NSMenuItem's keyEquivalentModifierMask.
+	nsEventModifierFlagShift   = 1 << 17
+	nsEventModifierFlagControl = 1 << 18
+	nsEventModifierFlagOption  = 1 << 19
+	nsEventModifierFlagCommand = 1 << 20
+
+	nsControlStateValueOn = 1
+
+	// NSAlertStyle, and the NSModalResponse of the first button (the others
+	// follow it).
+	nsAlertStyleWarning       = 0
+	nsAlertStyleInformational = 1
+	nsAlertStyleCritical      = 2
+	nsAlertFirstButtonReturn  = 1000
 
 	nsViewWidthSizable  = 2
 	nsViewHeightSizable = 16
@@ -172,6 +189,13 @@ func sendRect(self, sel uintptr, rect *nsRect, a, b, c uintptr) uintptr {
 func sendFloats(self, sel uintptr, f *[4]float64) uintptr {
 	r, _, _ := syscall_syscall(fnMsgSend4F, self, sel, uintptr(unsafe.Pointer(f)))
 	return r
+}
+
+// sendSize sends a message whose only argument is an NSSize, which travels as two
+// CGFloats in the floating-point registers (msgSend4F loads them).
+func sendSize(self, sel uintptr, width, height float64) uintptr {
+	f := [4]float64{width, height}
+	return sendFloats(self, sel, &f)
 }
 
 // respondsTo is -[NSObject respondsToSelector:].

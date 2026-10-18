@@ -7,13 +7,14 @@
 //
 // AppKit and WebKit call an Objective-C delegate method as a C function,
 // IMP(self, _cmd, args...), on the main thread. Go cannot be that function (see
-// ctrl_darwin.go), so every method GoSXDelegate registers points at a stub here.
+// ctrl_darwin.go), so every method GoSXDelegate and GoSXMenuTarget register points
+// at a stub here.
 // A stub loads an event kind and a retain mask into R9 and R10 and branches to
 // impRecord, which appends one record to the ring in the ctrl block, retains the
 // arguments the mask names, publishes the record and returns 0. The return value
 // is the conservative answer for the methods that must answer synchronously
 // (NO from windowShouldClose:, NSTerminateCancel from applicationShouldTerminate:)
-// and is ignored by the void ones. Go acts on the record later, on its own
+// and is ignored by the void ones (webView:didFinishNavigation:, menuAction:). Go acts on the record later, on its own
 // thread.
 //
 // This is code AppKit calls, so:
@@ -166,11 +167,20 @@ TEXT ·impNavigationFailed(SB), NOSPLIT|NOFRAME, $0-0
 	MOVD	$const_retainArg2, R10
 	B	·impRecord(SB)
 
+// void menuAction:(NSMenuItem *sender)
+// Retains the sender (a0): Go reads its tag after the method has returned, and the
+// item may be released by then if the menu bar was replaced in between.
+TEXT ·impMenuAction(SB), NOSPLIT|NOFRAME, $0-0
+	MOVD	$const_evMenuAction, R9
+	MOVD	$const_retainArg0, R10
+	B	·impRecord(SB)
+
 // impStubs publishes the C-ABI entry of each stub, in the order of the
 // impStub* constants. Read from Go as a uintptr array: the func value of an
 // assembly function points at a wrapper.
-GLOBL	·impStubs(SB), NOPTR|RODATA, $32
+GLOBL	·impStubs(SB), NOPTR|RODATA, $40
 DATA	·impStubs+0(SB)/8, $·impWindowShouldClose(SB)
 DATA	·impStubs+8(SB)/8, $·impApplicationShouldTerminate(SB)
 DATA	·impStubs+16(SB)/8, $·impNavigationFinished(SB)
 DATA	·impStubs+24(SB)/8, $·impNavigationFailed(SB)
+DATA	·impStubs+32(SB)/8, $·impMenuAction(SB)

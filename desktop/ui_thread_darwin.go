@@ -39,6 +39,34 @@ func (a *darwinApp) startDispatch() {
 	a.dispatch.start(dispatchMainThread)
 }
 
+// onMainThread runs fn on the process's main thread, for the package-level
+// functions that have no App in hand (ShowMessage). It runs fn directly when the
+// caller is on the main thread, which is where the main goroutine is, before Run
+// and inside menu handlers. From any other goroutine it goes through the running
+// app's dispatcher; with no app running there is no one to wake the main thread,
+// and it reports what is needed.
+func onMainThread(what string, fn func() error) error {
+	if pthreadMainNP() != 0 {
+		return fn()
+	}
+	app := activeApp.Load()
+	if app == nil {
+		return errNeedsMainThread(what)
+	}
+	return app.onUIThread(func() error {
+		if pthreadMainNP() == 0 {
+			// The app stopped between the lookup and the call, and the dispatcher
+			// runs calls on their own thread once it is stopped.
+			return errNeedsMainThread(what)
+		}
+		return fn()
+	})
+}
+
+func errNeedsMainThread(what string) error {
+	return fmt.Errorf("%w: %s must run on the process's main thread: call it from the main goroutine, or while App.Run is running", ErrUnsupported, what)
+}
+
 func (a *darwinApp) stopDispatch() { a.dispatch.stop() }
 
 func (a *darwinApp) drainDispatchQueue() { a.dispatch.drain() }
