@@ -24,7 +24,7 @@ import (
 
 // The darwin counterpart of app_unsupported_test.go. The platformApp methods
 // the implemented slices leave to later ones must say so, not report success.
-// Implemented so far (DT1, with tests of their own): SetMinSize, SetMaxSize, OpenURL.
+// Implemented so far (DT1, with tests of their own): SetMinSize, SetMaxSize, OpenURL, ShowMessage.
 func TestDarwinAppUnsupportedSurface(t *testing.T) {
 	impl, err := newPlatformApp(Options{})
 	if err != nil {
@@ -62,8 +62,6 @@ func TestDarwinAppUnsupportedSurface(t *testing.T) {
 		{"CloseTray", impl.CloseTray()},
 		{"Notify", impl.Notify(Notification{Title: "hello"})},
 		{"SetFileDropHandler", impl.SetFileDropHandler(func([]string) {})},
-		{"ShowMessage", func() error { _, err := ShowMessage(MessageOptions{}); return err }()},
-		{"App.ShowMessage", func() error { _, err := (&App{}).ShowMessage(MessageOptions{}); return err }()},
 		{"AcquireSingleInstance", func() error { _, _, err := AcquireSingleInstance("com.example.test"); return err }()},
 		{"ForwardToFirstInstance", ForwardToFirstInstance("com.example.test", nil, "")},
 		{"WebView2RuntimeVersion", func() error { _, err := WebView2RuntimeVersion(""); return err }()},

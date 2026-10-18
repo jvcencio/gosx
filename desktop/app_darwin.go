@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -67,6 +68,11 @@ type darwinApp struct {
 func newPlatformApp(options Options) (platformApp, error) {
 	return &darwinApp{options: options, created: time.Now()}, nil
 }
+
+// activeApp is the app whose Run is in progress. The package-level functions that
+// must reach the main thread without an App in hand (ShowMessage) use its
+// dispatcher. Only one Run can be in progress: it occupies the main thread.
+var activeApp atomic.Pointer[darwinApp]
 
 // platformAvailable reports whether AppKit and WebKit are linked and their
 // classes exist. It does not check that Run is called from the main thread.
@@ -163,6 +169,8 @@ func (a *darwinApp) Run() error {
 	if err := platformAvailable(); err != nil {
 		return err
 	}
+	activeApp.Store(a)
+	defer activeApp.CompareAndSwap(a, nil)
 	// Threads AppKit and WebKit start from here on inherit this mask (see
 	// lifecycle_darwin.go), so process-directed signals reach only Go's threads.
 	defer blockAsyncSignalsOnThread()()

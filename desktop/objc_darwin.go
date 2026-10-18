@@ -53,10 +53,19 @@ const (
 
 	nsBackingStoreBuffered = 2
 
-	nsApplicationActivationPolicyRegular = 0
+	nsApplicationActivationPolicyRegular    = 0
+	nsApplicationActivationPolicyAccessory  = 1
+	nsApplicationActivationPolicyProhibited = 2
 
 	nsEventTypeApplicationDefined = 15
 	nsEventMaskAny                = ^uintptr(0)
+
+	// NSAlertStyle, and the NSModalResponse of the first button (the others
+	// follow it).
+	nsAlertStyleWarning       = 0
+	nsAlertStyleInformational = 1
+	nsAlertStyleCritical      = 2
+	nsAlertFirstButtonReturn  = 1000
 
 	nsViewWidthSizable  = 2
 	nsViewHeightSizable = 16
