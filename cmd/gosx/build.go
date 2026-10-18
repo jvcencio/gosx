@@ -61,6 +61,7 @@ var runtimeFeatureChunks = []struct{ name, role string }{
 	{"browser-services", "engines"},
 	{"workbench", "workbench"},
 	{"motion-transport", "motion"},
+	{"motion-svg", "motion"},
 }
 
 type wasmCompiler string

@@ -18,12 +18,21 @@ func TestMotionTransportRequiresOnlyItsOptionalFeature(t *testing.T) {
 	app.Page("GET /plain", func(ctx *Context) gosx.Node {
 		return ctx.Runtime().MotionScope(motion.NewProgram("plain"), gosx.Text("Ordinary motion"))
 	})
+	app.Page("GET /svg", func(ctx *Context) gosx.Node {
+		program := motion.NewProgram("diagram")
+		program.BindSVGMorph(program.Hover("progress", "#diagram"), "#before", "#after")
+		return ctx.Runtime().MotionScope(program, gosx.Text("Readable SVG fallback"))
+	})
 	contract := renderDocumentContract(t, app.Build(), "/motion")
 	if !strings.Contains(contract, `"bootstrapFeatureMotionTransportPath":"/gosx/bootstrap-feature-motion-transport.js"`) {
 		t.Fatalf("missing optional transport chunk: %s", contract)
 	}
 	if strings.Contains(renderDocumentContract(t, app.Build(), "/plain"), "MotionTransportPath") {
 		t.Fatal("ordinary motion must not load transport code")
+	}
+	svg := renderDocumentContract(t, app.Build(), "/svg")
+	if !strings.Contains(svg, `"bootstrapFeatureMotionSvgPath":"/gosx/bootstrap-feature-motion-svg.js"`) || strings.Contains(svg, "MotionTransportPath") {
+		t.Fatalf("SVG morphing must require only its own optional feature: %s", svg)
 	}
 }
 

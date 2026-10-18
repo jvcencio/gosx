@@ -148,51 +148,33 @@
 
 
   const programs = new Map();
-  function mountPrograms(root) {
-    const target = root || document.body || document.documentElement;
-    const elements = Array.from(target.querySelectorAll("[data-gosx-motion-program]"));
-    if (target.hasAttribute && target.hasAttribute("data-gosx-motion-program")) elements.unshift(target);
-    for (const element of elements) {
-      const record = motion.program(element);
-      if (!record || programs.get(element)?.record === record) continue;
-      let spec;
-      try { spec = JSON.parse(element.getAttribute("data-gosx-motion-program")); } catch (_error) { continue; }
-      if (!spec.transport) continue;
-      let transport;
-      try { transport = createMotionTransport(spec.transport); } catch (_error) { continue; }
-      programs.set(element, {record: record, transport: transport});
-      record.stops.push(function() { programs.delete(element); transport.dispose(); });
-      for (const signal of spec.signals || []) if (signal.kind === "playhead") {
-        const value = record.signals.get(signal.id);
-        if (value) record.stops.push(transport.subscribe(function(state) { value.set(state.time / 1000); }));
-      }
-      for (const selector of spec.transport.scenes || []) {
-        let mounts = [];
-        try { mounts = element.querySelectorAll(selector); } catch (_error) { continue; }
-        for (const mount of mounts) record.stops.push(bindTransportScene(transport, mount));
-      }
-    }
-    for (const button of target.querySelectorAll("[data-gosx-transport-action]")) if (motion.transport(button.getAttribute("data-gosx-transport"))) button.disabled = false;
+  function enableControls(target) {
+    const buttons = Array.from(target.querySelectorAll("[data-gosx-transport-action]"));
+    if (target.hasAttribute && target.hasAttribute("data-gosx-transport-action")) buttons.push(target);
+    for (const button of buttons) if (motion.transport(button.getAttribute("data-gosx-transport"))) button.disabled = false;
   }
   motion.transport = function(target) {
     for (const [element, entry] of programs) if (element === target || entry.record.id === target) return entry.transport;
     return null;
   };
-  const mountBase = motion.mountPrograms;
-  motion.mountPrograms = function(root) { mountBase(root); mountPrograms(root); };
-  if (typeof MutationObserver === "function") {
-    const observer = new MutationObserver(function(changes) {
-      // Run after the base observer has replaced/disposed old signal graphs.
-      // The first late scope may itself install that base observer.
-      queueMicrotask(function() {
-        for (const change of changes) {
-          if (change.type === "attributes" && change.target.isConnected !== false) motion.mountPrograms(change.target);
-          for (const node of change.addedNodes || []) if (node.nodeType === 1 && node.isConnected !== false) motion.mountPrograms(node);
-        }
-      });
-    });
-    observer.observe(document.body || document.documentElement, {subtree: true, childList: true, attributes: true, attributeFilter: ["data-gosx-motion-program"]});
-  }
+  motion.registerProgramFeature(function(record, spec) {
+    if (!spec.transport) return;
+    const element = record.root;
+    let transport;
+    try { transport = createMotionTransport(spec.transport); } catch (_error) { return; }
+    programs.set(element, {record: record, transport: transport});
+    record.stops.push(function() { programs.delete(element); transport.dispose(); });
+    for (const signal of spec.signals || []) if (signal.kind === "playhead") {
+      const value = record.signals.get(signal.id);
+      if (value) record.stops.push(transport.subscribe(function(state) { value.set(state.time / 1000); }));
+    }
+    for (const selector of spec.transport.scenes || []) {
+      let mounts = [];
+      try { mounts = element.querySelectorAll(selector); } catch (_error) { continue; }
+      for (const mount of mounts) record.stops.push(bindTransportScene(transport, mount));
+    }
+    enableControls(document.body || document.documentElement);
+  }, enableControls);
   motion.createTransport = createMotionTransport;
   motion.bindTransportScene = bindTransportScene;
   if (typeof document !== "undefined" && document.addEventListener) {

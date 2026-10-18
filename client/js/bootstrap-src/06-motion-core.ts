@@ -9,6 +9,7 @@
   const namedValues = new Map();
   const namedListeners = new Map();
   const programRecords = new Map();
+  const programFeatures = new Map();
   const sceneAdapters = new Map();
   let programObserver = null;
   let nextAnimationID = 0;
@@ -1171,16 +1172,7 @@
     }
     if (kind === "map") return motion.map(getValue(spec.input), motionNumber(spec.from, 0), motionNumber(spec.to, 1), motionNumber(spec.min, 0), motionNumber(spec.max, 1), name);
     if (kind === "clamp") return motion.clamp(getValue(spec.input), motionNumber(spec.min, 0), motionNumber(spec.max, 1), name);
-    if (kind === "velocity") {
-      const input = getValue(spec.input), value = createSignal(0, name);
-      let previous = motionNumber(input.get(), 0), previousTime = scheduler.now();
-      value.dispose = input.subscribe(function(next) {
-        const number = motionNumber(next, 0), now = scheduler.now(), dt = Math.max(1e-6, (now - previousTime) / 1000);
-        value.set((number - previous) / dt);
-        previous = number; previousTime = now;
-      });
-      return value;
-    }
+    if (kind === "velocity") return createVelocitySignal(getValue(spec.input), name, false);
     if (kind === "curve") {
       const stops = motionCurveStops(spec.frames), smooth = spec.smooth === true;
       return createDerivedSignal(getValue(spec.input), function(next) { return motionCurveValue(stops, smooth, motionNumber(next, 0)); }, name);
@@ -1217,6 +1209,7 @@
       if (spec) for (const ref of [spec.input, spec.a, spec.b, spec.weight]) visit(ref);
     };
     for (const binding of bindings) visit(binding && binding.signal);
+    for (const binding of program.svgMorphs || []) visit(binding.signal);
     const signals = program.signals.filter(function(spec) { return spec && needed.has(String(spec.id)); });
     return Object.assign({}, program, { signals: signals, bindings: bindings });
   }
@@ -1226,7 +1219,7 @@
     const program = motionNumber(parsed.version, 0) === 1 && Array.isArray(parsed.signals) ? motionWithoutCSSCompiled(parsed) : parsed;
     if (motionNumber(program.version, 0) !== 1 || !Array.isArray(program.signals)) return null;
     const programID = String(program.id || "motion");
-    const record = { root: root, id: programID, signals: new Map(), specs: new Map(), bindings: [], pins: [], stops: [], values: [], adapters: new Set(), disposed: false };
+    const record = { root: root, id: programID, program: parsed, signals: new Map(), specs: new Map(), bindings: [], pins: [], stops: [], values: [], adapters: new Set(), disposed: false };
     for (const spec of program.signals) if (spec && spec.id) record.specs.set(String(spec.id), spec);
     const creating = new Set();
     function getValue(id) {
@@ -1332,11 +1325,7 @@
       if (target === "style" || target === "cssVar") {
         const elements = motionQuery(root, binding.selector);
         for (const element of elements) {
-          const transformState = motionTransformComponents(element.style && element.style.transform);
-          const apply = function(next) {
-            scheduler.queueWrite(element, function() { setBoundDOMValue(binding, element, next, transformState); });
-          };
-          record.stops.push(value.subscribe(apply));
+          record.stops.push(bindDOM(value, element, binding.property, binding.unit));
         }
       } else {
         const sceneElement = motionQuery(root, binding.selector)[0] || null;
@@ -1407,6 +1396,7 @@
     const record = createProgram(element, parsed);
     if (!record) return null;
     programRecords.set(element, record);
+    for (const feature of programFeatures.keys()) feature(record, parsed);
     return record;
   }
 
@@ -1414,6 +1404,7 @@
     const target = root || document.body || document.documentElement;
     if (target && target.nodeType === 1 && target.hasAttribute && target.hasAttribute("data-gosx-motion-program")) mountProgramElement(target);
     for (const element of motionQuery(target, "[data-gosx-motion-program]")) mountProgramElement(element);
+    for (const scan of programFeatures.values()) if (scan) scan(target);
     installProgramObserver(document.body || document.documentElement);
   }
 
@@ -1424,7 +1415,7 @@
   }
 
   function installProgramObserver(root) {
-    if (programObserver || typeof MutationObserver !== "function" || !root || programRecords.size === 0) return;
+    if (programObserver || typeof MutationObserver !== "function" || !root || (!programRecords.size && !programFeatures.size)) return;
     programObserver = new MutationObserver(function(changes) {
       for (const change of changes || []) {
         if (change.type === "attributes" && change.target && change.attributeName === "data-gosx-motion-program") {
@@ -1484,6 +1475,20 @@
     return value;
   }
 
+  function createVelocitySignal(input, name, continuous) {
+    const value = createSignal(0, name);
+    let previous = motionNumber(input.get(), 0), previousMS = scheduler.now();
+    function sample(next, now) {
+      const current = motionNumber(next, 0), dt = Math.max(1e-6, (now - previousMS) / 1000);
+      value.set((current - previous) / dt);
+      previous = current; previousMS = now;
+    }
+    value.dispose = continuous
+      ? scheduler.on("evaluate", function(now) { sample(input.get(), now); })
+      : input.subscribe(function(next) { sample(next, scheduler.now()); });
+    return value;
+  }
+
   function bindDOM(signal, element, property, unit) {
     if (!signal || !element) return function() {};
     const binding = { target: property.indexOf("--") === 0 ? "cssVar" : "style", property: property, unit: unit || "" };
@@ -1496,10 +1501,15 @@
 
   motion.ease = motionEase;
   motion.scheduler = scheduler;
-  motion.program = function(root) { return programRecords.get(root); };
+  // Optional features share the base program's mount, replacement and disposal.
+  motion.registerProgramFeature = function(feature, scan) {
+    programFeatures.set(feature, scan);
+    for (const record of programRecords.values()) feature(record, record.program);
+    mountPrograms(document.body || document.documentElement);
+  };
   motion.signal = function(initial, name) { return createSignal(initial, name ? String(name) : ""); };
   motion.spring = function(initial, options) { return createSpringSignal(initial, options || {}, options && options.name ? String(options.name) : ""); };
-  motion.tween = function(from, options) { return createPublicTween(from, options || {}, options && options.name ? String(options.name) : ""); };
+  motion.tween = function(from, options) { return createPublicTween(from, options, options && options.name ? String(options.name) : ""); };
   motion.timeline = function(frames, options) {
     const opts = options || {};
     return createKeyframeSignal(frames, opts.duration, opts.name ? String(opts.name) : "", opts.reducedMotion);
@@ -1514,24 +1524,14 @@
     return createDerivedSignal(signal, function(value) { return motionClamp(motionNumber(value, 0), min, max); }, name || "");
   };
   motion.mix = function(a, b, weight, name) {
-    const value = createSignal(motionMix(a.get(), b.get(), motionClamp(motionNumber(weight.get(), 0), 0, 1)), name || "");
-    const update = function() { value.set(motionMix(a.get(), b.get(), motionClamp(motionNumber(weight.get(), 0), 0, 1))); };
-    const stopA = a.subscribe(update, { immediate: false }), stopB = b.subscribe(update, { immediate: false }), stopW = weight.subscribe(update, { immediate: false });
-    value.dispose = function() { stopA(); stopB(); stopW(); };
+    const sample = function() { return motionMix(a.get(), b.get(), motionClamp(motionNumber(weight.get(), 0), 0, 1)); };
+    const value = createSignal(sample(), name || "");
+    const update = function() { value.set(sample()); };
+    const stops = [a, b, weight].map(function(input) { return input.subscribe(update, { immediate: false }); });
+    value.dispose = function() { for (const stop of stops) stop(); };
     return value;
   };
-  motion.velocity = function(signal, name) {
-    const value = createSignal(0, name || "");
-    let previous = motionNumber(signal.get(), 0), previousMS = scheduler.now();
-    const stop = scheduler.on("evaluate", function(now) {
-      const current = motionNumber(signal.get(), 0);
-      const dt = Math.max(1e-6, (now - previousMS) / 1000);
-      value.set(current === previous ? 0 : (current - previous) / dt);
-      previous = current; previousMS = now;
-    });
-    value.dispose = stop;
-    return value;
-  };
+  motion.velocity = function(signal, name) { return createVelocitySignal(signal, name || "", true); };
   motion.bind = bindDOM;
   motion.animateKeyframes = animateKeyframes;
   motion.animate = function(element, keyframes, options) { return animateKeyframes(element, keyframes, options); };

@@ -139,6 +139,9 @@ func (r *PageRuntime) MotionScope(program *motion.Program, args ...any) gosx.Nod
 		if program != nil && program.Transport != nil {
 			_ = r.RequireFeature("motion-transport")
 		}
+		if program != nil && len(program.SVGMorphs) != 0 {
+			_ = r.RequireFeature("motion-svg")
+		}
 	}
 	return MotionScope(program, args...)
 }

@@ -108,3 +108,35 @@ authored point shaders on both browser backends. Renderer telemetry and
 stateful water/particle compute retain wall time. A playhead does not reconstruct
 simulation history, event-driven glTF state, audio or network events; those
 systems need their own deterministic replay/checkpoints.
+
+## SVG diagrams on the same playhead
+
+```go
+p := motion.NewProgram("diagram").WithTransport(motion.TransportOptions{
+    Duration: 2 * time.Second,
+})
+progress := p.Map("progress", p.Playhead("clock"), 0, 2, 0, 1)
+p.BindSVGMorph(progress, "#before", "#after")
+// Render both SVG snapshots inside ctx.Runtime().MotionScope(p, ...).
+```
+
+The optional `motion-svg` feature samples SVG geometry from server-rendered
+snapshots. Hide the source snapshot in a `hidden` HTML container and keep the
+destination readable without JavaScript. Match actors using `data-morph-id`;
+SVG without actor keys can morph as one group. The framework compiles geometry
+once, then applies absolute progress, so seek and reverse reproduce exact poses.
+Use a `Curve` signal for typed easing or bind pointer, hover or scroll progress.
+
+Compatible numeric attributes, transforms and paths interpolate. Different path
+commands, SVG arcs, missing attributes and unmatched actors retain valid
+destination geometry and fade in. This deliberately avoids guessing arbitrary
+path topology or interpolating arc flags. Reduced motion always shows the exact
+destination. Disposal restores destination geometry and original inline opacity.
+No animation loop or layout reads run per sample, and pages without SVG morphs
+do not request this feature.
+
+Run `go run ./examples/motion-svg` for a complete Go-authored app with semantic
+playback buttons. Framework adapters can use `motion.createSVGMorph(fromSVG,
+toSVG, {easing: "ease-in-out"})` and call `sample(progress)` / `dispose()`;
+GoSX-slides uses this boundary for storyboard navigation. Applications use the
+Go binding rather than authoring browser scripts.
