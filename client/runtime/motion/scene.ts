@@ -145,7 +145,11 @@
           applied = version; error = null;
           if (version === revision) return;
         }
-      })().catch(next => { error = owner !== mount.__gosxScene3DHandle ? null : next; }).finally(function() { pending = null; if (active && !error && revision !== applied) pump(); });
+      })().catch(next => {
+        const current = mount.__gosxScene3DHandle;
+        error = next;
+        if (current && owner !== current) { owner = current; last.clear(); error = null; }
+      }).finally(function() { pending = null; if (active && !error && revision !== applied) pump(); });
     }
     function sample(value) {
       if (!active) return;
@@ -168,11 +172,11 @@
   motion.prepareSceneTransition = prepareSceneTransition;
   motion.bindSceneTransition = bindSceneTransition;
   motion.registerProgramFeature(function(record, spec) {
-    for (const binding of (Array.isArray(spec.sceneTransitions) ? spec.sceneTransitions : []).slice(0, 64)) {
+    for (const binding of (Array.isArray(spec.bindings) ? spec.bindings : []).filter(binding => binding?.target === "sceneTransition").slice(0, 64)) {
       let controller;
       const signal = record.signals.get(binding.signal);
-      if (!signal || binding.plan?.version !== 1) continue;
-      try { controller = bindSceneTransition(record.root.querySelector(binding.selector), prepareSceneTransition(binding.plan.from, binding.plan.to)); } catch (_error) { continue; }
+      if (!signal || binding.property !== "pose" || binding.unit || binding.transition?.version !== 1) continue;
+      try { controller = bindSceneTransition(record.root.querySelector(binding.selector), prepareSceneTransition(binding.transition.from, binding.transition.to)); } catch (_error) { continue; }
       let latest = signal.get(), active = true;
       const apply = value => { latest = value; motion.scheduler.queueWrite(controller, function() { if (active && Number.isFinite(latest)) controller.sample(latest); }); };
       const stop = signal.subscribe(apply), adapter = {sample() {}, settled: controller.settled};

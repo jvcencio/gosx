@@ -28,15 +28,23 @@ func TestSceneTransitionGoAuthoringWireAndValidation(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.SceneTransitions[0].Selector != "#form" || !strings.Contains(string(decoded.SceneTransitions[0].Plan), `"version":1`) {
+	if decoded.Bindings[0].Selector != "#form" || !strings.Contains(string(decoded.Bindings[0].Transition), `"version":1`) {
 		t.Fatalf("bad transition wire: %s", data)
 	}
-	for _, binding := range []motion.SceneTransitionBinding{
-		{Signal: "missing", Selector: "#form", Plan: decoded.SceneTransitions[0].Plan},
-		{Signal: progress, Selector: " ", Plan: decoded.SceneTransitions[0].Plan},
-		{Signal: progress, Selector: "#form", Plan: json.RawMessage(`{"version":2,"from":[],"to":[]}`)},
+	_, compiled, err := motion.CompileCSS(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled.Bindings[0].Transition[0] = 'x'
+	if _, err := p.Marshal(); err != nil {
+		t.Fatal("CSS compilation aliases the source transition plan")
+	}
+	for _, binding := range []motion.Binding{
+		{Target: motion.BindingSceneTransition, Property: "pose", Signal: "missing", Selector: "#form", Transition: decoded.Bindings[0].Transition},
+		{Target: motion.BindingSceneTransition, Property: "pose", Signal: progress, Selector: " ", Transition: decoded.Bindings[0].Transition},
+		{Target: motion.BindingSceneTransition, Property: "pose", Signal: progress, Selector: "#form", Transition: json.RawMessage(`{"version":2,"from":[],"to":[]}`)},
 	} {
-		p.SceneTransitions = []motion.SceneTransitionBinding{binding}
+		p.Bindings = []motion.Binding{binding}
 		if _, err := p.Marshal(); err == nil {
 			t.Fatal("accepted invalid transition binding")
 		}

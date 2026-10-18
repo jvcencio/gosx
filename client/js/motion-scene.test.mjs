@@ -95,7 +95,7 @@ test("Go scene bindings keep CSS-compiled signals, join transport capture and to
   for (const order of [[scene,transport], [transport,scene]]) {
     const r = runtime(), el = mount(), applied = [], pending = deferred(); let blocked = true;
     r.window.__gosx.scene3d = {whenReady: async () => true, dispatchCommands: async (_mount, commands) => {if (blocked) await pending.promise; applied.push(commands);}};
-    const spec = {version: 1,id: "story",transport: {durationMs: 1000},signals: [{id: "clock",kind: "playhead"}],cssCompiled: [0],bindings: [{signal: "clock",target: "style",selector: "#none",property: "opacity"}],sceneTransitions: [{signal: "clock",selector: "#form",plan: {version: 1,from: golden.from,to: golden.to}}]};
+    const spec = {version: 1,id: "story",transport: {durationMs: 1000},signals: [{id: "clock",kind: "playhead"}],cssCompiled: [0],bindings: [{signal: "clock",target: "style",selector: "#none",property: "opacity"}, {signal: "clock",target: "sceneTransition",property: "pose",selector: "#form",transition: {version: 1,from: golden.from,to: golden.to}}]};
     const root = {nodeType: 1,hasAttribute: name => name === "data-gosx-motion-program",getAttribute: () => JSON.stringify(spec),querySelectorAll: selector => selector === "#form" ? [el] : [],querySelector: selector => selector === "#form" ? el : null};
     r.motion.mountPrograms(root); for (const code of order) r.load(code);
     const t = r.motion.transport("story"); t.seek(500);
@@ -124,4 +124,15 @@ test("disposal cancels a pre-bridge scheduler wait", async () => {
   const binding = r.motion.bindSceneTransition(mount(), r.motion.prepareSceneTransition(golden.from, golden.to));
   binding.sample(.5); assert.ok(r.frames.size); binding.dispose();
   await assert.rejects(binding.settled(), /disposed/); assert.equal(r.frames.size, 0);
+});
+
+
+test("a removed mount reports a bounded failure instead of retrying a disposed owner forever", async () => {
+  const r = runtime(); r.load(); const el = mount(); let removed = false, attempts = 0;
+  r.window.__gosx.scene3d = {whenReady: async () => {attempts++; if (removed) throw Error("mount removed"); return true;},dispatchCommands: async () => {}};
+  const binding = r.motion.bindSceneTransition(el, r.motion.prepareSceneTransition(golden.from, golden.to));
+  binding.sample(.5); await binding.settled();
+  removed = true; el.__gosxScene3DHandle = null; r.observers.at(-1).callback();
+  await assert.rejects(binding.settled(), /mount removed/);
+  assert.equal(attempts, 2); assert.equal(r.frames.size, 0); binding.dispose();
 });

@@ -12,13 +12,6 @@ type SceneTransitionSource interface {
 	MotionTransitionJSON() ([]byte, error)
 }
 
-// SceneTransitionBinding connects absolute progress to a prepared Scene3D pose.
-type SceneTransitionBinding struct {
-	Signal   SignalRef       `json:"signal"`
-	Selector string          `json:"selector"`
-	Plan     json.RawMessage `json:"plan"`
-}
-
 // BindSceneTransition binds a typed scene.CommandTransition to progress in
 // [0,1]. All commands sample the same absolute position on forward or backward
 // seeks. A transport also freezes this scene's declarative shader clock.
@@ -34,7 +27,7 @@ func (p *Program) BindSceneTransition(signal SignalRef, selector string, source 
 	if selector == "" || len(selector) > 1024 {
 		return fmt.Errorf("motion: scene transition requires a selector of at most 1024 bytes")
 	}
-	p.SceneTransitions = append(p.SceneTransitions, SceneTransitionBinding{Signal: signal, Selector: selector, Plan: append(json.RawMessage(nil), data...)})
+	p.bind(Binding{Signal: signal, Target: BindingSceneTransition, Selector: selector, Property: "pose", Transition: append(json.RawMessage(nil), data...)})
 	p.addTransitionScene(selector)
 	return nil
 }
@@ -51,15 +44,20 @@ func (p *Program) addTransitionScene(selector string) {
 	p.Transport.Scenes = append(p.Transport.Scenes, selector)
 }
 
-func validateSceneTransitions(bindings []SceneTransitionBinding, ids map[string]struct{}) error {
-	if len(bindings) > 64 {
-		return fmt.Errorf("motion: at most 64 scene transition bindings are supported")
-	}
+func validateSceneTransitions(bindings []Binding, ids map[string]struct{}) error {
+	count := 0
 	for _, binding := range bindings {
+		if binding.Target != BindingSceneTransition {
+			continue
+		}
+		count++
+		if count > 64 {
+			return fmt.Errorf("motion: at most 64 scene transition bindings are supported")
+		}
 		if _, exists := ids[string(binding.Signal)]; !exists {
 			return fmt.Errorf("motion: scene transition references unknown signal %q", binding.Signal)
 		}
-		if strings.TrimSpace(binding.Selector) == "" || len(binding.Selector) > 1024 || len(binding.Plan) > 4<<20 {
+		if strings.TrimSpace(binding.Selector) == "" || len(binding.Selector) > 1024 || len(binding.Transition) > 4<<20 {
 			return fmt.Errorf("motion: invalid scene transition selector or plan size")
 		}
 		var plan struct {
@@ -67,7 +65,7 @@ func validateSceneTransitions(bindings []SceneTransitionBinding, ids map[string]
 			From    []json.RawMessage `json:"from"`
 			To      []json.RawMessage `json:"to"`
 		}
-		if json.Unmarshal(binding.Plan, &plan) != nil || plan.Version != 1 || plan.From == nil || plan.To == nil || len(plan.From) > 10000 || len(plan.To) > 10000 {
+		if json.Unmarshal(binding.Transition, &plan) != nil || plan.Version != 1 || plan.From == nil || plan.To == nil || len(plan.From) > 10000 || len(plan.To) > 10000 {
 			return fmt.Errorf("motion: scene transition requires a version 1 command plan")
 		}
 	}

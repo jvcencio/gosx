@@ -1208,10 +1208,8 @@
       const spec = specs.get(key);
       if (spec) for (const ref of [spec.input, spec.a, spec.b, spec.weight]) visit(ref);
     };
-    // Optional features declare signal references without base-runtime branches.
-    for (const list of Object.values(program)) {
-      if (Array.isArray(list)) for (const binding of list === program.bindings ? bindings : list) if (binding) visit(binding.signal);
-    }
+    for (const binding of bindings) visit(binding && binding.signal);
+    for (const binding of program.svgMorphs || []) visit(binding.signal);
     const signals = program.signals.filter(function(spec) { return spec && needed.has(String(spec.id)); });
     return Object.assign({}, program, { signals: signals, bindings: bindings });
   }

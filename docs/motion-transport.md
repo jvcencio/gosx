@@ -142,7 +142,7 @@ hydration, coalesces pending command submissions and participates in
 loop. Avoid binding the same property with both a transition and a scalar scene
 binding; independent material uniforms can share the same playhead.
 
-Matching numeric fields, equal-length arrays and six-digit hex colors
+Matching numeric fields, equal-length arrays and six-digit hex `color` values
 interpolate. Object identity, names, topology/index arrays and geometry kinds
 change discretely at the destination. Incompatible object kinds retain the
 source until the endpoint. Omitted commands retain their other endpoint; use
