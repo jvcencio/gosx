@@ -8798,16 +8798,16 @@
       const projMatrix = scenePBRProjectionMatrixForCamera(cam, aspect, scratchProjMatrix);
       sceneMat4MultiplyInto(scratchSelenaViewProjection, projMatrix, viewMatrix);
       prepareRigidMeshBatches(bundle);
-      sceneSelenaFrameTime = performance.now() / 1000; sceneSelenaFrameProximity = Math.max(0, Math.min(1, sceneNumber(bundle.cameraProximity, 0))); // feed auto time and proximity uniforms before any Selena mesh draw
+      // Shader and crowd time follow the scene; stateful compute retains wall time.
+      sceneSelenaFrameTime = frameMeta?.sceneTime ?? performance.now() / 1000;
+      sceneSelenaFrameProximity = Math.max(0, Math.min(1, sceneNumber(bundle.cameraProximity, 0)));
       const batchPrograms = scenePBRPrepareBatchPrograms(gl, rigidObjectBatches, {
         crowdProgram, crowdShadowProgram, rigidShadowProgram, rigidShadowProgramFailed,
         prepareCrowdMotionShaders, ensureInstancedProgram });
       crowdProgram = batchPrograms.crowdProgram; crowdShadowProgram = batchPrograms.crowdShadowProgram;
       rigidShadowProgram = batchPrograms.rigidShadowProgram;
       if (scenePBRProgramsPending(gl)) return "pending";
-      // GPU-motion crowd instances interpolate/animate from this SAME clock
-      // (see SCENE_CROWD_MOTION_ATTRIBUTES_GLSL's doc comment): one uniform
-      // write per render(), never per instance.
+      // GPU crowd motion uploads this shared clock once per frame.
       setCrowdMotionNow(sceneSelenaFrameTime);
 
       // --- Shadow Pass ---
@@ -9092,7 +9092,7 @@
       var frameTimeSeconds = performance.now() / 1000;
       activeStaticPointEntries.clear();
       activeStaticPointKeys.clear();
-      drawPointsEntries(gl, Array.isArray(bundle.points) ? bundle.points : [], bundle.environment, viewMatrix, projMatrix, frameTimeSeconds, renderH);
+      drawPointsEntries(gl, Array.isArray(bundle.points) ? bundle.points : [], bundle.environment, viewMatrix, projMatrix, sceneSelenaFrameTime, renderH);
       drawPointsEntries(gl, buildComputePointsEntries(bundle.computeParticles, frameTimeSeconds), bundle.environment, viewMatrix, projMatrix, frameTimeSeconds, renderH);
       releaseInactiveStaticPointBuffers();
       publishWebGLComputeParticleDrawStats();
@@ -10226,36 +10226,22 @@
     // casualty.
     function applyPointsAuthoredCustomUniforms(prog, uniforms, frameTimeSeconds) {
       if (uniforms && typeof uniforms === "object") {
-        var keys = Object.keys(uniforms);
-        for (var k = 0; k < keys.length; k++) {
-          var name = keys[k];
+        for (const name of Object.keys(uniforms)) {
           if (name === "time") continue;
-          var val = uniforms[name];
-        var loc = gl.getUniformLocation(prog.program, name);
-        if (loc == null) continue;
-        if (typeof val === "number") {
-          gl.uniform1f(loc, val);
-        } else if (Array.isArray(val) || (val && val.buffer instanceof ArrayBuffer)) {
-          var arr = Array.isArray(val) ? val : Array.from(val);
-          switch (arr.length) {
-          case 1: gl.uniform1f(loc, arr[0]); break;
-          case 2: gl.uniform2f(loc, arr[0], arr[1]); break;
-          case 3: gl.uniform3f(loc, arr[0], arr[1], arr[2]); break;
-          case 4: gl.uniform4f(loc, arr[0], arr[1], arr[2], arr[3]); break;
-          default:
-            if (arr.length === 9) gl.uniformMatrix3fv(loc, false, new Float32Array(arr));
-            else if (arr.length === 16) gl.uniformMatrix4fv(loc, false, new Float32Array(arr));
-            break;
+          const value = uniforms[name], loc = gl.getUniformLocation(prog.program, name);
+          if (loc == null) continue;
+          if (typeof value === "number") sceneSelenaUploadUniform(gl, loc, "float", value);
+          else if (Array.isArray(value) || (value && value.buffer instanceof ArrayBuffer)) {
+            const size = value.length;
+            if (size === 1) sceneSelenaUploadUniform(gl, loc, "float", value[0]);
+            else if (size >= 2 && size <= 4) sceneSelenaUploadUniform(gl, loc, "vec" + size, value);
+            else if (size === 9 || size === 16) sceneSelenaUploadUniform(gl, loc, size === 9 ? "mat3" : "mat4", new Float32Array(value));
           }
         }
-        }
       }
-      // Force the frame clock last so nothing the author shipped can shadow
-      // it — the WebGL mirror of the WGSL packer's reserved-name rule.
-      var timeLoc = gl.getUniformLocation(prog.program, "time");
-      if (timeLoc != null && typeof frameTimeSeconds === "number") {
-        gl.uniform1f(timeLoc, frameTimeSeconds);
-      }
+      // Reserved clock values override authored placeholders on every draw.
+      const timeLoc = gl.getUniformLocation(prog.program, "time");
+      if (timeLoc != null && typeof frameTimeSeconds === "number") gl.uniform1f(timeLoc, frameTimeSeconds);
     }
 
     function disposeComputeParticleSystemRecord(record) {

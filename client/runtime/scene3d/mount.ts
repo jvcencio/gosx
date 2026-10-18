@@ -158,6 +158,7 @@
     // nor the first resumed frame can credit paused wall time. Camera controls
     // keep their own wall-clock paths.
     let clockSeconds = 0;
+    const clockSubmission = { requested: 0, submitted: -1 };
     let dayCycle: any = null;
     let exploration: any = null;
     let disposePresentation = () => {};
@@ -256,29 +257,23 @@
       return Array.isArray(fields) && fields.some(field => field && (field.name === "time" || field.Name === "time"));
     }
 
-    function sceneHasTimeDrivenMaterials(state) {
-      // The normalized scene state strips authored-material fields (see
-      // normalizeScenePointsEntry's whitelist), so the raw wire scene in
-      // props is the source of truth for uniform declarations. The state
-      // pools are still scanned as a fallback for callers that assembled
-      // entries programmatically.
-      const rawScene = props && props.scene;
-      const pools = [
-        rawScene && rawScene.points,
-        rawScene && rawScene.materials,
-        rawScene && rawScene.objects,
-        rawScene && rawScene.models,
-        state && state.points,
-        state && state.materials,
-        state ? sceneStateObjects(state) : null,
-      ];
-      for (let p = 0; p < pools.length; p++) {
-        if (Array.isArray(pools[p]) && pools[p].some(sceneEntryDeclaresTimeUniform)) {
-          return true;
-        }
-      }
-      return false;
+    function scenePoolDeclaresTimeUniform(pool) {
+      return Array.isArray(pool) && pool.some(sceneEntryDeclaresTimeUniform);
     }
+
+    function sceneHasTimeDrivenMaterials(state) {
+      // Check authored declarations first. Only materialize normalized objects
+      // when needed; clocked scenes need no per-frame pool-array allocation.
+      const raw = props?.scene;
+      return scenePoolDeclaresTimeUniform(raw?.points) ||
+        scenePoolDeclaresTimeUniform(raw?.materials) ||
+        scenePoolDeclaresTimeUniform(raw?.objects) ||
+        scenePoolDeclaresTimeUniform(raw?.models) ||
+        scenePoolDeclaresTimeUniform(state?.points) ||
+        scenePoolDeclaresTimeUniform(state?.materials) ||
+        scenePoolDeclaresTimeUniform(state && sceneStateObjects(state));
+    }
+
 
     // Extract CSS var transition timing from materials/environment so the
     // planner can interpolate when resolved var values change. The planner
@@ -308,19 +303,9 @@
     setAttrValue(mount, sceneAttr("pick-signals"), scenePickSignalNamespace(props));
     setAttrValue(mount, sceneAttr("event-signals"), sceneEventSignalNamespace(props));
     applySceneCapabilityState(mount, props, capability);
-    // Generic pause/resume contract: a control element carrying
-    // data-gosx-scene3d-animation-toggle inside the mount's
-    // data-gosx-scene3d-control-scope ancestor drives this scene's animation
-    // clock. The runtime owns the state and mirrors it truthfully onto both
-    // the mount (data-gosx-scene3d-animation-state: playing | paused |
-    // reduced-motion) and the control (same attribute plus aria-pressed, and
-    // disabled under reduced motion, where the loop never runs). Pages style
-    // or label the two states declaratively; no page-authored JS. Pausing
-    // also STOPS the declarative render loop — after the toggle's settle
-    // render the mount reports data-gosx-scene3d-render-loop="stopped" with
-    // -reason="paused" and -wants-animation="false" — so a paused scene
-    // costs no requestAnimationFrame work instead of spinning at a frozen
-    // clock; resume schedules a render and walks the loop back up.
+    // Declarative controls and shared transports drive one scene clock.
+    // Mirror its state for semantic controls, respect reduced motion, and
+    // sleep the render loop while paused.
     function publishSceneAnimationState() {
       const mode = motion.reducedMotion ? "reduced-motion" : (animationPaused ? "paused" : "playing");
       setAttrValue(mount, sceneAttr("animation-state"), mode);
@@ -508,7 +493,7 @@
     let rendererLifecycleActive = null;
     let rendererLifecyclePaused = null;
 
-    function sceneFrameNowMS(value) {
+    function sceneFrameNowMS(value?: unknown) {
       const now = value == null ? NaN : Number(value);
       if (Number.isFinite(now) && now >= 0) return now;
       return typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
@@ -527,7 +512,7 @@
       if (!active || paused || disposing) lastSceneRenderNowMS = null;
       if (renderer && typeof renderer.setLifecycle === "function") {
         renderer.setLifecycle({
-          nowMS: sceneFrameNowMS(null),
+          nowMS: sceneFrameNowMS(),
           active: active,
           paused: paused,
           disposed: Boolean(disposing),
@@ -548,6 +533,7 @@
       if (outcome === "empty") publishMounted();
       if (outcome !== "submitted") return false;
       submittedFrameSerial++;
+      clockSubmission.submitted = meta.clockRevision;
       const request = meta && meta.frameRequest;
       if (request && pendingFrameRequest === request &&
           sceneFrameRequestSubmitted(request, sceneState, lastMountCommandRevision, outcome)) {
@@ -580,6 +566,9 @@
         hydrationGeneration: sceneState._modelHydrationGeneration,
         frameRequest: pendingFrameRequest ? scenePrepareFrameRequest(pendingFrameRequest, sceneState, lastMountCommandRevision) : null,
         nowMS: nowMS,
+        // Declarative scene seconds; telemetry retains the separate wall clock.
+        sceneTime: clockSeconds,
+        clockRevision: clockSubmission.requested,
         displayDeltaMS: displayDeltaMS,
         active: active,
         qualityEnabled: qualityEnabled,
@@ -1101,7 +1090,7 @@
         renderWatchdogLastAdvanceAt = 0;
         publishSceneRenderWatchdogState("", 0);
         return;
-      /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ }
+      }
       const now = sceneFrameNowMS();
       // A hidden tab stalls requestAnimationFrame BY DESIGN, and the interval
       // that drives this check is itself throttled while hidden. Counting
@@ -1159,7 +1148,7 @@
     function startSceneRenderWatchdog() {
       if (renderWatchdogTimer != null || typeof setInterval !== "function") {
         return;
-      /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ }
+      }
       const now = sceneFrameNowMS();
       const progress = readSceneWebGPUProgress();
       renderWatchdogLastSeq = progress.seq;
@@ -1319,7 +1308,7 @@
       if (webglRecoveryAttempts >= SCENE_WEBGL_RECOVERY_MAX_ATTEMPTS) {
         return;
       }
-      const now = typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+      const now = sceneFrameNowMS();
       if (webglRecoveryEligibleSince <= 0) {
         webglRecoveryEligibleSince = now;
         return;
@@ -1561,7 +1550,7 @@
       publishSceneWaterRendererState(mount, sceneState, renderer, "");
       notifySceneRendererLifecycle(fallbackReason || "renderer-swap", true, false);
       renderWatchdogLastSeq = -1;
-      /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ renderWatchdogLastAt = 0;
+      renderWatchdogLastAt = 0;
       renderWatchdogLastAdvanceAt = sceneFrameNowMS();
       if (previous && previous !== renderer && typeof previous.dispose === "function") {
         previous.dispose();
@@ -3100,7 +3089,7 @@
         return;
       }
       if (disposed) return;
-      const frameStart = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+      const frameStart = sceneFrameNowMS();
       const perfEnabled = typeof window !== "undefined" && window.__gosx_scene3d_perf === true;
       recordScenePerfCounter("render:" + (reason || "animation"));
       // Only re-measure the viewport when something has actually
@@ -3527,13 +3516,14 @@
     }
 
     handle = {
-      getAnimationClock() { return {timeSeconds: clockSeconds, paused: animationPaused}; },
+      getAnimationClock() { return {timeSeconds: clockSeconds, paused: animationPaused, pending: clockSubmission.submitted !== clockSubmission.requested}; },
       setAnimationClock(c) {
         if (disposed) throw new Error("disposed");
         const seconds = c && c.timeSeconds;
         if (!Number.isFinite(seconds) || seconds < 0 || seconds > 86400) throw new RangeError("timeSeconds");
         if (c.paused !== undefined && typeof c.paused !== "boolean") throw new TypeError("paused");
         clockSeconds = seconds; animationPaused = c.paused !== false;
+        clockSubmission.requested++;
         clockLastFrameMS = NaN; lastModelAnimationTimeSeconds = null;
         publishSceneAnimationState(); scheduleRender("animation-clock");
       },

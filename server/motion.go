@@ -136,6 +136,9 @@ func (r *PageRuntime) Motion(props MotionProps, args ...any) gosx.Node {
 func (r *PageRuntime) MotionScope(program *motion.Program, args ...any) gosx.Node {
 	if r != nil {
 		r.EnableBootstrap()
+		if program != nil && program.Transport != nil {
+			_ = r.RequireFeature("motion-transport")
+		}
 	}
 	return MotionScope(program, args...)
 }

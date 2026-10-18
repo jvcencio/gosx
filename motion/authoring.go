@@ -52,6 +52,7 @@ type SignalKind string
 
 const (
 	SignalTime       SignalKind = "time"
+	SignalPlayhead   SignalKind = "playhead"
 	SignalVisibility SignalKind = "visibility"
 	SignalScroll     SignalKind = "scroll"
 	SignalPointer    SignalKind = "pointer"
@@ -150,11 +151,12 @@ type PinBinding struct {
 // Program is a serializable graph of motion signals and their bindings.
 // The JavaScript runtime evaluates it alongside the Scene3D renderer.
 type Program struct {
-	Version  int          `json:"version"`
-	ID       string       `json:"id"`
-	Signals  []SignalSpec `json:"signals"`
-	Bindings []Binding    `json:"bindings,omitempty"`
-	Pins     []PinBinding `json:"pins,omitempty"`
+	Transport *TransportSpec `json:"transport,omitempty"`
+	Version   int            `json:"version"`
+	ID        string         `json:"id"`
+	Signals   []SignalSpec   `json:"signals"`
+	Bindings  []Binding      `json:"bindings,omitempty"`
+	Pins      []PinBinding   `json:"pins,omitempty"`
 	// CSSCompiled lists the indexes of Bindings that CompileCSS turned into
 	// CSS. The browser runtime skips them when it supports scroll timelines.
 	CSSCompiled []int `json:"cssCompiled,omitempty"`
@@ -304,6 +306,9 @@ func (p *Program) Marshal() ([]byte, error) {
 	if strings.TrimSpace(p.ID) == "" {
 		return nil, errors.New("motion: program id is required")
 	}
+	if err := p.Transport.validate(); err != nil {
+		return nil, err
+	}
 	ids := make(map[string]struct{}, len(p.Signals))
 	for _, signal := range p.Signals {
 		id := strings.TrimSpace(signal.ID)
@@ -316,6 +321,9 @@ func (p *Program) Marshal() ([]byte, error) {
 		ids[id] = struct{}{}
 	}
 	for _, signal := range p.Signals {
+		if signal.Kind == SignalPlayhead && p.Transport == nil {
+			return nil, errors.New("motion: playhead signal requires a transport")
+		}
 		if signal.Kind == SignalCurve {
 			if err := validateCurveSignal(signal); err != nil {
 				return nil, err

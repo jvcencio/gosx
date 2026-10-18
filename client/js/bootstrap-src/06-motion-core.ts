@@ -18,6 +18,11 @@
     return Number.isFinite(number) ? number : fallback;
   }
 
+  function motionPositive(value, fallback) {
+    const number = motionNumber(value, fallback);
+    return number > 0 ? number : fallback;
+  }
+
   function motionNow() {
     return typeof performance !== "undefined" && typeof performance.now === "function"
       ? performance.now()
@@ -80,7 +85,8 @@
       for (let i = 0; i < out.length; i++) out[i] = a[i] + (b[i] - a[i]) * t;
       return out;
     }
-    return motionNumber(a, 0) + (motionNumber(b, 0) - motionNumber(a, 0)) * t;
+    const from = motionNumber(a, 0);
+    return from + (motionNumber(b, 0) - from) * t;
   }
 
   // Piecewise scalar curve used by "curve" signals and camera rails. The math
@@ -163,12 +169,6 @@
       maxWriteMS: 0,
       maxRenderMS: 0,
     };
-
-    function clockNow() {
-      return typeof performance !== "undefined" && typeof performance.now === "function"
-        ? performance.now()
-        : Date.now();
-    }
 
     function hasWork() {
       if (frameCallbacks.size || writes.size || continuous.size) return true;
@@ -375,7 +375,7 @@
 
     function runFrame(timestamp) {
       frameHandle = null;
-      const startMS = clockNow();
+      const startMS = motionNow();
       currentFrameMS = motionNumber(timestamp, startMS);
       deltaSeconds = lastFrameMS == null ? 0 : motionClamp((currentFrameMS - lastFrameMS) / 1000, 0, 0.25);
       lastFrameMS = currentFrameMS;
@@ -384,7 +384,7 @@
       frameCallbacks = new Map();
       activeFrameCallbacks = callbacks;
 
-      let phaseStart = clockNow();
+      let phaseStart = motionNow();
       for (const [id, callback] of Array.from(callbacks)) {
         if (!callbacks.delete(id)) continue;
         try { callback(currentFrameMS); } catch (error) {
@@ -392,14 +392,14 @@
         }
       }
       activeFrameCallbacks = null;
-      metrics.maxReadMS = Math.max(metrics.maxReadMS, clockNow() - phaseStart);
+      metrics.maxReadMS = Math.max(metrics.maxReadMS, motionNow() - phaseStart);
 
-      phaseStart = clockNow();
+      phaseStart = motionNow();
       readRects();
       runCallbacks(phases.read, [currentFrameMS, deltaSeconds]);
-      metrics.maxReadMS = Math.max(metrics.maxReadMS, clockNow() - phaseStart);
+      metrics.maxReadMS = Math.max(metrics.maxReadMS, motionNow() - phaseStart);
 
-      phaseStart = clockNow();
+      phaseStart = motionNow();
       runCallbacks(phases.evaluate, [currentFrameMS, deltaSeconds]);
       for (const callback of Array.from(continuous)) {
         try {
@@ -409,14 +409,14 @@
           if (window.console && typeof window.console.error === "function") window.console.error("[gosx] motion animation stopped:", error);
         }
       }
-      metrics.maxEvaluateMS = Math.max(metrics.maxEvaluateMS, clockNow() - phaseStart);
+      metrics.maxEvaluateMS = Math.max(metrics.maxEvaluateMS, motionNow() - phaseStart);
 
-      phaseStart = clockNow();
+      phaseStart = motionNow();
       flushWrites();
       runCallbacks(phases.write, [currentFrameMS, deltaSeconds]);
-      metrics.maxWriteMS = Math.max(metrics.maxWriteMS, clockNow() - phaseStart);
+      metrics.maxWriteMS = Math.max(metrics.maxWriteMS, motionNow() - phaseStart);
 
-      phaseStart = clockNow();
+      phaseStart = motionNow();
       for (const record of Array.from(sceneRecords)) {
         if (record.disposed || (!record.active && !record.dirty)) continue;
         record.dirty = false;
@@ -425,10 +425,10 @@
           if (window.console && typeof window.console.error === "function") window.console.error("[gosx] scene frame failed:", error);
         }
       }
-      metrics.maxRenderMS = Math.max(metrics.maxRenderMS, clockNow() - phaseStart);
+      metrics.maxRenderMS = Math.max(metrics.maxRenderMS, motionNow() - phaseStart);
       inFrame = false;
       metrics.frames++;
-      metrics.lastFrameMS = Math.max(0, clockNow() - startMS);
+      metrics.lastFrameMS = Math.max(0, motionNow() - startMS);
       metrics.maxFrameMS = Math.max(metrics.maxFrameMS, metrics.lastFrameMS);
       if (hasWork()) wake();
       else lastFrameMS = null;
@@ -474,7 +474,7 @@
       rect: rect,
       invalidateRects: invalidateRects,
       wake: wake,
-      now: function() { return inFrame ? currentFrameMS : clockNow(); },
+      now: function() { return inFrame ? currentFrameMS : motionNow(); },
       delta: function() { return deltaSeconds; },
       isFrame: function() { return inFrame; },
       metrics: snapshotMetrics,
@@ -613,9 +613,9 @@
   function createSpringSignal(initial, options, name) {
     const opts = options || {};
     const value = createSignal(motionNumber(initial, 0), name);
-    const mass = motionNumber(opts.mass, 1) > 0 ? motionNumber(opts.mass, 1) : 1;
-    const stiffness = motionNumber(opts.stiffness, 100) > 0 ? motionNumber(opts.stiffness, 100) : 100;
-    const damping = motionNumber(opts.damping, 10) > 0 ? motionNumber(opts.damping, 10) : 10;
+    const mass = motionPositive(opts.mass, 1);
+    const stiffness = motionPositive(opts.stiffness, 100);
+    const damping = motionPositive(opts.damping, 10);
     let current = motionNumber(initial, 0);
     let target = current;
     let velocity = motionNumber(opts.velocity, 0);
@@ -1155,7 +1155,6 @@
       value.dispose = scheduler.addContinuous(function(now) { value.set(Math.max(0, (now - start) / 1000)); return true; });
       return value;
     }
-    if (kind === "visibility" || kind === "scroll" || kind === "pointer" || kind === "hover") return createSignal(0, name);
     if (kind === "spring") {
       const value = createSpringSignal(spec.from, {
         to: spec.input ? spec.from : spec.to,
@@ -1168,44 +1167,25 @@
       return createTweenSignal(spec.from, spec.to, spec.duration, spec.ease, name, spec.reducedMotion);
     }
     if (kind === "keyframes") {
-      const frames = (spec.frames || []).map(function(frame) { return { at: frame.at, value: frame.value, ease: frame.ease }; });
-      return createKeyframeSignal(frames, spec.duration, name, spec.reducedMotion);
+      return createKeyframeSignal(spec.frames, spec.duration, name, spec.reducedMotion);
     }
-    if (kind === "map" || kind === "clamp" || kind === "velocity") {
-      const input = getValue(spec.input);
-      const value = createSignal(0, name);
+    if (kind === "map") return motion.map(getValue(spec.input), motionNumber(spec.from, 0), motionNumber(spec.to, 1), motionNumber(spec.min, 0), motionNumber(spec.max, 1), name);
+    if (kind === "clamp") return motion.clamp(getValue(spec.input), motionNumber(spec.min, 0), motionNumber(spec.max, 1), name);
+    if (kind === "velocity") {
+      const input = getValue(spec.input), value = createSignal(0, name);
       let previous = motionNumber(input.get(), 0), previousTime = scheduler.now();
-      const compute = function(next) {
-        const number = motionNumber(next, 0);
-        if (kind === "map") {
-          const span = motionNumber(spec.to, 1) - motionNumber(spec.from, 0);
-          const t = span === 0 ? 0 : (number - motionNumber(spec.from, 0)) / span;
-          value.set(motionNumber(spec.min, 0) + (motionNumber(spec.max, 1) - motionNumber(spec.min, 0)) * t);
-        } else if (kind === "clamp") value.set(motionClamp(number, motionNumber(spec.min, 0), motionNumber(spec.max, 1)));
-        else {
-          const now = scheduler.now(), dt = Math.max(1e-6, (now - previousTime) / 1000);
-          value.set((number - previous) / dt);
-          previous = number; previousTime = now;
-        }
-      };
-      input.subscribe(compute);
+      value.dispose = input.subscribe(function(next) {
+        const number = motionNumber(next, 0), now = scheduler.now(), dt = Math.max(1e-6, (now - previousTime) / 1000);
+        value.set((number - previous) / dt);
+        previous = number; previousTime = now;
+      });
       return value;
     }
     if (kind === "curve") {
-      const input = getValue(spec.input);
-      const stops = motionCurveStops(spec.frames);
-      const smooth = spec.smooth === true;
-      const value = createSignal(stops.length ? stops[0].value : 0, name);
-      input.subscribe(function(next) { value.set(motionCurveValue(stops, smooth, motionNumber(next, 0))); });
-      return value;
+      const stops = motionCurveStops(spec.frames), smooth = spec.smooth === true;
+      return createDerivedSignal(getValue(spec.input), function(next) { return motionCurveValue(stops, smooth, motionNumber(next, 0)); }, name);
     }
-    if (kind === "mix") {
-      const a = getValue(spec.a), b = getValue(spec.b), weight = getValue(spec.weight);
-      const value = createSignal(motionMix(a.get(), b.get(), motionClamp(motionNumber(weight.get(), 0), 0, 1)), name);
-      const update = function() { value.set(motionMix(a.get(), b.get(), motionClamp(motionNumber(weight.get(), 0), 0, 1))); };
-      a.subscribe(update, { immediate: false }); b.subscribe(update, { immediate: false }); weight.subscribe(update, { immediate: false });
-      return value;
-    }
+    if (kind === "mix") return motion.mix(getValue(spec.a), getValue(spec.b), getValue(spec.weight), name);
     return createSignal(0, name);
   }
 
@@ -1516,6 +1496,7 @@
 
   motion.ease = motionEase;
   motion.scheduler = scheduler;
+  motion.program = function(root) { return programRecords.get(root); };
   motion.signal = function(initial, name) { return createSignal(initial, name ? String(name) : ""); };
   motion.spring = function(initial, options) { return createSpringSignal(initial, options || {}, options && options.name ? String(options.name) : ""); };
   motion.tween = function(from, options) { return createPublicTween(from, options || {}, options && options.name ? String(options.name) : ""); };

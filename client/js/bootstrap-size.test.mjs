@@ -57,6 +57,8 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 // Stable material owners and the review fixes use the exact measured minima.
 // Only exhausted targets change; every size allowance and policy is retained.
 const budgets = [
+  // Optional seekable motion; ordinary pages retain their existing ceilings.
+  { file: "bootstrap-feature-motion-transport.js", raw: 7000, gzip: 2500, brotli: 2200 },
   { file: "bootstrap-feature-scene3d-experience.js", raw: 10701, gzip: 4578, brotli: 4115 },
   // Finite choreography remains demand-loaded; existing route limits are unchanged.
   { file: "bootstrap-feature-scene3d-timeline.js", raw: 5_400, gzip: 2_400, brotli: 2_200 },
