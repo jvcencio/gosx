@@ -78,7 +78,9 @@ type Menu struct {
 type MenuItem struct {
 	// Accelerator is a display label in the shortcut column (after a tab on
 	// Windows). It installs no native accelerator table; the page command
-	// registry handles keystrokes, so its chord and this label must agree.
+	// registry handles keystrokes, so its chord and this label must agree. On
+	// macOS a label that reads as a chord, such as "Cmd+N", also becomes the
+	// item's key equivalent (see the package documentation).
 	Accelerator string
 	ID          string
 	Label       string

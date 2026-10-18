@@ -49,13 +49,14 @@ The macOS backend is being built in slices. Today it provides the window, the
 web view, `Navigate`, `SetHTML`, `Reload`, `ExecuteScript`, `SetTitle`, the
 background color, `OnWindowCreated`, `OnNavigationCompleted`, `OnClose` and the
 startup timeline (`EnvironmentReady` stays zero: WebKit has no separate
-environment step), and a Hide/Quit application menu. This example runs on it
-and works around what is not there yet: `SetMenuBar`, the file dialogs, the
-message box and the typed bridge to the page report `desktop.ErrUnsupported`
-until later slices land, and `GPU`, `SingleInstance` and `OnFocusChanged` have
-no effect. `App.Run` must be called from the main goroutine (the `desktop`
-package pins it to the main thread when it is imported). SIGINT and SIGTERM
-close the window and stop the engine.
+environment step), the menu bar (`SetMenuBar`, with a standard application menu
+in front of the example's File menu), `SetMinSize`, `SetMaxSize`, `OpenURL` and
+the native message box. This example runs on it and works around what is not
+there yet: the file dialogs and the typed bridge to the page report
+`desktop.ErrUnsupported` until later slices land, and `GPU`, `SingleInstance` and
+`OnFocusChanged` have no effect. `App.Run` must be called from the main goroutine
+(the `desktop` package pins it to the main thread when it is imported). SIGINT and
+SIGTERM close the window and stop the engine.
 
 ## Package
 

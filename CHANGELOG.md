@@ -8,10 +8,19 @@
   third-party FFI. It provides `Navigate`, `SetHTML`, `Reload`, `ExecuteScript`,
   `SetTitle`, preload scripts, `OnWindowCreated`, `OnNavigationCompleted`,
   `OnBeforeClose`, `OnClose` and the startup timeline on darwin/amd64 and
-  darwin/arm64; menus, dialogs, the page bridge and the other features still
+  darwin/arm64; the file dialogs, the page bridge and the other features still
   return `desktop.ErrUnsupported` there. `App.Run` must be called from the main
   goroutine. `examples/desktop-app` now builds on macOS (`main_windows.go` became
   `main_desktop.go`).
+
+- Extend the macOS desktop backend (second slice): `SetMenuBar` builds the native
+  menu bar (a standard application menu in front of a cross-platform `Menu`,
+  `Accelerator` chords as key equivalents, `OnClick` through the same recorded
+  callback path as the window delegate), `SetMinSize` and `SetMaxSize` limit the
+  window's content size, `OpenURL` opens http, https, mailto and file URLs, and
+  `ShowMessage` shows an `NSAlert`. Still `desktop.ErrUnsupported` on macOS: the
+  file dialogs, clipboard, page bridge, `NewWindow`, tray, notifications and file
+  drop.
 
 - Add `command.Action.Submit`, a CSS selector for a managed form or its submit
   button. The workbench calls `requestSubmit` on it, so a chord submits through
