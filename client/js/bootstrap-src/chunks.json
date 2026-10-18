@@ -393,6 +393,18 @@
       ]
     },
     {
+      "name": "bootstrap-feature-motion-transport.js",
+      "sources": [
+        "../runtime/motion/transport.ts"
+      ]
+    },
+    {
+      "name": "bootstrap-feature-motion-svg.js",
+      "sources": [
+        "../runtime/motion/svg.ts"
+      ]
+    },
+    {
       "name": "bootstrap-feature-scene3d-timeline.js",
       "sources": [
         "../runtime/scene3d/timeline.ts"

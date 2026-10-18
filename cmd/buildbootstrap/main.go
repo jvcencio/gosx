@@ -644,6 +644,14 @@ var outputs = []output{
 		sources: []source{sourceFile("../runtime/scene3d/model-preparation.ts")},
 	},
 	{
+		name:    "bootstrap-feature-motion-transport.js",
+		sources: []source{sourceFile("../runtime/motion/transport.ts")},
+	},
+	{
+		name:    "bootstrap-feature-motion-svg.js",
+		sources: []source{sourceFile("../runtime/motion/svg.ts")},
+	},
+	{
 		name:    "bootstrap-feature-scene3d-timeline.js",
 		sources: []source{sourceFile("../runtime/scene3d/timeline.ts")},
 	},

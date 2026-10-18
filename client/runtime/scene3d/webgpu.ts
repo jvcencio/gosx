@@ -18891,7 +18891,9 @@
             : (Number.isFinite(frameMeta.revision) ? frameMeta.revision : 0)))
         : 0;
       var frameTimeSeconds = frameNowMS / 1000;
-      selenaFrame.time = frameTimeSeconds; selenaFrame.cameraProximity = Math.max(0, Math.min(1, sceneNumber(bundle.cameraProximity, 0))); // feed auto time and proximity uniforms before every Selena draw this frame
+      // Shader time is seekable; telemetry and compute retain wall time.
+      selenaFrame.time = frameMeta?.sceneTime ?? frameTimeSeconds;
+      selenaFrame.cameraProximity = Math.max(0, Math.min(1, sceneNumber(bundle.cameraProximity, 0)));
       var computeParticleRecords = updateComputeParticleSystems(bundle.computeParticles, encoder, frameTimeSeconds);
       var computedMorphStats = updateComputedMorphMeshes(bundle, encoder);
       var elioSkinStats = updateElioSkinnedMeshes(bundle, encoder);
@@ -18905,11 +18907,8 @@
       var waterUpdateStats = sceneWebGPUWaterDebugSkipsUpdate(waterDebugMode)
         ? updateWaterSystems([], encoder, frameNowMS, frameActive, frameQualityProfile, frameQualityRevision, bundle, pbrSceneBuffers, scaledW, scaledH)
         : updateWaterSystems(bundle.waterSystems, encoder, frameNowMS, frameActive, frameQualityProfile, frameQualityRevision, bundle, pbrSceneBuffers, scaledW, scaledH);
-      // GPU frustum cull: runs AFTER uploadFrameUniforms so scratchSelenaViewProjection
-      // is ready (WebGPU post-depth-remap VP). Runs BEFORE shadow and main passes
-      // so outputBuf + drawArgsBuf are populated before drawInstancedMeshes reads them.
-      // Only processes meshes with cullKernelWGSL present (gpu-cull capability active
-      // by virtue of being in the WebGPU renderer). Meshes without a kernel draw-all.
+      // After frame uniform upload, cull before render passes.
+      // Meshes without a cull kernel retain draw-all behavior.
       var materials = Array.isArray(bundle.materials) ? bundle.materials : [];
       var instancedDrawList = hasInstancedData
         ? buildInstancedDrawList(bundle, materials)
@@ -19419,7 +19418,7 @@
         /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ // Create a dummy material bind group for group 1 (points pipeline layout requires it).
         var dummyMatBG = createMaterialBindGroup(null, false, defaultMaterialOwner);
         mainPass.setBindGroup(1, dummyMatBG);
-        Object.assign(frameStats, drawPointsEntries(mainPass, bundle, cam, frameTimeSeconds));
+        Object.assign(frameStats, drawPointsEntries(mainPass, bundle, cam, selenaFrame.time));
         Object.assign(frameStats, drawComputeParticleEntries(mainPass, computeParticleRecords, bundle.environment, frameTimeSeconds));
       }
 
