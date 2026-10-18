@@ -10232,10 +10232,14 @@
           if (loc == null) continue;
           if (typeof value === "number") sceneSelenaUploadUniform(gl, loc, "float", value);
           else if (Array.isArray(value) || (value && value.buffer instanceof ArrayBuffer)) {
-            const size = value.length;
-            if (size === 1) sceneSelenaUploadUniform(gl, loc, "float", value[0]);
-            else if (size >= 2 && size <= 4) sceneSelenaUploadUniform(gl, loc, "vec" + size, value);
-            else if (size === 9 || size === 16) sceneSelenaUploadUniform(gl, loc, size === 9 ? "mat3" : "mat4", new Float32Array(value));
+            switch (value.length) {
+            case 1: sceneSelenaUploadUniform(gl, loc, "float", value); break;
+            case 2: case 3: case 4:
+              sceneSelenaUploadUniform(gl, loc, "vec" + value.length, value); break;
+            default:
+              if (value.length === 9) sceneSelenaUploadUniform(gl, loc, "mat3", new Float32Array(value));
+              else if (value.length === 16) sceneSelenaUploadUniform(gl, loc, "mat4", new Float32Array(value));
+            }
           }
         }
       }

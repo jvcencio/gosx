@@ -1006,7 +1006,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "drawPointsEntries@10403:5",
+      "name": "drawPointsEntries@10393:5",
       "lines": 187,
       "cyclomatic": 59,
       "cognitive": 120,
@@ -1015,7 +1015,7 @@
     },
     {
       "source": "../runtime/scene3d/webgl.ts",
-      "name": "drawInstancedMeshes@10695:5",
+      "name": "drawInstancedMeshes@10685:5",
       "lines": 191,
       "cyclomatic": 57,
       "cognitive": 116,
@@ -1286,7 +1286,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "dispose@19481:5",
+      "name": "dispose@19480:5",
       "lines": 145,
       "cyclomatic": 37,
       "cognitive": 61,
@@ -1296,7 +1296,7 @@
     },
     {
       "source": "../runtime/scene3d/webgpu.ts",
-      "name": "diagnostics@19738:5",
+      "name": "diagnostics@19737:5",
       "lines": 90,
       "cyclomatic": 47,
       "cognitive": 47,
