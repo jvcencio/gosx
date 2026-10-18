@@ -861,7 +861,6 @@ func (a *darwinApp) SaveFileDialog(SaveFileOptions) (string, error) {
 }
 func (a *darwinApp) Clipboard() (string, error) { return "", darwinUnsupported("Clipboard") }
 func (a *darwinApp) SetClipboard(string) error  { return darwinUnsupported("SetClipboard") }
-func (a *darwinApp) OpenURL(string) error       { return darwinUnsupported("OpenURL") }
 func (a *darwinApp) SetFullscreen(bool) error   { return darwinUnsupported("SetFullscreen") }
 func (a *darwinApp) WindowPlacement() (WindowPlacement, error) {
 	return WindowPlacement{}, darwinUnsupported("WindowPlacement")

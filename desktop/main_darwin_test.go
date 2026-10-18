@@ -73,6 +73,16 @@ func screenLocked() bool {
 	return err == nil && screenLockedPattern.Match(out)
 }
 
+// requireInteractive skips a test that needs a person to act (click an alert,
+// watch a browser open) unless GOSX_DARWIN_INTERACTIVE=1.
+func requireInteractive(t *testing.T) {
+	t.Helper()
+	requireGUI(t)
+	if os.Getenv("GOSX_DARWIN_INTERACTIVE") != "1" {
+		t.Skip("needs a person at the keyboard; set GOSX_DARWIN_INTERACTIVE=1")
+	}
+}
+
 // runTestApp runs a small app on the main thread, calls drive on another
 // goroutine once its first page has loaded, and returns when Run does: the app is
 // closed when drive returns. options fills in a small in-memory page and window
