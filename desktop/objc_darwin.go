@@ -60,6 +60,14 @@ const (
 	nsEventTypeApplicationDefined = 15
 	nsEventMaskAny                = ^uintptr(0)
 
+	// NSEventModifierFlags, as an NSMenuItem's keyEquivalentModifierMask.
+	nsEventModifierFlagShift   = 1 << 17
+	nsEventModifierFlagControl = 1 << 18
+	nsEventModifierFlagOption  = 1 << 19
+	nsEventModifierFlagCommand = 1 << 20
+
+	nsControlStateValueOn = 1
+
 	// NSAlertStyle, and the NSModalResponse of the first button (the others
 	// follow it).
 	nsAlertStyleWarning       = 0

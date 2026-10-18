@@ -48,8 +48,8 @@ func TestDarwinCtrlLayout(t *testing.T) {
 	if ringEvents&(ringEvents-1) != 0 {
 		t.Errorf("ringEvents = %d is not a power of two", ringEvents)
 	}
-	if retainNone != 0 || retainArg2 != 4 {
-		t.Errorf("retainNone = %d, retainArg2 = %d: the stubs retain argument i by bit i", retainNone, retainArg2)
+	if retainNone != 0 || retainArg0 != 1 || retainArg2 != 4 {
+		t.Errorf("retainNone = %d, retainArg0 = %d, retainArg2 = %d: the stubs retain argument i by bit i", retainNone, retainArg0, retainArg2)
 	}
 	if evNone != 0 {
 		t.Errorf("evNone = %d: a zeroed ring slot must read as no event", evNone)

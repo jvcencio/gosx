@@ -53,11 +53,13 @@ func TestRecorderRecordsEachStubsEvent(t *testing.T) {
 		kind   uint64
 		mask   uint64
 		retain bool
+		object int // the argument that holds the object a retaining stub retains
 	}{
-		{"windowShouldClose", impStubWindowShouldClose, evCloseRequested, 0, false},
-		{"applicationShouldTerminate", impStubApplicationShouldTerminate, evQuitRequested, 0, false},
-		{"didFinishNavigation", impStubNavigationFinished, evNavigationFinished, 0, false},
-		{"didFailNavigation", impStubNavigationFailed, evNavigationFailed, retainArg2, true},
+		{"windowShouldClose", impStubWindowShouldClose, evCloseRequested, 0, false, 2},
+		{"applicationShouldTerminate", impStubApplicationShouldTerminate, evQuitRequested, 0, false, 2},
+		{"didFinishNavigation", impStubNavigationFinished, evNavigationFinished, 0, false, 2},
+		{"didFailNavigation", impStubNavigationFailed, evNavigationFailed, retainArg2, true, 2},
+		{"menuAction", impStubMenuAction, evMenuAction, retainArg0, true, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newTestRing(t, 8)
@@ -69,10 +71,13 @@ func TestRecorderRecordsEachStubsEvent(t *testing.T) {
 				t.Fatalf("fresh object retainCount = %d, want 1", got)
 			}
 
-			// Arguments 0 and 1 are plain integers (the recorder must not
-			// retain them, or objc_retain would crash on them); argument 2 is
-			// the object the failure stub retains.
-			ret := callStub(impStubs[tc.stub], self, sel, 0x1111, 0x2222, obj)
+			// The arguments the stub does not retain are plain integers (the
+			// recorder must not retain them, or objc_retain would crash on them);
+			// one is the object the stub retains: the NSError of a failure, the
+			// sender of a menu action.
+			args := [3]uintptr{0x1111, 0x2222, 0x3333}
+			args[tc.object] = obj
+			ret := callStub(impStubs[tc.stub], self, sel, args[0], args[1], args[2])
 			if ret != 0 {
 				t.Errorf("stub returned %#x, want 0 (NO / NSTerminateCancel / void)", ret)
 			}
@@ -102,8 +107,8 @@ func TestRecorderRecordsEachStubsEvent(t *testing.T) {
 			if ev.kind != tc.kind || ev.sel != sel || ev.mask != tc.mask {
 				t.Errorf("event = {kind %d sel %#x mask %#x}, want {kind %d sel %#x mask %#x}", ev.kind, ev.sel, ev.mask, tc.kind, sel, tc.mask)
 			}
-			if ev.args != [3]uintptr{0x1111, 0x2222, obj} {
-				t.Errorf("args = %#x, want {0x1111 0x2222 %#x}", ev.args, obj)
+			if ev.args != args {
+				t.Errorf("args = %#x, want %#x", ev.args, args)
 			}
 			if got := retainCount(obj); got != 1 {
 				t.Errorf("retainCount after drain = %d, want 1: drain must release what the recorder retained", got)

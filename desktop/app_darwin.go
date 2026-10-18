@@ -54,10 +54,20 @@ type darwinApp struct {
 	// passes the whole list every time, so it replaces rather than appends.
 	pendingBootstrap string
 
+	// appName is the application's display name: the title the app was created
+	// with, which SetTitle does not change. It names the application menu.
+	appName string
+
 	// Content-area size limits in points, set by SetMinSize and SetMaxSize and
 	// applied to the window when it exists. 0 is unset.
 	minWidth, minHeight int
 	maxWidth, maxHeight int
+
+	// menuBar is the latest menu SetMenuBar was given, which setup installs on
+	// every Run. menuInstalled records that this app replaced the default menu
+	// bar, so teardown puts the default back (main thread only).
+	menuBar       *Menu
+	menuInstalled bool
 
 	running bool   // Run is in progress
 	closing bool   // the window close sequence has started
@@ -66,7 +76,7 @@ type darwinApp struct {
 }
 
 func newPlatformApp(options Options) (platformApp, error) {
-	return &darwinApp{options: options, created: time.Now()}, nil
+	return &darwinApp{options: options, created: time.Now(), appName: applicationName(options.Title)}, nil
 }
 
 // activeApp is the app whose Run is in progress. The package-level functions that
@@ -249,7 +259,7 @@ func (a *darwinApp) setup(delegateCls uintptr, ring *nativeRing) error {
 	if !appLaunched {
 		// The SDL shape: finish launching without entering -[NSApplication run],
 		// then pump events ourselves.
-		installApplicationMenu(app, options.Title)
+		installApplicationMenu(app, a.appName)
 		send0(app, objcSel("finishLaunching"))
 		appLaunched = true
 	}
@@ -278,11 +288,14 @@ func (a *darwinApp) setup(delegateCls uintptr, ring *nativeRing) error {
 	send0(window, objcSel("center"))
 	a.markStartup(&a.timeline.WindowCreated)
 	a.startDispatch()
-	// SetMinSize and SetMaxSize may have run before there was a window to give them
-	// to. They record what they were given and apply it only on the main thread,
-	// and once the dispatcher is running every later call is queued behind setup,
-	// so what they recorded before this point is read here and nothing is lost in
-	// between.
+	// SetMenuBar, SetMinSize and SetMaxSize may have run before there was a
+	// window or an NSApplication to give them to. They record what they were
+	// given and apply it only on the main thread, and once the dispatcher is
+	// running every later call is queued behind setup, so what they recorded
+	// before this point is read here and nothing is lost in between.
+	if err := a.installMenuBarOnUI(); err != nil {
+		return err
+	}
 	a.applyWindowLimitsOnUI()
 	a.fireWindowCreated(window)
 
@@ -370,40 +383,6 @@ func (a *darwinApp) loadURL(web uintptr, url string) error {
 	return nil
 }
 
-// installApplicationMenu gives the process a minimal application menu with Hide
-// and Quit. AppKit does not synthesize one for a process without a bundle, and
-// without it Command-Q and Command-H reach nothing. The full menu bar (File,
-// Edit, View and the Menu plan) is DT1.
-func installApplicationMenu(app uintptr, title string) {
-	menuClass, itemClass := objcClass("NSMenu"), objcClass("NSMenuItem")
-	if menuClass == 0 || itemClass == 0 {
-		return
-	}
-	name := title
-	if name == "" {
-		name = defaultTitle
-	}
-	newItem := func(label, action, key string) uintptr {
-		return send3(send0(itemClass, objcSel("alloc")), objcSel("initWithTitle:action:keyEquivalent:"),
-			nsString(label), objcSel(action), nsString(key))
-	}
-
-	mainMenu := send1(send0(menuClass, objcSel("alloc")), objcSel("initWithTitle:"), nsString(""))
-	appItem := objcNew(itemClass)
-	appMenu := send1(send0(menuClass, objcSel("alloc")), objcSel("initWithTitle:"), nsString(name))
-	hide := newItem("Hide "+name, "hide:", "h")
-	quit := newItem("Quit "+name, "terminate:", "q")
-	send1(appMenu, objcSel("addItem:"), hide)
-	send1(appMenu, objcSel("addItem:"), send0(itemClass, objcSel("separatorItem")))
-	send1(appMenu, objcSel("addItem:"), quit)
-	send1(appItem, objcSel("setSubmenu:"), appMenu)
-	send1(mainMenu, objcSel("addItem:"), appItem)
-	send1(app, objcSel("setMainMenu:"), mainMenu)
-	for _, obj := range []uintptr{quit, hide, appMenu, appItem, mainMenu} {
-		objcRelease(obj) // the menu hierarchy retains what it needs
-	}
-}
-
 // pump is the event loop. Each iteration blocks until AppKit has an event,
 // dispatches it, then drains the native event ring and the dispatcher queue.
 func (a *darwinApp) pump() {
@@ -458,6 +437,10 @@ func (a *darwinApp) handleNativeEvent(ev nativeEvent) {
 	case evNavigationFinished:
 		a.navID++
 		a.onNavigationCompleted(NavigationCompleted{ID: a.navID, Success: true})
+	case evMenuAction:
+		// The recorder retained the sender; it lives until this record is
+		// released after we return.
+		a.runMenuAction(ev.args[0])
 	case evNavigationFailed:
 		a.navID++
 		status := 0
@@ -519,6 +502,7 @@ func (a *darwinApp) teardown() {
 		}
 		if app != 0 {
 			send1(app, objcSel("setDelegate:"), 0)
+			a.restoreApplicationMenu(app)
 		}
 	})
 	// A call that arrives from here on, on any thread, must find no window and no
@@ -880,7 +864,6 @@ func (a *darwinApp) RegisterProtocol(string) error { return darwinUnsupported("R
 func (a *darwinApp) RegisterFileType(string, string, string) error {
 	return darwinUnsupported("RegisterFileType")
 }
-func (a *darwinApp) SetMenuBar(Menu) error     { return darwinUnsupported("SetMenuBar") }
 func (a *darwinApp) SetTray(TrayOptions) error { return darwinUnsupported("SetTray") }
 func (a *darwinApp) CloseTray() error          { return darwinUnsupported("CloseTray") }
 func (a *darwinApp) Notify(Notification) error { return darwinUnsupported("Notify") }
