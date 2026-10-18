@@ -57,7 +57,7 @@
 // record events for Go to handle on the main thread. App.Run must be called from
 // the main goroutine, which this package pins to the main thread when it is
 // imported. The backend currently provides the window, the web view, Navigate,
-// SetHTML, Reload, ExecuteScript, SetTitle, PrependBootstrapScript,
+// SetHTML, Reload, ExecuteScript, PostMessage, OnWebMessage, SetTitle, PrependBootstrapScript,
 // Options.OnWindowCreated, OnNavigationCompleted, OnBeforeClose (with a zero
 // placement) and OnClose, and the startup timeline, where EnvironmentReady stays
 // zero because WebKit has no separate environment step.
@@ -71,10 +71,19 @@
 // ("Cmd+N", "Ctrl+Shift+S", "Alt+F4", "F5") also becomes the item's key
 // equivalent, which AppKit offers once the page has declined the key; "Ctrl" is
 // the Control key, so write "Cmd" (or "Mod") for the Command key, and a plain
-// letter with no modifier is left as a label. SetMinSize and SetMaxSize limit
+// letter with no modifier is left as a label. MenuItem.Role sends standard
+// editing actions (Cut, Copy, Paste, Select All, Undo, Redo) to the focused
+// responder. Apps with their own document history can omit native Undo/Redo
+// accelerators and keep those keys in their page command registry.
+// SetMinSize and SetMaxSize limit
 // the content size of the window, OpenURL hands http, https, mailto and file URLs
 // to the system, and ShowMessage shows an application-modal NSAlert on the main
-// thread. The file dialogs, the clipboard, the page bridge, window placement,
+// thread. OpenFileDialog and SaveFileDialog use native AppKit panels; cancelling
+// returns no selection and no error. NSSavePanel always confirms overwrites.
+// Options.OnOpenFiles receives Finder's document paths, both at launch and when
+// reopening the app. Declare CFBundleDocumentTypes in the app's Info.plist to
+// offer it as a document editor. The desktop string transport and typed bridge
+// work through a main-frame WKScriptMessageHandler. The clipboard API, window placement,
 // single-instance launch handling and the other features report ErrUnsupported
 // until later slices land. Options.UserDataDir, GPU, AdditionalBrowserArguments,
 // BrowserExecutableFolder, DPIAwareness, MuteAudio and SingleInstance have no

@@ -375,6 +375,9 @@ func registerDelegateClass() (uintptr, error) {
 	return registerRecorderClass(delegateClassName, []recorderMethod{
 		{"windowShouldClose:", impStubs[impStubWindowShouldClose], boolEnc + "@:@"},
 		{"applicationShouldTerminate:", impStubs[impStubApplicationShouldTerminate], "Q@:@"},
+		{"application:openFiles:", impStubs[impStubOpenFiles], "v@:@@"},
+		{"application:openURLs:", impStubs[impStubOpenURLs], "v@:@@"},
+		{"userContentController:didReceiveScriptMessage:", impStubs[impStubWebMessage], "v@:@@"},
 		{"webView:didFinishNavigation:", impStubs[impStubNavigationFinished], "v@:@@"},
 		{"webView:didFailNavigation:withError:", impStubs[impStubNavigationFailed], "v@:@@@"},
 		{"webView:didFailProvisionalNavigation:withError:", impStubs[impStubNavigationFailed], "v@:@@@"},

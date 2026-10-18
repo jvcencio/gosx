@@ -92,6 +92,9 @@ const (
 	evNavigationFinished uint64 = 3 // webView:didFinishNavigation:
 	evNavigationFailed   uint64 = 4 // webView:didFailNavigation:withError: and ...didFailProvisionalNavigation:withError:
 	evMenuAction         uint64 = 5 // menuAction: sent to the GoSXMenuTarget by a menu item (menu_darwin.go)
+	evOpenFiles          uint64 = 6 // application:openFiles:
+	evOpenURLs           uint64 = 7 // application:openURLs:
+	evWebMessage         uint64 = 8 // userContentController:didReceiveScriptMessage:
 )
 
 // Retain masks for the stubs: bit i retains argument i. The numeric values
@@ -99,6 +102,7 @@ const (
 const (
 	retainNone uint64 = 0
 	retainArg0 uint64 = 1 << 0 // the sender (the NSMenuItem) of menuAction:
+	retainArg1 uint64 = 1 << 1 // document arrays and WKScriptMessage
 	retainArg2 uint64 = 1 << 2 // the NSError of the didFail methods
 )
 
@@ -118,6 +122,9 @@ func impApplicationShouldTerminate()
 func impNavigationFinished()
 func impNavigationFailed()
 func impMenuAction()
+func impOpenFiles()
+func impOpenURLs()
+func impWebMessage()
 
 // impStubs holds the C-ABI entry address of each stub, published by the
 // assembly: windowShouldClose:, applicationShouldTerminate:,
@@ -130,6 +137,9 @@ const (
 	impStubNavigationFinished
 	impStubNavigationFailed
 	impStubMenuAction
+	impStubOpenFiles
+	impStubOpenURLs
+	impStubWebMessage
 	impStubCount
 )
 

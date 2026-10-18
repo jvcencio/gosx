@@ -60,6 +60,9 @@ func TestRecorderRecordsEachStubsEvent(t *testing.T) {
 		{"didFinishNavigation", impStubNavigationFinished, evNavigationFinished, 0, false, 2},
 		{"didFailNavigation", impStubNavigationFailed, evNavigationFailed, retainArg2, true, 2},
 		{"menuAction", impStubMenuAction, evMenuAction, retainArg0, true, 0},
+		{"openFiles", impStubOpenFiles, evOpenFiles, retainArg1, true, 1},
+		{"openURLs", impStubOpenURLs, evOpenURLs, retainArg1, true, 1},
+		{"webMessage", impStubWebMessage, evWebMessage, retainArg1, true, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newTestRing(t, 8)

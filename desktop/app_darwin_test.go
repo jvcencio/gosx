@@ -32,8 +32,6 @@ func TestDarwinAppUnsupportedSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, openErr := impl.OpenFileDialog(OpenFileOptions{})
-	_, saveErr := impl.SaveFileDialog(SaveFileOptions{})
 	_, clipErr := impl.Clipboard()
 	_, placementErr := impl.WindowPlacement()
 	_, windowErr := impl.NewWindow(WindowOptions{})
@@ -42,15 +40,12 @@ func TestDarwinAppUnsupportedSurface(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"PostMessage", impl.PostMessage("noop")},
 		{"OpenDevTools", impl.OpenDevTools()},
 		{"Minimize", impl.Minimize()},
 		{"Maximize", impl.Maximize()},
 		{"Restore", impl.Restore()},
 		{"Focus", impl.Focus()},
 		{"Serve", impl.Serve("app://assets/*", http.NotFoundHandler())},
-		{"OpenFileDialog", openErr},
-		{"SaveFileDialog", saveErr},
 		{"Clipboard", clipErr},
 		{"SetClipboard", impl.SetClipboard("ok")},
 		{"SetFullscreen", impl.SetFullscreen(true)},
@@ -89,6 +84,9 @@ func TestDarwinAppBeforeRun(t *testing.T) {
 	}
 	if err := impl.ExecuteScript("1"); !errors.Is(err, ErrWindowNotReady) {
 		t.Errorf("ExecuteScript before Run = %v, want ErrWindowNotReady", err)
+	}
+	if err := impl.PostMessage("noop"); !errors.Is(err, ErrWindowNotReady) {
+		t.Errorf("PostMessage before Run = %v, want ErrWindowNotReady", err)
 	}
 	for name, err := range map[string]error{
 		"Close":                  impl.Close(),

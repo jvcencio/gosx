@@ -342,6 +342,8 @@ func (a *darwinApp) createWebView(window, delegate uintptr, frame nsRect, backgr
 	a.mu.Lock()
 	a.webview = view
 	a.mu.Unlock()
+	controller := send0(config.obj, objcSel("userContentController"))
+	send2(controller, objcSel("addScriptMessageHandler:name:"), delegate, nsString(darwinMessageHandler))
 
 	send1(view, objcSel("setAutoresizingMask:"), nsViewWidthSizable|nsViewHeightSizable)
 	send1(view, objcSel("setNavigationDelegate:"), delegate)
@@ -441,6 +443,10 @@ func (a *darwinApp) handleNativeEvent(ev nativeEvent) {
 		// The recorder retained the sender; it lives until this record is
 		// released after we return.
 		a.runMenuAction(ev.args[0])
+	case evOpenFiles, evOpenURLs:
+		a.openDocuments(ev.args[1], ev.kind == evOpenURLs)
+	case evWebMessage:
+		a.receiveWebMessage(ev.args[1])
 	case evNavigationFailed:
 		a.navID++
 		status := 0
@@ -492,6 +498,8 @@ func (a *darwinApp) teardown() {
 		// Detach the delegate everywhere first, so no callback can reach it once
 		// it is released.
 		if web != 0 {
+			controller := send0(send0(web, objcSel("configuration")), objcSel("userContentController"))
+			send1(controller, objcSel("removeScriptMessageHandlerForName:"), nsString(darwinMessageHandler))
 			send1(web, objcSel("setNavigationDelegate:"), 0)
 			send0(web, objcSel("stopLoading"))
 			send0(web, objcSel("removeFromSuperview"))
@@ -679,7 +687,7 @@ func (a *darwinApp) applyBootstrapScriptsOnUI() error {
 		return err
 	}
 	a.mu.Lock()
-	script := a.pendingBootstrap
+	script := darwinTransportBootstrap + "\n" + a.pendingBootstrap
 	a.mu.Unlock()
 	var applyErr error
 	withPool(func() {
@@ -830,9 +838,6 @@ func (a *darwinApp) SetTitle(title string) error {
 // The rest of the platformApp surface belongs to later slices (see the
 // initiative, section 6). Each reports ErrUnsupported with the feature named.
 
-func (a *darwinApp) PostMessage(string) error {
-	return darwinUnsupported("PostMessage (the JS bridge)")
-}
 func (a *darwinApp) OpenDevTools() error {
 	// WebKit has no public API to open the inspector; the user opens it from the
 	// context menu when Options.DevTools is set.
@@ -844,12 +849,6 @@ func (a *darwinApp) Restore() error  { return darwinUnsupported("Restore") }
 func (a *darwinApp) Focus() error    { return darwinUnsupported("Focus") }
 func (a *darwinApp) Serve(string, http.Handler) error {
 	return darwinUnsupported("Serve")
-}
-func (a *darwinApp) OpenFileDialog(OpenFileOptions) ([]string, error) {
-	return nil, darwinUnsupported("OpenFileDialog")
-}
-func (a *darwinApp) SaveFileDialog(SaveFileOptions) (string, error) {
-	return "", darwinUnsupported("SaveFileDialog")
 }
 func (a *darwinApp) Clipboard() (string, error) { return "", darwinUnsupported("Clipboard") }
 func (a *darwinApp) SetClipboard(string) error  { return darwinUnsupported("SetClipboard") }
