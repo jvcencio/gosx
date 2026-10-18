@@ -18907,7 +18907,7 @@
       var waterUpdateStats = sceneWebGPUWaterDebugSkipsUpdate(waterDebugMode)
         ? updateWaterSystems([], encoder, frameNowMS, frameActive, frameQualityProfile, frameQualityRevision, bundle, pbrSceneBuffers, scaledW, scaledH)
         : updateWaterSystems(bundle.waterSystems, encoder, frameNowMS, frameActive, frameQualityProfile, frameQualityRevision, bundle, pbrSceneBuffers, scaledW, scaledH);
-      // Cull after frame uniform upload and before shadow/main draws.
+      // After frame uniform upload, cull before render passes.
       // Meshes without a cull kernel retain draw-all behavior.
       var materials = Array.isArray(bundle.materials) ? bundle.materials : [];
       var instancedDrawList = hasInstancedData
