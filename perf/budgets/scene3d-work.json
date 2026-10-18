@@ -4,9 +4,9 @@
   "cases": {
     "hero/desktop-full/webgl": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 4144596,
         "shadowMapPixels": 65536,
         "contextAttributes": {
@@ -50,9 +50,9 @@
     },
     "post/desktop-full/webgl": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 10360352,
         "shadowMapPixels": 65536,
         "contextAttributes": {
@@ -96,9 +96,9 @@
     },
     "dense/desktop-full/webgl": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 0,
         "shadowMapPixels": 0,
         "contextAttributes": {
@@ -154,10 +154,10 @@
     },
     "hero/desktop-full/webgpu": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
-        "postTargetPixels": 20722980,
+        "backingPixelSamples": 8289192,
+        "postTargetPixels": 18650682,
         "shadowMapPixels": 65537,
         "contextAttributes": {
           "format": "rgba8unorm",
@@ -166,11 +166,11 @@
         }
       },
       "steady": {
-        "draws": 12,
+        "draws": 11,
         "programBinds": 0,
-        "pipelineBinds": 7,
+        "pipelineBinds": 5,
         "framebufferBinds": 0,
-        "renderPasses": 4,
+        "renderPasses": 3,
         "bufferUploadBytes": 3412,
         "textureUploadBytes": 0,
         "gpuBuffersCreated": 0,
@@ -178,14 +178,14 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 174
+        "domAttributeWrites": 9
       },
       "steadyTotal": {
-        "draws": 1440,
+        "draws": 1320,
         "programBinds": 0,
-        "pipelineBinds": 840,
+        "pipelineBinds": 600,
         "framebufferBinds": 0,
-        "renderPasses": 480,
+        "renderPasses": 360,
         "bufferUploadBytes": 409440,
         "textureUploadBytes": 0,
         "gpuBuffersCreated": 0,
@@ -193,14 +193,14 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 3661
+        "domAttributeWrites": 290
       }
     },
     "post/desktop-full/webgpu": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 21758560,
         "shadowMapPixels": 65537,
         "contextAttributes": {
@@ -210,11 +210,11 @@
         }
       },
       "steady": {
-        "draws": 8,
+        "draws": 7,
         "programBinds": 0,
-        "pipelineBinds": 9,
+        "pipelineBinds": 7,
         "framebufferBinds": 0,
-        "renderPasses": 8,
+        "renderPasses": 7,
         "bufferUploadBytes": 1060,
         "textureUploadBytes": 0,
         "gpuBuffersCreated": 0,
@@ -222,14 +222,14 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 178
+        "domAttributeWrites": 9
       },
       "steadyTotal": {
-        "draws": 960,
+        "draws": 840,
         "programBinds": 0,
-        "pipelineBinds": 1080,
+        "pipelineBinds": 840,
         "framebufferBinds": 0,
-        "renderPasses": 960,
+        "renderPasses": 840,
         "bufferUploadBytes": 127200,
         "textureUploadBytes": 0,
         "gpuBuffersCreated": 0,
@@ -237,14 +237,14 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 4140
+        "domAttributeWrites": 765
       }
     },
     "dense/desktop-full/webgpu": {
       "mount": {
-        "backingPixels": 5184000,
+        "backingPixels": 2072298,
         "samples": 4,
-        "backingPixelSamples": 20736000,
+        "backingPixelSamples": 8289192,
         "postTargetPixels": 0,
         "shadowMapPixels": 1,
         "contextAttributes": {
@@ -256,7 +256,7 @@
       "steady": {
         "draws": 134,
         "programBinds": 0,
-        "pipelineBinds": 3,
+        "pipelineBinds": 2,
         "framebufferBinds": 0,
         "renderPasses": 1,
         "bufferUploadBytes": 190980,
@@ -266,12 +266,12 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 178
+        "domAttributeWrites": 9
       },
       "steadyTotal": {
         "draws": 16080,
         "programBinds": 0,
-        "pipelineBinds": 360,
+        "pipelineBinds": 240,
         "framebufferBinds": 0,
         "renderPasses": 120,
         "bufferUploadBytes": 22917600,
@@ -281,7 +281,7 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 4140
+        "domAttributeWrites": 765
       }
     },
     "static/desktop-full/webgpu": {
@@ -451,7 +451,7 @@
         "backingPixels": 740610,
         "samples": 1,
         "backingPixelSamples": 740610,
-        "postTargetPixels": 2221830,
+        "postTargetPixels": 1481220,
         "shadowMapPixels": 65537,
         "contextAttributes": {
           "format": "rgba8unorm",
@@ -460,11 +460,11 @@
         }
       },
       "steady": {
-        "draws": 12,
+        "draws": 11,
         "programBinds": 0,
-        "pipelineBinds": 7,
+        "pipelineBinds": 5,
         "framebufferBinds": 0,
-        "renderPasses": 4,
+        "renderPasses": 3,
         "bufferUploadBytes": 3412,
         "textureUploadBytes": 0,
         "gpuBuffersCreated": 0,
@@ -472,14 +472,14 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 174
+        "domAttributeWrites": 9
       },
       "steadyTotal": {
-        "draws": 1440,
+        "draws": 1320,
         "programBinds": 0,
-        "pipelineBinds": 840,
+        "pipelineBinds": 600,
         "framebufferBinds": 0,
-        "renderPasses": 480,
+        "renderPasses": 360,
         "bufferUploadBytes": 409440,
         "textureUploadBytes": 0,
         "gpuBuffersCreated": 0,
@@ -487,7 +487,7 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 3661
+        "domAttributeWrites": 290
       }
     },
     "post/phone-balanced/webgpu": {
@@ -504,11 +504,11 @@
         }
       },
       "steady": {
-        "draws": 8,
+        "draws": 7,
         "programBinds": 0,
-        "pipelineBinds": 9,
+        "pipelineBinds": 7,
         "framebufferBinds": 0,
-        "renderPasses": 8,
+        "renderPasses": 7,
         "bufferUploadBytes": 1060,
         "textureUploadBytes": 0,
         "gpuBuffersCreated": 0,
@@ -516,14 +516,14 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 178
+        "domAttributeWrites": 9
       },
       "steadyTotal": {
-        "draws": 960,
+        "draws": 840,
         "programBinds": 0,
-        "pipelineBinds": 1080,
+        "pipelineBinds": 840,
         "framebufferBinds": 0,
-        "renderPasses": 960,
+        "renderPasses": 840,
         "bufferUploadBytes": 127200,
         "textureUploadBytes": 0,
         "gpuBuffersCreated": 0,
@@ -531,7 +531,7 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 4140
+        "domAttributeWrites": 765
       }
     },
     "dense/phone-balanced/webgpu": {
@@ -550,7 +550,7 @@
       "steady": {
         "draws": 134,
         "programBinds": 0,
-        "pipelineBinds": 3,
+        "pipelineBinds": 2,
         "framebufferBinds": 0,
         "renderPasses": 1,
         "bufferUploadBytes": 190980,
@@ -560,12 +560,12 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 178
+        "domAttributeWrites": 9
       },
       "steadyTotal": {
         "draws": 16080,
         "programBinds": 0,
-        "pipelineBinds": 360,
+        "pipelineBinds": 240,
         "framebufferBinds": 0,
         "renderPasses": 120,
         "bufferUploadBytes": 22917600,
@@ -575,7 +575,7 @@
         "getParameter": 0,
         "getError": 0,
         "readPixels": 0,
-        "domAttributeWrites": 4140
+        "domAttributeWrites": 765
       }
     },
     "static/phone-balanced/webgpu": {

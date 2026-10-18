@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- Add `command.Action.Submit`, a CSS selector for a managed form or its submit
+  button. The workbench calls `requestSubmit` on it, so a chord submits through
+  the page's managed form path. `commands.list()` rows carry `submit`.
+- Add opt-in workbench drag handles with pointer capture, cancellation, fine
+  adjustment, reset, keyboard controls and synchronized ARIA values. Share the
+  input chunk's pointer gesture helper with controller drag-and-drop.
+- Bind CSS custom properties to shared signals and data attributes, upgrade plain
+  tab links to accessible tabs, and mirror native details to shared open state.
+  Bind new elements after region swaps and publish the hashed input URL on
+  workbench pages without controllers.
+- Add splitpane, dock, tabs and collapsible UI recipes. Layout signals can persist
+  through controller storage; document the controls in `docs/workbench.md`.
+
+- Keep the entire `data-gosx-*` framework namespace, style and `srcdoc` out of
+  attribute spreads, including Scene3D mount attributes. Write trusted framework
+  attributes explicitly; unresolved component fallbacks preserve them.
+  Declarative attribute bindings now allow only inert text, boolean, application
+  data and ARIA attributes, plus safe HTTP(S) and relative `href` values. They
+  cannot write framework attributes, CSRF tokens, HTML documents or SVG animation
+  targets, or introduce executable URLs through ASCII control characters.
+
 - Reuse template, CSS, metadata, and runtime-manifest lookups in production
   mode (`GOSX_ENV=production` or `prod`). Restart after replacing build files;
   `GOSX_DEV=1` keeps file-change checks active.
@@ -9,10 +30,53 @@
 - Preserve integer JSON literals in Scene3D props during hydration, including
   values above the exact float64 integer range.
 
+- Make `sky.blur` take effect on WebGPU image environment maps, matching
+  WebGL. Scenes tuned on WebGPU now look blurrier where blur is set.
+
 - Add pre-Build trusted proxy policies and one cached `ClientIP` resolver.
   Normalize genuine peers and bounded X-Forwarded-For chains without changing
   RemoteAddr or origin policies. Nested handlers and completion observers share
   the result; malformed or repeated headers fall back to the peer.
+
+- Reject authored `data-gosx-on-*`, `data-gosx-handler` and `data-gosx-path`
+  attributes (any letter case) on HTML elements inside a `//gosx:island`
+  component: `gosx check` and the build now report the attribute as reserved
+  and suggest a `data-app-*` name. The island renderer also drops any such
+  attribute from a resolved node before it appends its own dispatch markers.
+  Before this, HTML kept the first duplicate, so an authored
+  `data-gosx-on-click={expr}` beat the real marker and a runtime value could
+  choose which handler fired. Other authored `data-gosx-*` names (`data-gosx-link`,
+  `data-gosx-region`) are unchanged. Island components reject `{...spread}`
+  at compile time; server renderers also filter reserved names from spreads.
+  Server component renderers and the WASM
+  VM also discard these names. Browser attribute patches, navigation and
+  declarative bindings cannot change dispatch markers; generated event
+  bindings use dedicated dispatch patch operations. Regenerate the browser
+  runtime and WASM together when updating. ABI version 4 rejects older WASM;
+  the current WASM also negotiates dispatch op support with the separately
+  loaded patch chunk and falls back to legacy attribute ops when needed.
+  Current patch chunks also accept legacy marker ops from an ABI-3 bootstrap.
+  Handwritten `RenderIsland` content can bind trusted handlers with
+  `gosx.DispatchAttr("click", "handler")`; ordinary attributes and spreads
+  cannot manufacture these markers.
+- Cap Scene3D main canvases at 2,073,600 backing pixels and ambient animation
+  at 60 fps by default. Input and transitions follow the display. Set
+  `Props.MaxPixels` to another positive budget or `scene.MaxPixelsUnbounded`,
+  an explicit `Props.MinDevicePixelRatio` overrides the default pixel budget.
+  Set `Props.MaxFrameRate` above 60 or use `FramePacing: "vsync-divisor"`
+  to opt out of the ambient cap.
+
+- Upgrade gotreesitter to v0.56.0. Explicit generic signal constructors that
+  were silently dropped now lower correctly, and valid Go that previously
+  produced ERROR nodes now parses. Parse allocations are about 98% lower.
+
+## v0.57.16
+
+- Keep typed browser audio worklet contracts independent of server HTTP asset
+  delivery. JS/WASM imports exclude the HTTP handler and its TLS dependencies;
+  unused worklets no longer initialize or retain the processor asset. Portable
+  `Path` and `Source` APIs retain the same content-addressed processor, while
+  native `Handler` serving, HEAD, cache policy and ETags remain unchanged.
 
 ## v0.57.15
 

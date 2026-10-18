@@ -9,10 +9,15 @@
       return {};
     }
 
-    let props = ctx.props || {};
+    let props=ctx.props||{};
+    const needsExperience=props.experienceRef||props.presentation||props.dayCycle||props.exploration||props.metricsSignal;
+    if(needsExperience&&!window.__gosx_runtime_api.scene3DExperience)await ensureSceneGatedFeatureLoaded("experience","gosxScene3dExperienceUrl","");
+    const experience=window.__gosx_runtime_api.scene3DExperience;
+    if(needsExperience)props=await experience.load(props,ctx.signal);
+    if (!scene3DFactoryCurrent()) return {};
     const renderBeforeModels = props.renderBeforeModels === true;
     let handle = null;
-    if (props.controlZoom === true) {
+    if (props.controlZoom === true || props.optics) {
       await ensureSceneGatedFeatureLoaded("zoom", "gosxScene3dZoomUrl", "");
       if (!scene3DFactoryCurrent()) return {};
     }
@@ -41,6 +46,12 @@
       if (!scene3DFactoryCurrent()) return {};
     }
     const sceneAttr = name => "data-gosx-scene3d-" + name;
+    // Probe an explicit WebGPU preference before GPU classification so a
+    // usable WebGPU device needs no throwaway WebGL context.
+    if (scenePrefersWebGPU(props)) {
+      await ensurePreferredWebGPUBackend(props, null);
+      if (!scene3DFactoryCurrent()) return {};
+    }
     const capability = sceneCapabilityProfile(props);
     const viewportBase = sceneViewportBase(props);
     const adaptiveQuality = createSceneAdaptiveQualityState(props, viewportBase, capability);
@@ -147,6 +158,11 @@
     // nor the first resumed frame can credit paused wall time. Camera controls
     // keep their own wall-clock paths.
     let clockSeconds = 0;
+    const clockSubmission = { requested: 0, submitted: -1 };
+    let dayCycle: any = null;
+    let exploration: any = null;
+    let disposePresentation = () => {};
+    let publishMetrics = () => {};
     let clockLastFrameMS = NaN;
     let animationPaused = false;
     let animationToggle = null;
@@ -163,6 +179,8 @@
       // the toggle is the last frame until resume and the mount reports
       // render-loop=stopped / reason=paused / wants-animation=false instead
       // of burning requestAnimationFrame work at a frozen clock.
+      if (!animationPaused && exploration?.active) return {wants:true,reason:"inspection"};
+      if (!animationPaused && props.dayCycle) return { wants: true, reason: "day-cycle" };
       if (animationPaused) {
         return { wants: false, reason: "paused" };
       }
@@ -175,16 +193,10 @@
       if (runtimeScene) {
         return { wants: true, reason: "runtime-program" };
       }
-      if (sceneBool(props.autoRotate, false)) {
-        return { wants: true, reason: "auto-rotate" };
-      }
       if (Array.isArray(sceneState.computeParticles) && sceneState.computeParticles.length > 0) {
         return { wants: true, reason: "compute-particles" };
       }
       if (sceneState.environment && sceneState.environment.ocean) return { wants: true, reason: "ocean" };
-      const sky = sceneState.environment && sceneState.environment.sky;
-      const clouds = sky && sky.mode === "physical" && sky.clouds;
-      if (clouds && clouds.coverage > 0 && clouds.opacity > 0 && clouds.speed > 0 && sceneAtmosphereQuality({ atmosphereTier: sceneAtmosphereTier(adaptiveQuality, capability.tier), qualityEnabled: adaptiveQuality.enabled, qualityProfile: adaptiveQuality.activeProfile }).clouds) return { wants: true, reason: "clouds" };
       if (Array.isArray(sceneState.waterSystems) && sceneState.waterSystems.length > 0) {
         if (sceneWaterSystemsPaused(sceneState)) {
           return { wants: false, reason: "water-paused" };
@@ -193,6 +205,12 @@
       }
       if (sceneHasActiveModelAnimations(sceneState)) {
         return { wants: true, reason: "model-animation" };
+      }
+      const sky = sceneState.environment && sceneState.environment.sky;
+      const clouds = sky && sky.mode === "physical" && sky.clouds;
+      if (clouds && clouds.coverage > 0 && clouds.opacity > 0 && clouds.speed > 0 && sceneAtmosphereQuality({ atmosphereTier: sceneAtmosphereTier(adaptiveQuality, capability.tier), qualityEnabled: adaptiveQuality.enabled, qualityProfile: adaptiveQuality.activeProfile }).clouds) return { wants: true, reason: "clouds" };
+      if (sceneBool(props.autoRotate, false)) {
+        return { wants: true, reason: "auto-rotate" };
       }
       if (Array.isArray(sceneState.points) && sceneState.points.some(function(p) {
         return sceneNumber(p.spinX, 0) !== 0 || sceneNumber(p.spinY, 0) !== 0 || sceneNumber(p.spinZ, 0) !== 0;
@@ -239,29 +257,23 @@
       return Array.isArray(fields) && fields.some(field => field && (field.name === "time" || field.Name === "time"));
     }
 
-    function sceneHasTimeDrivenMaterials(state) {
-      // The normalized scene state strips authored-material fields (see
-      // normalizeScenePointsEntry's whitelist), so the raw wire scene in
-      // props is the source of truth for uniform declarations. The state
-      // pools are still scanned as a fallback for callers that assembled
-      // entries programmatically.
-      const rawScene = props && props.scene;
-      const pools = [
-        rawScene && rawScene.points,
-        rawScene && rawScene.materials,
-        rawScene && rawScene.objects,
-        rawScene && rawScene.models,
-        state && state.points,
-        state && state.materials,
-        state ? sceneStateObjects(state) : null,
-      ];
-      for (let p = 0; p < pools.length; p++) {
-        if (Array.isArray(pools[p]) && pools[p].some(sceneEntryDeclaresTimeUniform)) {
-          return true;
-        }
-      }
-      return false;
+    function scenePoolDeclaresTimeUniform(pool) {
+      return Array.isArray(pool) && pool.some(sceneEntryDeclaresTimeUniform);
     }
+
+    function sceneHasTimeDrivenMaterials(state) {
+      // Check authored declarations first. Only materialize normalized objects
+      // when needed; clocked scenes need no per-frame pool-array allocation.
+      const raw = props?.scene;
+      return scenePoolDeclaresTimeUniform(raw?.points) ||
+        scenePoolDeclaresTimeUniform(raw?.materials) ||
+        scenePoolDeclaresTimeUniform(raw?.objects) ||
+        scenePoolDeclaresTimeUniform(raw?.models) ||
+        scenePoolDeclaresTimeUniform(state?.points) ||
+        scenePoolDeclaresTimeUniform(state?.materials) ||
+        scenePoolDeclaresTimeUniform(state && sceneStateObjects(state));
+    }
+
 
     // Extract CSS var transition timing from materials/environment so the
     // planner can interpolate when resolved var values change. The planner
@@ -291,19 +303,9 @@
     setAttrValue(mount, sceneAttr("pick-signals"), scenePickSignalNamespace(props));
     setAttrValue(mount, sceneAttr("event-signals"), sceneEventSignalNamespace(props));
     applySceneCapabilityState(mount, props, capability);
-    // Generic pause/resume contract: a control element carrying
-    // data-gosx-scene3d-animation-toggle inside the mount's
-    // data-gosx-scene3d-control-scope ancestor drives this scene's animation
-    // clock. The runtime owns the state and mirrors it truthfully onto both
-    // the mount (data-gosx-scene3d-animation-state: playing | paused |
-    // reduced-motion) and the control (same attribute plus aria-pressed, and
-    // disabled under reduced motion, where the loop never runs). Pages style
-    // or label the two states declaratively; no page-authored JS. Pausing
-    // also STOPS the declarative render loop — after the toggle's settle
-    // render the mount reports data-gosx-scene3d-render-loop="stopped" with
-    // -reason="paused" and -wants-animation="false" — so a paused scene
-    // costs no requestAnimationFrame work instead of spinning at a frozen
-    // clock; resume schedules a render and walks the loop back up.
+    // Declarative controls and shared transports drive one scene clock.
+    // Mirror its state for semantic controls, respect reduced motion, and
+    // sleep the render loop while paused.
     function publishSceneAnimationState() {
       const mode = motion.reducedMotion ? "reduced-motion" : (animationPaused ? "paused" : "playing");
       setAttrValue(mount, sceneAttr("animation-state"), mode);
@@ -491,7 +493,7 @@
     let rendererLifecycleActive = null;
     let rendererLifecyclePaused = null;
 
-    function sceneFrameNowMS(value) {
+    function sceneFrameNowMS(value?: unknown) {
       const now = value == null ? NaN : Number(value);
       if (Number.isFinite(now) && now >= 0) return now;
       return typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
@@ -510,7 +512,7 @@
       if (!active || paused || disposing) lastSceneRenderNowMS = null;
       if (renderer && typeof renderer.setLifecycle === "function") {
         renderer.setLifecycle({
-          nowMS: sceneFrameNowMS(null),
+          nowMS: sceneFrameNowMS(),
           active: active,
           paused: paused,
           disposed: Boolean(disposing),
@@ -531,6 +533,7 @@
       if (outcome === "empty") publishMounted();
       if (outcome !== "submitted") return false;
       submittedFrameSerial++;
+      clockSubmission.submitted = meta.clockRevision;
       const request = meta && meta.frameRequest;
       if (request && pendingFrameRequest === request &&
           sceneFrameRequestSubmitted(request, sceneState, lastMountCommandRevision, outcome)) {
@@ -563,6 +566,9 @@
         hydrationGeneration: sceneState._modelHydrationGeneration,
         frameRequest: pendingFrameRequest ? scenePrepareFrameRequest(pendingFrameRequest, sceneState, lastMountCommandRevision) : null,
         nowMS: nowMS,
+        // Declarative scene seconds; telemetry retains the separate wall clock.
+        sceneTime: clockSeconds,
+        clockRevision: clockSubmission.requested,
         displayDeltaMS: displayDeltaMS,
         active: active,
         qualityEnabled: qualityEnabled,
@@ -779,12 +785,8 @@
     }
 
     function readSceneWebGPUProgress() {
-      const seq = Number(sceneDebugAttr(mount, sceneAttr("webgpu-frame-seq")));
-      const at = Number(sceneDebugAttr(mount, sceneAttr("webgpu-frame-at")));
-      return {
-        seq: Number.isFinite(seq) ? seq : 0,
-        at: Number.isFinite(at) ? at : 0,
-      };
+      const progress = renderer && typeof renderer.getFrameProgress === "function" ? renderer.getFrameProgress() : null;
+      return { seq: progress && progress.frameSeq || 0, at: progress && progress.frameAt || 0 };
     }
 
     /* @ts-expect-error TS2367 -- sceneWebGLFallbackOwner is a tri-state sentinel: 0 | null | false | the owning renderer instance */ function publishSceneRenderWatchdogState(reason, stalledFor) {
@@ -1088,7 +1090,7 @@
         renderWatchdogLastAdvanceAt = 0;
         publishSceneRenderWatchdogState("", 0);
         return;
-      /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ }
+      }
       const now = sceneFrameNowMS();
       // A hidden tab stalls requestAnimationFrame BY DESIGN, and the interval
       // that drives this check is itself throttled while hidden. Counting
@@ -1146,7 +1148,7 @@
     function startSceneRenderWatchdog() {
       if (renderWatchdogTimer != null || typeof setInterval !== "function") {
         return;
-      /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ }
+      }
       const now = sceneFrameNowMS();
       const progress = readSceneWebGPUProgress();
       renderWatchdogLastSeq = progress.seq;
@@ -1306,7 +1308,7 @@
       if (webglRecoveryAttempts >= SCENE_WEBGL_RECOVERY_MAX_ATTEMPTS) {
         return;
       }
-      const now = typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+      const now = sceneFrameNowMS();
       if (webglRecoveryEligibleSince <= 0) {
         webglRecoveryEligibleSince = now;
         return;
@@ -1420,7 +1422,8 @@
       setAttrValue(mount, sceneAttr("frame-pacing-cost-ms"), framePacingCostMS > 0 ? framePacingCostMS.toFixed(2) : "");
     }
 
-    function sceneAnimationFrameIntervalMS() {
+    let sceneActiveInputUntil = 0;
+    function sceneAnimationFrameIntervalMS(reason) {
       var interval = sceneNumber(props && props.frameIntervalMS, 0);
       if (!(interval > 0)) {
         var fps = sceneNumber(props && props.maxFrameRate, 0);
@@ -1430,6 +1433,13 @@
         if (fps > 0) {
           interval = 1000 / Math.min(240, Math.max(1, fps));
         }
+      }
+      // The default cap applies only to ambient work. Interactive simulation,
+      // transitions and the shared input window keep the display cadence.
+      if (!(interval > 0)) {
+        var activeUntil = Math.max(sceneActiveInputUntil, sceneNumber(sceneState._scrollCamera?._activeInputUntil, 0));
+        var ambient = /^(auto-rotate|clouds|point-spin|material-clock|(?:object|label|sprite|html)-animation)$/.test(reason);
+        if (ambient && activeUntil < sceneNowMilliseconds() && !(sceneState._gosxMotionController && sceneState._gosxMotionController.active)) interval = 1000 / 60;
       }
       // Scroll-driven camera scenes need to track the display while input is
       // active even when their idle animation is intentionally capped (for
@@ -1481,7 +1491,7 @@
           framePacingTick2 = framePacingTick1;
           framePacingTick1 = rawTickDeltaMS;
           var vsyncSampleMS = sceneFramePacingMedianOf3(framePacingTick1, framePacingTick2, framePacingTick3);
-          var advanced = sceneFramePacingAdvanceOnTick(vsyncSampleMS, framePacingVsyncMS, framePacingCostMS, framePacingActiveK, framePacingPendingK, framePacingPendingStreak, framePacingTicksSinceRender, sceneAnimationFrameIntervalMS());
+          var advanced = sceneFramePacingAdvanceOnTick(vsyncSampleMS, framePacingVsyncMS, framePacingCostMS, framePacingActiveK, framePacingPendingK, framePacingPendingStreak, framePacingTicksSinceRender, sceneAnimationFrameIntervalMS(""));
           framePacingVsyncMS = advanced.vsyncEstimateMS;
           framePacingActiveK = advanced.activeK;
           framePacingPendingK = advanced.pendingK;
@@ -1499,7 +1509,7 @@
           return;
         }
         if (animation.wants) {
-          var interval = sceneAnimationFrameIntervalMS();
+          var interval = sceneAnimationFrameIntervalMS(animation.reason);
           // Keep the fractional display tick after a capped frame. Resetting
           // the clock to `now` turns a 60 FPS cap on a 100 Hz display into 50 FPS.
           // A changed cap starts a new phase; it must not inherit old time debt.
@@ -1540,7 +1550,7 @@
       publishSceneWaterRendererState(mount, sceneState, renderer, "");
       notifySceneRendererLifecycle(fallbackReason || "renderer-swap", true, false);
       renderWatchdogLastSeq = -1;
-      /* @ts-expect-error TS2554 -- this call omits trailing arguments the JS caller has always been able to omit */ renderWatchdogLastAt = 0;
+      renderWatchdogLastAt = 0;
       renderWatchdogLastAdvanceAt = sceneFrameNowMS();
       if (previous && previous !== renderer && typeof previous.dispose === "function") {
         previous.dispose();
@@ -2004,6 +2014,7 @@
       if (disposed || sceneWebGLFallbackOwner === false || sceneWebGLFallbackOwner === renderer) {
         return;
       }
+      if (/^(controls|controls-inertia|controls-reset|controls-keyboard|controls-pan|controls-zoom|camera|signal-camera|scroll|gizmo-drag|vessel-helm|vessel-camera|vessel-look|vessel-reset|vessel-command)$/.test(reason || "")) sceneActiveInputUntil = sceneNowMilliseconds() + 180;
       lastRenderReason = reason || "refresh";
       recordScenePerfCounter("schedule:" + (reason || "refresh"));
       // A runtime program or a scene command can add a particle system or an
@@ -3063,6 +3074,7 @@
         scheduleRender("quality-transition");
       }
       if (finishSceneSubmission(frameOutcome, frameMeta)) {
+        publishMetrics();
         publishReady();
         publishRevealed(bundle);
         notifySceneProgressiveModelRenderCommitted(sceneState);
@@ -3077,7 +3089,7 @@
         return;
       }
       if (disposed) return;
-      const frameStart = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+      const frameStart = sceneFrameNowMS();
       const perfEnabled = typeof window !== "undefined" && window.__gosx_scene3d_perf === true;
       recordScenePerfCounter("render:" + (reason || "animation"));
       // Only re-measure the viewport when something has actually
@@ -3107,6 +3119,8 @@
         clockSeconds += frameDeltaSeconds;
       }
       const timeSeconds = clockSeconds;
+      if (dayCycle) dayCycle.advance(timeSeconds);
+      if (exploration) exploration.advance(timeSeconds);
       // @ts-ignore TS7005 -- the optional authority is installed after renderer creation
       const advanceVessel = sceneControlHandle && sceneControlHandle.advance;
       if (advanceVessel) {
@@ -3502,13 +3516,14 @@
     }
 
     handle = {
-      getAnimationClock() { return {timeSeconds: clockSeconds, paused: animationPaused}; },
+      getAnimationClock() { return {timeSeconds: clockSeconds, paused: animationPaused, pending: clockSubmission.submitted !== clockSubmission.requested}; },
       setAnimationClock(c) {
         if (disposed) throw new Error("disposed");
         const seconds = c && c.timeSeconds;
         if (!Number.isFinite(seconds) || seconds < 0 || seconds > 86400) throw new RangeError("timeSeconds");
         if (c.paused !== undefined && typeof c.paused !== "boolean") throw new TypeError("paused");
         clockSeconds = seconds; animationPaused = c.paused !== false;
+        clockSubmission.requested++;
         clockLastFrameMS = NaN; lastModelAnimationTimeSeconds = null;
         publishSceneAnimationState(); scheduleRender("animation-clock");
       },
@@ -3625,10 +3640,21 @@
       dispose: disposeMountedScene,
     };
 
+    if(experience){
+      publishMetrics=experience.metrics(props.metricsSignal,()=>sceneRendererFrameTiming(renderer,renderTiming));
+      dayCycle=experience.cycle(props.dayCycle,sceneState,{light:hashLightContent,environment:hashEnvironmentContent});
+      exploration=experience.exploration(mount,props,sceneState,handle,scheduleRender,applySceneAudioCue,(commands: any)=>applySceneCommands(sceneState,commands));
+    }
+    handle.setDayHour = (hour: number) => { if (dayCycle) {dayCycle.seek(hour);scheduleRender("day-cycle-seek");} };
+    disposePresentation=experience?experience.presentation(mount,props,handle,scheduleRender):()=>{};
+
     function disposeMountedScene() {
       pendingFrameRequest = null;
       const ownsMount = mount.__gosxScene3DOwner === sceneMountOwner;
       disposed = true;
+      disposePresentation();
+      if (dayCycle) dayCycle.dispose();
+      if (exploration) exploration.dispose();
       if (sceneFrameRegistration) sceneFrameRegistration.dispose(); detachMotionScene(); detachMotionScene = function() {};
       if (animationToggle) {
         if (typeof animationToggle.removeEventListener === "function") {

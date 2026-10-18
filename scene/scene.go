@@ -101,6 +101,8 @@ type Environment struct {
 // Props is the typed Go-side Scene3D surface. It lowers into the current
 // Scene3D compatibility prop bag while preserving room for a real scene graph.
 type Props struct {
+	ExperienceRef string `json:"experienceRef,omitempty"`
+
 	ProgramRef           string   `json:"-"`
 	Capabilities         []string `json:"-"`
 	RequiredCapabilities []string `json:"-"`
@@ -169,7 +171,13 @@ type Props struct {
 	ControlRotateDirection string  `json:"controlRotateDirection,omitempty"`
 	ControlRotateSpeed     float64 `json:"controlRotateSpeed,omitempty"`
 	// ControlZoom opts into damped wheel, pinch and focused keyboard zoom in all camera modes.
-	ControlZoom *bool `json:"controlZoom,omitempty"`
+	// Optics adds a signal-driven instrument without application JavaScript.
+	Optics        *Optics       `json:"optics,omitempty"`
+	Presentation  *Presentation `json:"presentation,omitempty"`
+	DayCycle      *DayCycle     `json:"dayCycle,omitempty"`
+	Exploration   *Exploration  `json:"-"`
+	MetricsSignal string        `json:"metricsSignal,omitempty"`
+	ControlZoom   *bool         `json:"controlZoom,omitempty"`
 	// ControlPan adds two-finger screen-space panning to ControlZoom. A named
 	// handle also supports pointer drag and arrow keys without taking over
 	// single-pointer object interactions on the scene canvas.
@@ -195,6 +203,8 @@ type Props struct {
 	// trackpad movement, then automatically returns to the idle cap after the
 	// input quiets. Zero preserves the authored idle cadence for back-compat.
 	ScrollFrameRate float64 `json:"scrollFrameRate,omitempty"`
+	// MaxFrameRate overrides the default 60 FPS cap for ambient animation.
+	// Input and transitions follow the display unless a rate is authored.
 	MaxFrameRate    float64 `json:"maxFrameRate,omitempty"`
 	MaxFPS          float64 `json:"maxFPS,omitempty"`
 	FrameIntervalMS float64 `json:"frameIntervalMS,omitempty"`
@@ -219,15 +229,18 @@ type Props struct {
 	// remains an upper bound on the paced rate: k grows past 4 when the
 	// authored cap needs a longer interval than four vsync ticks. An
 	// empty value, or any other string, keeps the existing
-	// fixed-interval behavior.
+	// fixed-interval behavior. Vsync-divisor replaces the default ambient cap;
+	// only authored frame-rate caps constrain its divisor.
 	FramePacing string `json:"framePacing,omitempty"`
 	// MaxDevicePixelRatio overrides the automatic 1.5 DPR cap on phones
 	// (coarse pointer and a screen short side of at most 600 CSS pixels).
 	// Capability, adaptive-quality and MaxPixels budgets still apply.
 	MaxDevicePixelRatio float64 `json:"maxDevicePixelRatio,omitempty"`
 	// MaxPixels caps the render target by total backing pixels after DPR.
-	// Zero leaves the render target governed by the DPR cap alone.
-	MaxPixels             int     `json:"maxPixels,omitempty"`
+	// Zero defaults to 2,073,600 pixels (1080p). MaxPixelsUnbounded opts out.
+	MaxPixels int `json:"maxPixels,omitempty"`
+	// MinDevicePixelRatio overrides the default pixel budget. An explicit
+	// positive MaxPixels still takes precedence over this minimum.
 	MinDevicePixelRatio   float64 `json:"minDevicePixelRatio,omitempty"`
 	AdaptiveQuality       *bool   `json:"adaptiveQuality,omitempty"`
 	AdaptiveTargetFrameMS float64 `json:"adaptiveTargetFrameMS,omitempty"`
@@ -308,6 +321,9 @@ type Compression struct {
 	LOD          bool    `json:"lod,omitempty"`
 	LODThreshold float64 `json:"lodThreshold,omitempty"` // camera distance threshold; objects farther use preview. Default 20.
 }
+
+// MaxPixelsUnbounded opts out of the main canvas pixel budget.
+const MaxPixelsUnbounded = -1
 
 // ShadowMaxPixelsUnbounded opts out of the shadow map pixel cap entirely.
 // Set Shadows.MaxPixels to this constant when you explicitly need the
@@ -1959,6 +1975,20 @@ func (p Props) legacyBaseProps() map[string]any {
 	if p.ControlZoom != nil {
 		out["controlZoom"] = *p.ControlZoom
 	}
+	if p.Optics != nil {
+		out["optics"] = p.Optics
+	}
+	if p.Presentation != nil {
+		out["presentation"] = p.Presentation
+	}
+	if p.DayCycle != nil {
+		out["dayCycle"] = p.DayCycle
+	}
+	if p.Exploration != nil {
+		out["exploration"] = p.Exploration.GoSXProps()
+	}
+	setString(out, "metricsSignal", p.MetricsSignal)
+	setString(out, "experienceRef", p.ExperienceRef)
 	if p.ControlPan != nil {
 		out["controlPan"] = *p.ControlPan
 	}
@@ -1988,7 +2018,7 @@ func (p Props) legacyBaseProps() map[string]any {
 	setBool(out, "modelPreparation", p.ModelPreparation)
 	setString(out, "framePacing", p.FramePacing)
 	setNumeric(out, "maxDevicePixelRatio", p.MaxDevicePixelRatio)
-	if p.MaxPixels > 0 {
+	if p.MaxPixels > 0 || p.MaxPixels == MaxPixelsUnbounded {
 		out["maxPixels"] = p.MaxPixels
 	}
 	setNumeric(out, "minDevicePixelRatio", p.MinDevicePixelRatio)

@@ -408,6 +408,7 @@ func cloneMotionProgram(p *Program) Program {
 	copy.Signals = append([]SignalSpec(nil), p.Signals...)
 	copy.Bindings = append([]Binding(nil), p.Bindings...)
 	copy.Pins = append([]PinBinding(nil), p.Pins...)
+	copy.SVGMorphs = append([]SVGMorphBinding(nil), p.SVGMorphs...)
 	return copy
 }
 

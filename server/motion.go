@@ -136,6 +136,12 @@ func (r *PageRuntime) Motion(props MotionProps, args ...any) gosx.Node {
 func (r *PageRuntime) MotionScope(program *motion.Program, args ...any) gosx.Node {
 	if r != nil {
 		r.EnableBootstrap()
+		if program != nil && program.Transport != nil {
+			_ = r.RequireFeature("motion-transport")
+		}
+		if program != nil && len(program.SVGMorphs) != 0 {
+			_ = r.RequireFeature("motion-svg")
+		}
 	}
 	return MotionScope(program, args...)
 }

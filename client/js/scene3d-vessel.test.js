@@ -227,7 +227,7 @@ test('reduced motion keeps held sailing inputs responsive while removing wheel b
  assert.ok(state.trim>.9);assert.ok(state.speed>2);assert.equal(state.reduced,true);
  assert.equal(h.mount.getAttribute('data-gosx-scene3d-animation-clock'),'0.000','declarative animation stays frozen');
  h.event(h.env.document,'keyup',{code:'KeyW'});h.event(h.env.document,'keydown',{code:'KeyV'});h.raf.flush(2550);
- const wheel=h.handle.getCamera(),helm=api.localPoint(state,state.helm.x,state.helm.y,state.helm.z);
+ const wheel=h.handle.getCamera(),helm=api.localPoint(api.presentation(state),state.helm.x,state.helm.y,state.helm.z);
  assert.ok(Math.abs(wheel.y-helm.y)<1e-5);assert.equal(wheel.rotationZ,0);assert.ok(h.raf.count()<=1);
  h.event(h.env.document,'keydown',{code:'KeyE'});h.raf.flush(2600);h.raf.flush(2700);
  assert.equal(h.mount.getAttribute('data-gosx-scene3d-vessel'),'deck');assert.equal(h.mount.getAttribute('data-gosx-scene3d-render-loop-wants-animation'),'false');
@@ -257,6 +257,7 @@ for(const reduced of [false,true])test('navigation camera detaches while sailing
  for(let t=250;t<2000;t+=17)h.raf.flush(t);
  const before=state.distance,course=state.course;
  assert.equal(h.handle.setCamera({x:80,y:4.2,z:80,rotationX:0,rotationY:0}),true);
+ assert.equal(h.mount.getAttribute('data-gosx-scene3d-vessel-following'),'false','camera detach must publish before the next view request');
  h.canvas.focus();h.event(h.env.document,'keydown',{code:'KeyW'});h.event(h.env.document,'keydown',{code:'KeyA'});
  for(let t=2000;t<4000;t+=17)h.raf.flush(t);
  h.event(h.env.document,'keyup',{code:'KeyW'});h.event(h.env.document,'keyup',{code:'KeyA'});

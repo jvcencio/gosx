@@ -212,15 +212,15 @@ test("bootstrap preserves Scene3D point maxPixelSize from GLB extras", () => {
 test("bootstrap exposes WebGPU Scene3D planned draw stats on the mount", () => {
   const source = readSceneRendererBackendSrc("webgpu");
 
-  assert.match(source, /function publishWebGPUFrameStats\(stats\)/);
+  assert.match(source, /function publishWebGPUFrameStats\(stats\s*\)/);
   assert.match(source, /var webGPUFrameSeq = 0/);
   assert.match(source, /data-gosx-scene3d-webgpu-frame-seq/);
   assert.match(source, /data-gosx-scene3d-webgpu-frame-at/);
   assert.match(source, /__gosxScene3DWebGPUStats = published/);
-  assert.match(source, /__gosxScene3DWebGPUProof = \{/);
+  assert.match(source, /__gosxScene3DWebGPUProof = webGPUFrameProof/);
   assert.match(source, /WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS = 250/);
-  assert.match(source, /var mirrorDiagnostics = verboseTelemetry \|\| diagnosticElapsed < 0 \|\| diagnosticElapsed >= WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS/);
-  assert.match(source, /if \(!mirrorDiagnostics\) return/);
+  assert.match(source, /var mirrorDiagnostics = verboseTelemetry \|\| webGPUAttributeMount !== mount \|\| diagnosticElapsed < 0 \|\| diagnosticElapsed >= WEBGPU_DIAGNOSTIC_ATTRIBUTE_INTERVAL_MS/);
+  assert.match(source, /if \(!mirrorDiagnostics\) \{ scheduleWebGPUAttributeMirror\(\); return; \}/);
   assert.match(source, /data-gosx-scene3d-webgpu-point-entries/);
   assert.match(source, /data-gosx-scene3d-webgpu-point-instances/);
   assert.match(source, /data-gosx-scene3d-webgpu-point-draw-instances/);
@@ -1026,9 +1026,9 @@ test("Scene3D WebGPU water renders dynamic caustics to a sampled texture", () =>
   assert.match(webgpu, /waterAuthoredCausticFallbackReason/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-authored-caustic-fallback-reason/);
   assert.match(webgpu, /waterAuthoredCausticSourceBytes/);
-  assert.match(webgpu, /waterAuthoredCausticSourceBytes: waterUpdateStats\.waterAuthoredCausticSourceBytes/);
-  assert.match(webgpu, /waterResolvedCausticSourceBytes: waterUpdateStats\.waterResolvedCausticSourceBytes/);
-  assert.match(webgpu, /waterBundleCausticSourceBytes: waterUpdateStats\.waterBundleCausticSourceBytes/);
+  assert.match(webgpu, /frameStats\.waterAuthoredCausticSourceBytes = waterUpdateStats\.waterAuthoredCausticSourceBytes/);
+  assert.match(webgpu, /frameStats\.waterResolvedCausticSourceBytes = waterUpdateStats\.waterResolvedCausticSourceBytes/);
+  assert.match(webgpu, /frameStats\.waterBundleCausticSourceBytes = waterUpdateStats\.waterBundleCausticSourceBytes/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-caustic-passes/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-caustic-texture-pixels/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-authored-caustic-passes/);
@@ -1157,7 +1157,7 @@ test("Scene3D WebGPU water renders upstream-style object texture targets", () =>
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-sky-cube-texture-failed/);
   assert.match(webgpu, /function sceneWaterLightVector\(entry, fallback\)/);
   assert.match(webgpu, /entry\.lightDirectionX/);
-  assert.match(webgpu, /waterLightDirX: waterUpdateStats\.waterLightDirX/);
+  assert.match(webgpu, /frameStats\.waterLightDirX = waterUpdateStats\.waterLightDirX/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-light-dir-x/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-light-dir-y/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-light-dir-z/);
@@ -1523,7 +1523,7 @@ test("Scene3D FXAA is wired as the chain-end postfx pass in WebGL and WebGPU", (
   assert.match(webgpu, /var WGSL_POST_FXAA_FRAGMENT_F16 = sceneWebGPUPostShaderSource\(WGSL_POST_FXAA_BODY, true\);/);
   assert.match(webgpu, /fn greenLuma\(c: pf3\) -> pf \{/);
   assert.match(webgpu, /case SCENE_POST_FXAA: \{/);
-  assert.match(webgpu, /getPipeline\("fxaa", postUsesF16 \? WGSL_POST_FXAA_FRAGMENT_F16 : WGSL_POST_FXAA_FRAGMENT, getPostBlitLayout\(\)\)/);
+  assert.match(webgpu, /getPipeline\("fxaa", postUsesF16 \? WGSL_POST_FXAA_FRAGMENT_F16 : WGSL_POST_FXAA_FRAGMENT, getPostBlitLayout\(\), outputFormat\)/);
 });
 
 test("Scene3D WebGPU material uniforms cover physical PBR fields", () => {
@@ -1556,7 +1556,7 @@ test("Scene3D WebGPU reports custom material fallback diagnostics", () => {
   assert.match(webgpu, /material\.customVertexWGSL/);
   assert.match(webgpu, /material\.customFragmentWGSL/);
   assert.match(webgpu, /material\.customUniforms/);
-  assert.match(webgpu, /customMaterialFallbacks: customMaterialStats\.customMaterialFallbacks/);
+  assert.match(webgpu, /frameStats\.customMaterialFallbacks = customMaterialStats\.customMaterialFallbacks/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-custom-material-fallbacks/);
   assert.match(webgpu, /custom-wgsl-hooks-unsupported/);
 });
@@ -1605,13 +1605,10 @@ test("Scene3D selena time auto-uniform: both backends declare the clock var and 
   assert.match(webgl, /var autoUniform = sceneSelenaAutoUniformValue\(name, sceneSelenaFrameTime, sceneSelenaFrameProximity\);[\s\S]*?hasOwnProperty\.call\(values, name\)/);
   assert.match(webgpu, /if \(name === "time"\) return sceneNumber\(frame && frame\.time, 0\);[\s\S]{0,500}sceneSelenaMaterialValue\(material, name\)/);
 
-  // WebGPU: clock is set from frameTimeSeconds immediately after it is computed,
-  // before any render-pass encoder draw commands.
-  assert.match(webgpu, /var frameTimeSeconds = frameNowMS \/ 1000;\s*\n\s*selenaFrame\.time = frameTimeSeconds; selenaFrame\.cameraProximity =/);
-
-  // WebGL: clock is set right after scratchSelenaViewProjection is populated
-  // (sceneMat4MultiplyInto), before the shadow pass and before drawPBRObjectList.
-  assert.match(webgl, /sceneMat4MultiplyInto\(scratchSelenaViewProjection, projMatrix, viewMatrix\);\s*\n\s*prepareRigidMeshBatches\(bundle\);\s*\n\s*sceneSelenaFrameTime = performance\.now\(\) \/ 1000; sceneSelenaFrameProximity =/);
+  // Shader time and wall time are distinct. Stateful water retains the wall
+  // clock, while declarative materials receive the mounted scene playhead.
+  assert.match(webgpu, /selenaFrame\.time = frameMeta\?\.sceneTime \?\?/);
+  assert.match(webgl, /sceneSelenaFrameTime = frameMeta\?\.sceneTime \?\?/);
 });
 
 test("Scene3D selena camera proximity auto-uniform is renderer-owned on both backends", () => {
@@ -1851,7 +1848,8 @@ test("Scene3D WebGPU quality allocation retries with bounded backoff and publish
   assert.match(applyQuality[0], /system\.qualityAllocationPending && webGPUFrameSeq < system\.qualityAllocationNextFrame/);
   assert.match(applyQuality[0], /system\.qualityAllocationFailures \+= 1;[\s\S]*system\.qualityAllocationConsecutiveFailures \+= 1;/);
   assert.match(applyQuality[0], /system\.qualityAllocationNextFrame = webGPUFrameSeq \+ Math\.min\(60,\s*Math\.pow\(2, Math\.min\(6, system\.qualityAllocationConsecutiveFailures - 1\)\)\)/);
-  assert.match(webgpu, /waterQualityAllocationPending: published\.waterQualityAllocationPending \|\| 0,[\s\S]*waterQualityAllocationFailures: published\.waterQualityAllocationFailures \|\| 0,[\s\S]*waterQualityAllocationRetryFrame: published\.waterQualityAllocationRetryFrame \|\| 0/);
+  assert.match(webgpu, /proof\.waterQualityAllocationPending = stats\.waterQualityAllocationPending \|\| 0;[\s\S]*proof\.waterQualityAllocationFailures = stats\.waterQualityAllocationFailures \|\| 0;[\s\S]*proof\.waterQualityAllocationRetryFrame = stats\.waterQualityAllocationRetryFrame \|\| 0;/);
+  assert.match(webgpu, /wgpuUpdateFrameProof\(published, webGPUFrameProof\)/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-quality-allocation-pending/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-quality-allocation-failures/);
   assert.match(webgpu, /data-gosx-scene3d-webgpu-water-quality-allocation-retry-frame/);

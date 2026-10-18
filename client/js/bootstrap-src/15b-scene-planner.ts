@@ -99,6 +99,7 @@
       caches: lastPrepared && lastPrepared.caches ? lastPrepared.caches : new Map(),
       shadowPassHash: scenePlannerShadowHash(source),
       materialsHash: scenePlannerMaterialsHash(source),
+      pipelineVariantHash: pbrPasses.pipelineVariantHash,
       resolvedEnv: source.environment || {},
       cssDynamic: Boolean(cssResolved.dynamic),
       cssCache: cssResolved.cache,
@@ -1357,6 +1358,8 @@
     const alpha = passes.alpha;
     const additive = passes.additive;
     opaque.length = alpha.length = additive.length = 0;
+    let pipelineVariants = 0;
+    const pipelineMaterials = new Set();
 
     for (let index = 0; index < objects.length; index += 1) {
       const object = objects[index];
@@ -1367,6 +1370,14 @@
       const pass = typeof scenePBRObjectRenderPass === "function"
         ? scenePBRObjectRenderPass(object, material)
         : scenePlannerObjectRenderPass(object, material);
+      const reflected = Boolean(object.directVertices && sceneAffineDeterminant(object.modelMatrix, 0) < 0);
+      const depthWrite = typeof sceneTransmissionDepthWrite === "function" ? sceneTransmissionDepthWrite(object, material, pass === "opaque") : pass === "opaque";
+      const variant = (reflected ? 1 : 0) | (depthWrite ? 2 : 0) | (material && material.detail ? 4 : 0);
+      pipelineVariants |= 1 << ((pass === "alpha" ? 8 : pass === "additive" ? 16 : 0) + variant);
+      if (object.skin) pipelineVariants |= 1 << 24;
+      if (object.computedMorph) pipelineVariants |= 1 << 25;
+      if (object.doubleSided) pipelineVariants |= 1 << 26;
+      pipelineMaterials.add(object.materialIndex || 0);
       if (pass === "alpha") {
         alpha.push(object);
       } else if (pass === "additive") {
@@ -1384,7 +1395,7 @@
       additive.sort(scenePlannerDepthSort);
     }
 
-    return passes;
+    return Object.assign(passes, { pipelineVariantHash: pipelineVariants + ":" + Array.from(pipelineMaterials).sort().join(",") });
   }
 
   function scenePreparedPassList(worldDrawPlan, pbrPasses) {
