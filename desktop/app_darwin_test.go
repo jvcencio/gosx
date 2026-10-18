@@ -23,7 +23,8 @@ import (
 )
 
 // The darwin counterpart of app_unsupported_test.go. The platformApp methods
-// this slice leaves to later ones must say so, not report success.
+// the implemented slices leave to later ones must say so, not report success.
+// Implemented so far (DT1, with tests of their own): SetMinSize, SetMaxSize.
 func TestDarwinAppUnsupportedSurface(t *testing.T) {
 	impl, err := newPlatformApp(Options{})
 	if err != nil {
@@ -54,8 +55,6 @@ func TestDarwinAppUnsupportedSurface(t *testing.T) {
 		{"OpenURL", impl.OpenURL("https://example.test")},
 		{"SetFullscreen", impl.SetFullscreen(true)},
 		{"WindowPlacement", placementErr},
-		{"SetMinSize", impl.SetMinSize(320, 200)},
-		{"SetMaxSize", impl.SetMaxSize(2560, 1440)},
 		{"NewWindow", windowErr},
 		{"RegisterProtocol", impl.RegisterProtocol("gosx-test")},
 		{"RegisterFileType", impl.RegisterFileType(".gsx", "", "GoSX Component")},

@@ -3,7 +3,11 @@
 package desktop
 
 import (
+	"errors"
+	"math"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"unsafe"
 )
@@ -202,5 +206,225 @@ func TestDarwinBlockAsyncSignalsOnThread(t *testing.T) {
 	pthreadSigmask(sigBlock, nil, &after)
 	if after != before {
 		t.Errorf("mask after restore = %#x, want %#x", after, before)
+	}
+}
+
+// ---- window size limits: SetMinSize and SetMaxSize ----
+
+// SetMinSize takes a positive size, and a refusal records nothing.
+func TestDarwinSetMinSizeValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		width, height int
+		ok            bool
+	}{
+		{"typical", 320, 200, true},
+		{"smallest", 1, 1, true},
+		{"large", 100000, 100000, true},
+		{"zero width", 0, 200, false},
+		{"zero height", 320, 0, false},
+		{"zero both", 0, 0, false},
+		{"negative width", -1, 200, false},
+		{"negative height", 320, -1, false},
+		{"negative both", -320, -200, false},
+	} {
+		impl, _ := newPlatformApp(Options{})
+		da := impl.(*darwinApp)
+		if err := da.SetMinSize(111, 77); err != nil { // an earlier, valid limit
+			t.Fatal(err)
+		}
+		err := da.SetMinSize(tc.width, tc.height)
+		if tc.ok {
+			if err != nil || da.minWidth != tc.width || da.minHeight != tc.height {
+				t.Errorf("%s: SetMinSize(%d, %d) = %v, recorded %dx%d; want nil and the new size", tc.name, tc.width, tc.height, err, da.minWidth, da.minHeight)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrInvalidOptions) {
+			t.Errorf("%s: SetMinSize(%d, %d) = %v, want ErrInvalidOptions", tc.name, tc.width, tc.height, err)
+		}
+		if da.minWidth != 111 || da.minHeight != 77 {
+			t.Errorf("%s: a refused SetMinSize changed the recorded limit to %dx%d", tc.name, da.minWidth, da.minHeight)
+		}
+	}
+}
+
+// SetMaxSize takes a size or zero (no limit on that axis), never a negative.
+func TestDarwinSetMaxSizeValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		width, height int
+		ok            bool
+	}{
+		{"typical", 2560, 1440, true},
+		{"zero both removes the limit", 0, 0, true},
+		{"zero width", 0, 700, true},
+		{"zero height", 900, 0, true},
+		{"negative width", -1, 700, false},
+		{"negative height", 900, -1, false},
+		{"negative both", -900, -700, false},
+		{"negative with zero", -1, 0, false},
+	} {
+		impl, _ := newPlatformApp(Options{})
+		da := impl.(*darwinApp)
+		if err := da.SetMaxSize(1111, 777); err != nil {
+			t.Fatal(err)
+		}
+		err := da.SetMaxSize(tc.width, tc.height)
+		if tc.ok {
+			if err != nil || da.maxWidth != tc.width || da.maxHeight != tc.height {
+				t.Errorf("%s: SetMaxSize(%d, %d) = %v, recorded %dx%d; want nil and the new size", tc.name, tc.width, tc.height, err, da.maxWidth, da.maxHeight)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrInvalidOptions) {
+			t.Errorf("%s: SetMaxSize(%d, %d) = %v, want ErrInvalidOptions", tc.name, tc.width, tc.height, err)
+		}
+		if da.maxWidth != 1111 || da.maxHeight != 777 {
+			t.Errorf("%s: a refused SetMaxSize changed the recorded limit to %dx%d", tc.name, da.maxWidth, da.maxHeight)
+		}
+	}
+}
+
+// Before Run there is no window: both calls record and succeed, without touching
+// AppKit from a test goroutine.
+func TestDarwinWindowLimitsBeforeRunOnlyRecord(t *testing.T) {
+	impl, _ := newPlatformApp(Options{})
+	da := impl.(*darwinApp)
+	if err := da.SetMinSize(300, 200); err != nil {
+		t.Errorf("SetMinSize before Run = %v, want nil", err)
+	}
+	if err := da.SetMaxSize(900, 0); err != nil {
+		t.Errorf("SetMaxSize before Run = %v, want nil", err)
+	}
+	if da.minWidth != 300 || da.minHeight != 200 || da.maxWidth != 900 || da.maxHeight != 0 {
+		t.Errorf("recorded min %dx%d max %dx%d", da.minWidth, da.minHeight, da.maxWidth, da.maxHeight)
+	}
+}
+
+// windowLimits reads the window's content size limits back from AppKit, by
+// key-value coding (a method that returns an NSSize needs a return shim, DT2).
+func windowLimits(da *darwinApp) (minSize, maxSize [2]float64) {
+	da.onUIThread(func() error {
+		withPool(func() {
+			read := func(key string) (size [2]float64) {
+				getValue(send1(da.window, objcSel("valueForKey:"), nsString(key)), unsafe.Pointer(&size), unsafe.Sizeof(size))
+				return size
+			}
+			minSize, maxSize = read("contentMinSize"), read("contentMaxSize")
+		})
+		return nil
+	})
+	return minSize, maxSize
+}
+
+// setContentSizeOf resizes the window's content from code and reports what it
+// became.
+func setContentSizeOf(da *darwinApp, width, height float64) (w, h float64) {
+	da.onUIThread(func() error {
+		withPool(func() {
+			sendSize(da.window, objcSel("setContentSize:"), width, height)
+			r := frameOf(send0(da.window, objcSel("contentView")))
+			w, h = r.w, r.h
+		})
+		return nil
+	})
+	return w, h
+}
+
+// The limits reach the NSWindow: set before Run they are in place when the window
+// exists, and after it they replace each other, axis by axis.
+func TestDarwinWindowLimitsReachTheWindow(t *testing.T) {
+	const unbounded = math.MaxFloat32
+	var atCreation [2][2]float64
+	var daRef atomic.Pointer[darwinApp]
+
+	runTestAppBefore(t, Options{Width: 640, Height: 480, OnWindowCreated: func(*Window) {
+		min, max := windowLimits(daRef.Load())
+		atCreation = [2][2]float64{min, max}
+	}}, func(app *App, da *darwinApp) {
+		daRef.Store(da)
+		if err := app.SetMinSize(300, 200); err != nil {
+			t.Errorf("SetMinSize before Run: %v", err)
+		}
+		if err := app.SetMaxSize(900, 0); err != nil {
+			t.Errorf("SetMaxSize before Run: %v", err)
+		}
+	}, func(app *App, da *darwinApp) {
+		check := func(what string, wantMin, wantMax [2]float64) {
+			t.Helper()
+			if min, max := windowLimits(da); min != wantMin || max != wantMax {
+				t.Errorf("%s: min %v max %v, want min %v max %v", what, min, max, wantMin, wantMax)
+			}
+		}
+		check("limits set before Run", [2]float64{300, 200}, [2]float64{900, unbounded})
+
+		if err := app.SetMinSize(320, 240); err != nil {
+			t.Errorf("SetMinSize: %v", err)
+		}
+		if err := app.SetMaxSize(1024, 768); err != nil {
+			t.Errorf("SetMaxSize: %v", err)
+		}
+		check("both replaced", [2]float64{320, 240}, [2]float64{1024, 768})
+
+		if err := app.SetMaxSize(0, 0); err != nil {
+			t.Errorf("SetMaxSize(0, 0): %v", err)
+		}
+		check("max removed, min kept", [2]float64{320, 240}, [2]float64{unbounded, unbounded})
+
+		if err := app.SetMaxSize(0, 600); err != nil {
+			t.Errorf("SetMaxSize(0, 600): %v", err)
+		}
+		check("max on one axis", [2]float64{320, 240}, [2]float64{unbounded, 600})
+
+		// Refusals leave the window as it was.
+		for name, err := range map[string]error{
+			"SetMinSize(0, 100)":  app.SetMinSize(0, 100),
+			"SetMinSize(-5, 100)": app.SetMinSize(-5, 100),
+			"SetMaxSize(-1, 5)":   app.SetMaxSize(-1, 5),
+		} {
+			if !errors.Is(err, ErrInvalidOptions) {
+				t.Errorf("%s = %v, want ErrInvalidOptions", name, err)
+			}
+		}
+		check("after refused calls", [2]float64{320, 240}, [2]float64{unbounded, 600})
+
+		// The limit is enforced, not just stored: the window cannot be made taller
+		// than the maximum, from code or by the user.
+		if err := app.SetMaxSize(800, 600); err != nil {
+			t.Errorf("SetMaxSize: %v", err)
+		}
+		if w, h := setContentSizeOf(da, 5000, 5000); w > 800 || h > 600 {
+			t.Errorf("content size after asking for 5000x5000 with a 800x600 maximum = %vx%v", w, h)
+		}
+		if w, h := setContentSizeOf(da, 500, 400); w != 500 || h != 400 {
+			t.Errorf("content size inside the limits = %vx%v, want 500x400", w, h)
+		}
+
+		// From many goroutines at once, through the dispatcher.
+		var wg sync.WaitGroup
+		var failures atomic.Int32
+		for g := 1; g <= 8; g++ {
+			wg.Add(1)
+			go func(g int) {
+				defer wg.Done()
+				for i := 0; i < 10; i++ {
+					if app.SetMinSize(100+g, 100+g) != nil || app.SetMaxSize(2000+g, 2000+g) != nil {
+						failures.Add(1)
+					}
+				}
+			}(g)
+		}
+		wg.Wait()
+		if failures.Load() != 0 {
+			t.Errorf("%d concurrent calls failed", failures.Load())
+		}
+		min, max := windowLimits(da)
+		if min != [2]float64{float64(da.minWidth), float64(da.minHeight)} || max != [2]float64{float64(da.maxWidth), float64(da.maxHeight)} {
+			t.Errorf("window limits %v %v do not match the last recorded ones %dx%d %dx%d", min, max, da.minWidth, da.minHeight, da.maxWidth, da.maxHeight)
+		}
+	})
+	if want := [2][2]float64{{300, 200}, {900, unbounded}}; atCreation != want {
+		t.Errorf("limits when the window was created = %v, want %v: setup must apply what was set before Run", atCreation, want)
 	}
 }

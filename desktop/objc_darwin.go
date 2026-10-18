@@ -10,9 +10,9 @@ package desktop
 // syscall9 (bind_darwin.go). Those carry integer registers only, which covers
 // every BOOL, NSInteger, id, SEL and pointer argument. The few methods that take
 // a CGFloat structure go through an argument shim (msgsend_darwin_*.s): see
-// sendRect, sendFloats and postWakeEvent. Methods that return a floating-point
-// value or a structure (frame, bounds, backingScaleFactor) are not used in DT0;
-// the return shims are DT2.
+// sendRect, sendFloats, sendSize and postWakeEvent. Methods that return a
+// floating-point value or a structure (frame, bounds, backingScaleFactor) are not
+// used in DT0; the return shims are DT2.
 //
 // Every object these helpers return that Go did not alloc itself is autoreleased
 // and lives until the enclosing pool pops. The main goroutine pushes a pool per
@@ -172,6 +172,13 @@ func sendRect(self, sel uintptr, rect *nsRect, a, b, c uintptr) uintptr {
 func sendFloats(self, sel uintptr, f *[4]float64) uintptr {
 	r, _, _ := syscall_syscall(fnMsgSend4F, self, sel, uintptr(unsafe.Pointer(f)))
 	return r
+}
+
+// sendSize sends a message whose only argument is an NSSize, which travels as two
+// CGFloats in the floating-point registers (msgSend4F loads them).
+func sendSize(self, sel uintptr, width, height float64) uintptr {
+	f := [4]float64{width, height}
+	return sendFloats(self, sel, &f)
 }
 
 // respondsTo is -[NSObject respondsToSelector:].

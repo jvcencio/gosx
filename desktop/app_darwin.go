@@ -4,6 +4,7 @@ package desktop
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -51,6 +52,11 @@ type darwinApp struct {
 	// pendingBootstrap is the combined preload script. App.PrependBootstrapScript
 	// passes the whole list every time, so it replaces rather than appends.
 	pendingBootstrap string
+
+	// Content-area size limits in points, set by SetMinSize and SetMaxSize and
+	// applied to the window when it exists. 0 is unset.
+	minWidth, minHeight int
+	maxWidth, maxHeight int
 
 	running bool   // Run is in progress
 	closing bool   // the window close sequence has started
@@ -264,6 +270,12 @@ func (a *darwinApp) setup(delegateCls uintptr, ring *nativeRing) error {
 	send0(window, objcSel("center"))
 	a.markStartup(&a.timeline.WindowCreated)
 	a.startDispatch()
+	// SetMinSize and SetMaxSize may have run before there was a window to give them
+	// to. They record what they were given and apply it only on the main thread,
+	// and once the dispatcher is running every later call is queued behind setup,
+	// so what they recorded before this point is read here and nothing is lost in
+	// between.
+	a.applyWindowLimitsOnUI()
 	a.fireWindowCreated(window)
 
 	// The window is shown before the web view exists, as on Windows, so the
@@ -501,6 +513,13 @@ func (a *darwinApp) teardown() {
 			send1(app, objcSel("setDelegate:"), 0)
 		}
 	})
+	// A call that arrives from here on, on any thread, must find no window and no
+	// web view (and report "not ready") rather than a pointer that is about to be
+	// released: the dispatcher runs calls queued during the teardown when it
+	// stops, before the handles are cleared below.
+	a.mu.Lock()
+	a.window, a.webview = 0, 0
+	a.mu.Unlock()
 	objcRelease(web)
 	objcRelease(window)
 	objcRelease(delegate)
@@ -706,6 +725,61 @@ func (a *darwinApp) setTitleOnUI(title string) error {
 	return nil
 }
 
+// SetMinSize sets the smallest content size, in points, that resizing the window
+// can reach. Both dimensions must be positive. Before Run it is recorded and
+// applied when the window is created; it can be called from any goroutine.
+func (a *darwinApp) SetMinSize(width, height int) error {
+	if width <= 0 || height <= 0 {
+		return fmt.Errorf("%w: minimum window size %dx%d must be positive", ErrInvalidOptions, width, height)
+	}
+	a.mu.Lock()
+	a.minWidth, a.minHeight = width, height
+	a.mu.Unlock()
+	return a.onUIThread(func() error { a.applyWindowLimitsOnUI(); return nil })
+}
+
+// SetMaxSize sets the largest content size, in points, that resizing the window
+// can reach. A zero dimension leaves that axis unbounded, so 0, 0 removes the
+// limit; a negative one is an error. Before Run it is recorded and applied when
+// the window is created; it can be called from any goroutine.
+func (a *darwinApp) SetMaxSize(width, height int) error {
+	if width < 0 || height < 0 {
+		return fmt.Errorf("%w: maximum window size %dx%d must not be negative", ErrInvalidOptions, width, height)
+	}
+	a.mu.Lock()
+	a.maxWidth, a.maxHeight = width, height
+	a.mu.Unlock()
+	return a.onUIThread(func() error { a.applyWindowLimitsOnUI(); return nil })
+}
+
+// unboundedContentSize is the NSWindow default for an unlimited maximum
+// dimension: FLT_MAX.
+const unboundedContentSize = math.MaxFloat32
+
+// applyWindowLimitsOnUI gives the window the size limits recorded by SetMinSize
+// and SetMaxSize. With no window yet, or off the main thread, there is nothing
+// to do: setup applies the limits once it has made the window and started the
+// dispatcher.
+func (a *darwinApp) applyWindowLimitsOnUI() {
+	a.mu.Lock()
+	window := a.window
+	minW, minH, maxW, maxH := a.minWidth, a.minHeight, a.maxWidth, a.maxHeight
+	a.mu.Unlock()
+	if window == 0 || pthreadMainNP() == 0 {
+		return
+	}
+	bound := func(v int) float64 {
+		if v == 0 {
+			return unboundedContentSize
+		}
+		return float64(v)
+	}
+	withPool(func() {
+		sendSize(window, objcSel("setContentMinSize:"), float64(minW), float64(minH))
+		sendSize(window, objcSel("setContentMaxSize:"), bound(maxW), bound(maxH))
+	})
+}
+
 // fireWindowCreated builds the primary Window and calls OnWindowCreated. The
 // handle is the NSWindow pointer.
 func (a *darwinApp) fireWindowCreated(window uintptr) {
@@ -789,8 +863,6 @@ func (a *darwinApp) Clipboard() (string, error) { return "", darwinUnsupported("
 func (a *darwinApp) SetClipboard(string) error  { return darwinUnsupported("SetClipboard") }
 func (a *darwinApp) OpenURL(string) error       { return darwinUnsupported("OpenURL") }
 func (a *darwinApp) SetFullscreen(bool) error   { return darwinUnsupported("SetFullscreen") }
-func (a *darwinApp) SetMinSize(int, int) error  { return darwinUnsupported("SetMinSize") }
-func (a *darwinApp) SetMaxSize(int, int) error  { return darwinUnsupported("SetMaxSize") }
 func (a *darwinApp) WindowPlacement() (WindowPlacement, error) {
 	return WindowPlacement{}, darwinUnsupported("WindowPlacement")
 }
