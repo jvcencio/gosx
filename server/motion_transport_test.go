@@ -7,6 +7,7 @@ import (
 
 	"m31labs.dev/gosx"
 	"m31labs.dev/gosx/motion"
+	"m31labs.dev/gosx/scene"
 )
 
 func TestMotionTransportRequiresOnlyItsOptionalFeature(t *testing.T) {
@@ -23,6 +24,13 @@ func TestMotionTransportRequiresOnlyItsOptionalFeature(t *testing.T) {
 		program.BindSVGMorph(program.Hover("progress", "#diagram"), "#before", "#after")
 		return ctx.Runtime().MotionScope(program, gosx.Text("Readable SVG fallback"))
 	})
+	app.Page("GET /scene", func(ctx *Context) gosx.Node {
+		program := motion.NewProgram("scene")
+		if err := program.BindSceneTransition(program.Hover("progress", "#form"), "#form", scene.CommandTransition{}); err != nil {
+			t.Fatal(err)
+		}
+		return ctx.Runtime().MotionScope(program, gosx.Text("Readable scene fallback"))
+	})
 	contract := renderDocumentContract(t, app.Build(), "/motion")
 	if !strings.Contains(contract, `"bootstrapFeatureMotionTransportPath":"/gosx/bootstrap-feature-motion-transport.js"`) {
 		t.Fatalf("missing optional transport chunk: %s", contract)
@@ -33,6 +41,10 @@ func TestMotionTransportRequiresOnlyItsOptionalFeature(t *testing.T) {
 	svg := renderDocumentContract(t, app.Build(), "/svg")
 	if !strings.Contains(svg, `"bootstrapFeatureMotionSvgPath":"/gosx/bootstrap-feature-motion-svg.js"`) || strings.Contains(svg, "MotionTransportPath") {
 		t.Fatalf("SVG morphing must require only its own optional feature: %s", svg)
+	}
+	pose := renderDocumentContract(t, app.Build(), "/scene")
+	if !strings.Contains(pose, `"bootstrapFeatureMotionScenePath":"/gosx/bootstrap-feature-motion-scene.js"`) || strings.Contains(pose, "MotionTransportPath") || strings.Contains(pose, "MotionSvgPath") {
+		t.Fatalf("scene transitions must require only their own optional feature: %s", pose)
 	}
 }
 

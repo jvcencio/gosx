@@ -142,6 +142,14 @@ func (r *PageRuntime) MotionScope(program *motion.Program, args ...any) gosx.Nod
 		if program != nil && len(program.SVGMorphs) != 0 {
 			_ = r.RequireFeature("motion-svg")
 		}
+		if program != nil {
+			for _, binding := range program.Bindings {
+				if binding.Target == motion.BindingSceneTransition {
+					_ = r.RequireFeature("motion-scene")
+					break
+				}
+			}
+		}
 	}
 	return MotionScope(program, args...)
 }
