@@ -60,6 +60,7 @@ type BuildOptions struct {
 var runtimeFeatureChunks = []struct{ name, role string }{
 	{"browser-services", "engines"},
 	{"workbench", "workbench"},
+	{"motion-transport", "motion"},
 }
 
 type wasmCompiler string
