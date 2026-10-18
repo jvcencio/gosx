@@ -123,4 +123,3 @@ TEXT gosx_pthread_sigmask_trampoline<>(SB),NOSPLIT,$0-0
 	JMP	gosx_pthread_sigmask(SB)
 GLOBL	·fnpthread_sigmask(SB), RODATA, $8
 DATA	·fnpthread_sigmask(SB)/8, $gosx_pthread_sigmask_trampoline<>(SB)
-
