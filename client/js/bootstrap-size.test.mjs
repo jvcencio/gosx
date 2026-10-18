@@ -59,7 +59,7 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 const budgets = [
   // Optional seekable motion; ordinary pages retain their existing ceilings.
   { file: "bootstrap-feature-motion-transport.js", raw: 7000, gzip: 2500, brotli: 2200 },
-  { file: "bootstrap-feature-motion-svg.js", raw: 6500, gzip: 2400, brotli: 2100 },
+  { file: "bootstrap-feature-motion-svg.js", raw: 4000, gzip: 1800, brotli: 1600 },
   { file: "bootstrap-feature-scene3d-experience.js", raw: 10701, gzip: 4578, brotli: 4115 },
   // Finite choreography remains demand-loaded; existing route limits are unchanged.
   { file: "bootstrap-feature-scene3d-timeline.js", raw: 5_400, gzip: 2_400, brotli: 2_200 },
