@@ -94,6 +94,8 @@ class FakeElement {
   constructor(tagName, stats, doc) {
     this.nodeType = ELEMENT_NODE;
     this.tagName = String(tagName).toUpperCase();
+    this.localName = String(tagName).toLowerCase();
+    this.namespaceURI = "http://www.w3.org/1999/xhtml";
     this.kids = [];
     this.attrs = new Map();
     this.parentNode = null;
@@ -240,6 +242,12 @@ function makeDocument(stats) {
     },
     createElement(tag) {
       return new FakeElement(tag, stats, doc);
+    },
+    createElementNS(namespace, tag) {
+      const element = new FakeElement(tag, stats, doc);
+      element.localName = String(tag);
+      element.namespaceURI = namespace;
+      return element;
     },
     createTextNode(data) {
       const node = new FakeText(data, stats);
@@ -848,5 +856,41 @@ for (const [label, source] of [["authority", patchAuthoritySource], ["bundle", p
       scene.apply("island", JSON.stringify([{kind: 1, path: "0", attrName: "href", text}]));
       assert.equal(scene.root.kids[0].getAttribute("href"), "/news" + text);
     }
+  });
+}
+
+for (const [name, source] of [["generated", patchSource], ["authority", patchAuthoritySource]]) {
+  test(`${name}: SVG creation and replacement preserve namespace boundaries`, () => {
+    const scene = buildScene(() => {}, source);
+    const svgNS = "http://www.w3.org/2000/svg";
+    const htmlNS = "http://www.w3.org/1999/xhtml";
+    scene.apply("island", JSON.stringify([
+      {kind: 3, path: "", tag: "svg"},
+      {kind: 1, path: "0", attrName: "viewBox", text: "0 0 100 100"},
+      {kind: 3, path: "0", tag: "g"},
+      {kind: 3, path: "0/0", tag: "rect"},
+      {kind: 3, path: "0", tag: "foreignObject"},
+      {kind: 3, path: "0/1", tag: "div"},
+      {kind: 3, path: "0/1/0", tag: "svg"},
+      {kind: 3, path: "0/1/0/0", tag: "text"},
+    ]));
+    const svg = scene.root.kids[0];
+    assert.equal(svg.namespaceURI, svgNS);
+    assert.equal(svg.getAttribute("viewBox"), "0 0 100 100");
+    assert.equal(svg.kids[0].namespaceURI, svgNS);
+    assert.equal(svg.kids[0].kids[0].namespaceURI, svgNS);
+    assert.equal(svg.kids[1].namespaceURI, svgNS);
+    assert.equal(svg.kids[1].localName, "foreignObject");
+    assert.equal(svg.kids[1].kids[0].namespaceURI, htmlNS);
+    assert.equal(svg.kids[1].kids[0].kids[0].namespaceURI, svgNS);
+    assert.equal(svg.kids[1].kids[0].kids[0].kids[0].namespaceURI, svgNS);
+    scene.apply("island", JSON.stringify([
+      {kind: 6, path: "0/0/0", tag: "circle"},
+      {kind: 6, path: "0/1/0", tag: "section"},
+    ]));
+    assert.equal(svg.kids[0].kids[0].namespaceURI, svgNS);
+    assert.equal(svg.kids[1].kids[0].namespaceURI, htmlNS);
+    scene.apply("island", JSON.stringify([{kind: 6, path: "0", tag: "div"}]));
+    assert.equal(scene.root.kids[0].namespaceURI, htmlNS);
   });
 }
