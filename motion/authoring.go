@@ -52,6 +52,7 @@ type SignalKind string
 
 const (
 	SignalTime       SignalKind = "time"
+	SignalPlayhead   SignalKind = "playhead"
 	SignalVisibility SignalKind = "visibility"
 	SignalScroll     SignalKind = "scroll"
 	SignalPointer    SignalKind = "pointer"
@@ -128,16 +129,18 @@ const (
 	BindingSceneNode       BindingTarget = "sceneNode"
 	BindingMaterialUniform BindingTarget = "materialUniform"
 	BindingCamera          BindingTarget = "camera"
+	BindingSceneTransition BindingTarget = "sceneTransition"
 )
 
 // Binding connects one signal to an HTML style, CSS variable, or scene value.
 type Binding struct {
-	Signal   SignalRef     `json:"signal"`
-	Target   BindingTarget `json:"target"`
-	Selector string        `json:"selector"`
-	Node     string        `json:"node,omitempty"`
-	Property string        `json:"property"`
-	Unit     string        `json:"unit,omitempty"`
+	Signal     SignalRef       `json:"signal"`
+	Target     BindingTarget   `json:"target"`
+	Selector   string          `json:"selector"`
+	Node       string          `json:"node,omitempty"`
+	Property   string          `json:"property"`
+	Unit       string          `json:"unit,omitempty"`
+	Transition json.RawMessage `json:"transition,omitempty"`
 }
 
 // PinBinding keeps a Scene3D node aligned with a DOM element's cached rect.
@@ -150,11 +153,13 @@ type PinBinding struct {
 // Program is a serializable graph of motion signals and their bindings.
 // The JavaScript runtime evaluates it alongside the Scene3D renderer.
 type Program struct {
-	Version  int          `json:"version"`
-	ID       string       `json:"id"`
-	Signals  []SignalSpec `json:"signals"`
-	Bindings []Binding    `json:"bindings,omitempty"`
-	Pins     []PinBinding `json:"pins,omitempty"`
+	Transport *TransportSpec    `json:"transport,omitempty"`
+	Version   int               `json:"version"`
+	ID        string            `json:"id"`
+	Signals   []SignalSpec      `json:"signals"`
+	Bindings  []Binding         `json:"bindings,omitempty"`
+	Pins      []PinBinding      `json:"pins,omitempty"`
+	SVGMorphs []SVGMorphBinding `json:"svgMorphs,omitempty"`
 	// CSSCompiled lists the indexes of Bindings that CompileCSS turned into
 	// CSS. The browser runtime skips them when it supports scroll timelines.
 	CSSCompiled []int `json:"cssCompiled,omitempty"`
@@ -304,6 +309,9 @@ func (p *Program) Marshal() ([]byte, error) {
 	if strings.TrimSpace(p.ID) == "" {
 		return nil, errors.New("motion: program id is required")
 	}
+	if err := p.Transport.validate(); err != nil {
+		return nil, err
+	}
 	ids := make(map[string]struct{}, len(p.Signals))
 	for _, signal := range p.Signals {
 		id := strings.TrimSpace(signal.ID)
@@ -316,6 +324,9 @@ func (p *Program) Marshal() ([]byte, error) {
 		ids[id] = struct{}{}
 	}
 	for _, signal := range p.Signals {
+		if signal.Kind == SignalPlayhead && p.Transport == nil {
+			return nil, errors.New("motion: playhead signal requires a transport")
+		}
 		if signal.Kind == SignalCurve {
 			if err := validateCurveSignal(signal); err != nil {
 				return nil, err
@@ -343,6 +354,12 @@ func (p *Program) Marshal() ([]byte, error) {
 			return nil, err
 		}
 	}
+	if err := validateSVGMorphs(p.SVGMorphs, ids); err != nil {
+		return nil, err
+	}
+	if err := validateSceneTransitions(p.Bindings, ids); err != nil {
+		return nil, err
+	}
 	for _, index := range p.CSSCompiled {
 		if index < 0 || index >= len(p.Bindings) {
 			return nil, fmt.Errorf("motion: cssCompiled index %d is outside the %d bindings", index, len(p.Bindings))
@@ -368,6 +385,10 @@ func validateBinding(binding Binding) error {
 		return fmt.Errorf("motion: unsupported binding unit %q", binding.Unit)
 	}
 	switch binding.Target {
+	case BindingSceneTransition:
+		if property != "pose" || unit != "" {
+			return errors.New("motion: scene transition requires the pose property without a unit")
+		}
 	case BindingStyle:
 		if _, ok := motionStyleProperties[property]; !ok {
 			return fmt.Errorf("motion: unsupported style binding property %q", binding.Property)

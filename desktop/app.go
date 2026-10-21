@@ -109,6 +109,11 @@ type Options struct {
 	// SingleInstance is true and a later launch forwards its argv payload.
 	OnSecondInstance func(message InstanceMessage)
 
+	// OnOpenFiles receives documents opened by the operating system, including
+	// Finder launches on macOS. Paths are absolute. The callback runs on the
+	// window thread and should return quickly; it may arrive during startup.
+	OnOpenFiles func(paths []string)
+
 	// OnSuspend and OnResume mirror OS lifecycle notifications where the
 	// backend exposes them. Windows wires these to WM_POWERBROADCAST.
 	OnSuspend func()

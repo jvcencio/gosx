@@ -521,14 +521,16 @@ func (b *menuBuilder) submenuItem(entry MenuItem) (uintptr, error) {
 func (b *menuBuilder) leafItem(entry MenuItem) (uintptr, error) {
 	title := menuTitle(entry.Label)
 	action := uintptr(0)
-	if entry.OnClick != nil {
+	if entry.Role != "" {
+		action = objcSel(string(entry.Role) + ":")
+	} else if entry.OnClick != nil {
 		action = objcSel(menuActionSelector)
 	}
 	item := newMenuItem(title, action, "")
 	if item == 0 {
 		return 0, errMenuObject("item " + title)
 	}
-	if entry.OnClick != nil {
+	if entry.Role == "" && entry.OnClick != nil {
 		tag := menuReg.newTag()
 		b.actions[tag] = entry.OnClick
 		send1(item, objcSel("setTag:"), uintptr(tag))
