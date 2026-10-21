@@ -644,6 +644,18 @@ var outputs = []output{
 		sources: []source{sourceFile("../runtime/scene3d/model-preparation.ts")},
 	},
 	{
+		name:    "bootstrap-feature-motion-transport.js",
+		sources: []source{sourceFile("../runtime/motion/transport.ts")},
+	},
+	{
+		name:    "bootstrap-feature-motion-scene.js",
+		sources: []source{sourceFile("../runtime/motion/easing.ts"), sourceFile("../runtime/motion/scene.ts")},
+	},
+	{
+		name:    "bootstrap-feature-motion-svg.js",
+		sources: []source{sourceFile("../runtime/motion/easing.ts"), sourceFile("../runtime/motion/svg.ts")},
+	},
+	{
 		name:    "bootstrap-feature-scene3d-timeline.js",
 		sources: []source{sourceFile("../runtime/scene3d/timeline.ts")},
 	},
@@ -853,11 +865,15 @@ type sidecar struct {
 }
 
 // Release sidecars use an iterative DEFLATE search to reduce wire bytes.
-// The five passes only affect build time; browsers use ordinary gzip decoding.
+// Large compatibility bundles use a longer search; ordinary chunks retain the
+// five-pass build path. Browsers use ordinary gzip decoding in either case.
 func gzipCompress(raw []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	options := zopfli.DefaultOptions()
 	options.NumIterations = 5
+	if len(raw) > 1<<20 {
+		options.NumIterations = 8
+	}
 	if err := zopfli.GzipCompress(&options, raw, &buf); err != nil {
 		return nil, err
 	}

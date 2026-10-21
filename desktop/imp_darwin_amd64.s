@@ -160,12 +160,35 @@ TEXT ·impMenuAction(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	$const_retainArg0, R10
 	JMP	·impRecord(SB)
 
+// Finder supplies an NSArray as argument 1; retain it until Go drains it.
+TEXT ·impOpenFiles(SB), NOSPLIT|NOFRAME, $0-0
+	MOVQ	$const_evOpenFiles, R9
+	MOVQ	$const_retainArg1, R10
+	JMP	·impRecord(SB)
+
+TEXT ·impOpenURLs(SB), NOSPLIT|NOFRAME, $0-0
+	MOVQ	$const_evOpenURLs, R9
+	MOVQ	$const_retainArg1, R10
+	JMP	·impRecord(SB)
+
+TEXT ·impWebMessage(SB), NOSPLIT|NOFRAME, $0-0
+	MOVQ	$const_evWebMessage, R9
+	MOVQ	$const_retainArg1, R10
+	JMP	·impRecord(SB)
+
 // impStubs publishes the C-ABI entry of each stub, in the order of the
 // impStub* constants. Read from Go as a uintptr array: the func value of an
 // assembly function points at a wrapper.
-GLOBL	·impStubs(SB), NOPTR|RODATA, $40
+GLOBL	·impStubs(SB), NOPTR|RODATA, $96
 DATA	·impStubs+0(SB)/8, $·impWindowShouldClose(SB)
 DATA	·impStubs+8(SB)/8, $·impApplicationShouldTerminate(SB)
 DATA	·impStubs+16(SB)/8, $·impNavigationFinished(SB)
 DATA	·impStubs+24(SB)/8, $·impNavigationFailed(SB)
 DATA	·impStubs+32(SB)/8, $·impMenuAction(SB)
+DATA	·impStubs+40(SB)/8, $·impOpenFiles(SB)
+DATA	·impStubs+48(SB)/8, $·impOpenURLs(SB)
+DATA	·impStubs+56(SB)/8, $·impWebMessage(SB)
+DATA	·impStubs+64(SB)/8, $·impWebFilePanel(SB)
+DATA	·impStubs+72(SB)/8, $·impWebAlert(SB)
+DATA	·impStubs+80(SB)/8, $·impWebConfirm(SB)
+DATA	·impStubs+88(SB)/8, $·impWebPrompt(SB)

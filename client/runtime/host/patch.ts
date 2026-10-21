@@ -703,8 +703,20 @@
    *
    * Returns true when the node landed after every existing child.
    */
+  function createPatchedElement(parent, tag) {
+    var svg = "http://www.w3.org/2000/svg";
+    var name = String(tag).toLowerCase();
+    var parentName = parent && String(parent.localName || parent.tagName).toLowerCase();
+    // foreignObject is an SVG element whose children return to HTML. An
+    // explicitly nested svg starts a new SVG subtree in either context.
+    if (name === "svg" || (parent && parent.namespaceURI === svg && parentName !== "foreignobject")) {
+      return document.createElementNS(svg, tag);
+    }
+    return document.createElement(tag);
+  }
+
   function applyCreateElement(target, op) {
-    var el = document.createElement(op.tag);
+    var el = createPatchedElement(target, op.tag);
 
     if (op.text) {
       el.textContent = op.text;
@@ -765,7 +777,7 @@
    * op.text — optional text content for the replacement.
    */
   function applyReplaceElement(target, op) {
-    var newEl = document.createElement(op.tag);
+    var newEl = createPatchedElement(target.parentNode, op.tag);
 
     if (op.text) {
       newEl.textContent = op.text;

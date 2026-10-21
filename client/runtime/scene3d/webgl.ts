@@ -6559,14 +6559,38 @@
     });
   }
 
+  // Index keys by their source strings before encoding them. A frame may build
+  // fresh material profiles, so material identity cannot guard this cache.
+  // The weak owner is the renderer's program cache, not a global shader registry.
+  var scenePBRAuthoredProgramKeys = new WeakMap();
+  function scenePBRAuthoredProgramKey(programCache: any, vertex: any, fragment: any, layoutKey: string, skinned = false) {
+    let vertices = scenePBRAuthoredProgramKeys.get(programCache);
+    if (!vertices || programCache.size === 0) {
+      vertices = new Map();
+      scenePBRAuthoredProgramKeys.set(programCache, vertices);
+    }
+    let fragments = vertices.get(vertex);
+    if (!fragments) vertices.set(vertex, fragments = new Map());
+    let layouts = fragments.get(fragment);
+    if (!layouts) fragments.set(fragment, layouts = new Map());
+    const variant = skinned ? layoutKey + "::skinned" : layoutKey;
+    let key = layouts.get(variant);
+    if (key === undefined) {
+      const sources = JSON.stringify([vertex, fragment]);
+      key = sources.slice(0, -1) + "," + layoutKey + "]" + (skinned ? "::skinned" : "");
+      layouts.set(variant, key);
+    }
+    return key;
+  }
+
   function scenePBREnsureCustomProgram(gl: WebGL2RenderingContext, customProgramCache: any, material: any) {
     if (!scenePBRHasCustomHooks(material)) {
       return null;
     }
     // Programs depend on authored code and uniform declarations, not values.
     // Dynamic uniforms are uploaded for each draw without recompilation.
-    const key = JSON.stringify([material.customVertex || "", material.customFragment || "",
-      scenePBRCustomUniformDeclarations(material.customUniforms)]);
+    const key = scenePBRAuthoredProgramKey(customProgramCache, material.customVertex || "", material.customFragment || "",
+      JSON.stringify(scenePBRCustomUniformDeclarations(material.customUniforms)));
     const cached = customProgramCache.get(key);
     if (cached) {
       return cached.failed || scenePBRProgramFailed(cached.program.program) ? null : cached.program;
@@ -6587,13 +6611,13 @@
     }
     // Match the WebGPU path: uniform values belong to per-draw bindings.
     // The material key includes values and would leak a program per frame.
-    const baseKey = JSON.stringify([material.customVertex || "", selective ? material.specularFragmentGLSL : material.customFragment || "",
-      sceneSelenaMaterialLayout(material)]);
     // Skinned draws compile a distinct program variant (augmented vertex
     // source — see scenePBRSelenaSkinAugmentVertex), so it's cached under
     // its own key: the same material can back both static and skinned
     // objects across a scene.
-    const key = skinned ? baseKey + "::skinned" : baseKey;
+    const key = scenePBRAuthoredProgramKey(selenaProgramCache, material.customVertex || "",
+      selective ? material.specularFragmentGLSL : material.customFragment || "",
+      JSON.stringify(sceneSelenaMaterialLayout(material)), !!skinned);
     const cached = selenaProgramCache.get(key);
     if (cached) {
       return cached.failed || scenePBRProgramFailed(cached.program.program) ? null : cached.program;
@@ -8798,16 +8822,16 @@
       const projMatrix = scenePBRProjectionMatrixForCamera(cam, aspect, scratchProjMatrix);
       sceneMat4MultiplyInto(scratchSelenaViewProjection, projMatrix, viewMatrix);
       prepareRigidMeshBatches(bundle);
-      sceneSelenaFrameTime = performance.now() / 1000; sceneSelenaFrameProximity = Math.max(0, Math.min(1, sceneNumber(bundle.cameraProximity, 0))); // feed auto time and proximity uniforms before any Selena mesh draw
+      // Shader and crowd time follow the scene; stateful compute retains wall time.
+      sceneSelenaFrameTime = frameMeta?.sceneTime ?? performance.now() / 1000;
+      sceneSelenaFrameProximity = Math.max(0, Math.min(1, sceneNumber(bundle.cameraProximity, 0)));
       const batchPrograms = scenePBRPrepareBatchPrograms(gl, rigidObjectBatches, {
         crowdProgram, crowdShadowProgram, rigidShadowProgram, rigidShadowProgramFailed,
         prepareCrowdMotionShaders, ensureInstancedProgram });
       crowdProgram = batchPrograms.crowdProgram; crowdShadowProgram = batchPrograms.crowdShadowProgram;
       rigidShadowProgram = batchPrograms.rigidShadowProgram;
       if (scenePBRProgramsPending(gl)) return "pending";
-      // GPU-motion crowd instances interpolate/animate from this SAME clock
-      // (see SCENE_CROWD_MOTION_ATTRIBUTES_GLSL's doc comment): one uniform
-      // write per render(), never per instance.
+      // GPU crowd motion uploads this shared clock once per frame.
       setCrowdMotionNow(sceneSelenaFrameTime);
 
       // --- Shadow Pass ---
@@ -9092,7 +9116,7 @@
       var frameTimeSeconds = performance.now() / 1000;
       activeStaticPointEntries.clear();
       activeStaticPointKeys.clear();
-      drawPointsEntries(gl, Array.isArray(bundle.points) ? bundle.points : [], bundle.environment, viewMatrix, projMatrix, frameTimeSeconds, renderH);
+      drawPointsEntries(gl, Array.isArray(bundle.points) ? bundle.points : [], bundle.environment, viewMatrix, projMatrix, sceneSelenaFrameTime, renderH);
       drawPointsEntries(gl, buildComputePointsEntries(bundle.computeParticles, frameTimeSeconds), bundle.environment, viewMatrix, projMatrix, frameTimeSeconds, renderH);
       releaseInactiveStaticPointBuffers();
       publishWebGLComputeParticleDrawStats();
@@ -10226,36 +10250,26 @@
     // casualty.
     function applyPointsAuthoredCustomUniforms(prog, uniforms, frameTimeSeconds) {
       if (uniforms && typeof uniforms === "object") {
-        var keys = Object.keys(uniforms);
-        for (var k = 0; k < keys.length; k++) {
-          var name = keys[k];
+        for (const name of Object.keys(uniforms)) {
           if (name === "time") continue;
-          var val = uniforms[name];
-        var loc = gl.getUniformLocation(prog.program, name);
-        if (loc == null) continue;
-        if (typeof val === "number") {
-          gl.uniform1f(loc, val);
-        } else if (Array.isArray(val) || (val && val.buffer instanceof ArrayBuffer)) {
-          var arr = Array.isArray(val) ? val : Array.from(val);
-          switch (arr.length) {
-          case 1: gl.uniform1f(loc, arr[0]); break;
-          case 2: gl.uniform2f(loc, arr[0], arr[1]); break;
-          case 3: gl.uniform3f(loc, arr[0], arr[1], arr[2]); break;
-          case 4: gl.uniform4f(loc, arr[0], arr[1], arr[2], arr[3]); break;
-          default:
-            if (arr.length === 9) gl.uniformMatrix3fv(loc, false, new Float32Array(arr));
-            else if (arr.length === 16) gl.uniformMatrix4fv(loc, false, new Float32Array(arr));
-            break;
+          const value = uniforms[name], loc = gl.getUniformLocation(prog.program, name);
+          if (loc == null) continue;
+          if (typeof value === "number") sceneSelenaUploadUniform(gl, loc, "float", value);
+          else if (Array.isArray(value) || (value && value.buffer instanceof ArrayBuffer)) {
+            switch (value.length) {
+            case 1: sceneSelenaUploadUniform(gl, loc, "float", value); break;
+            case 2: case 3: case 4:
+              sceneSelenaUploadUniform(gl, loc, "vec" + value.length, value); break;
+            default:
+              if (value.length === 9) sceneSelenaUploadUniform(gl, loc, "mat3", new Float32Array(value));
+              else if (value.length === 16) sceneSelenaUploadUniform(gl, loc, "mat4", new Float32Array(value));
+            }
           }
         }
-        }
       }
-      // Force the frame clock last so nothing the author shipped can shadow
-      // it — the WebGL mirror of the WGSL packer's reserved-name rule.
-      var timeLoc = gl.getUniformLocation(prog.program, "time");
-      if (timeLoc != null && typeof frameTimeSeconds === "number") {
-        gl.uniform1f(timeLoc, frameTimeSeconds);
-      }
+      // Reserved clock values override authored placeholders on every draw.
+      const timeLoc = gl.getUniformLocation(prog.program, "time");
+      if (timeLoc != null && typeof frameTimeSeconds === "number") gl.uniform1f(timeLoc, frameTimeSeconds);
     }
 
     function disposeComputeParticleSystemRecord(record) {
@@ -11042,6 +11056,7 @@
         }
       }
       customProgramCache.clear();
+      scenePBRAuthoredProgramKeys.delete(customProgramCache);
 
       for (const record of selenaProgramCache.values()) {
         const sp = record && record.program;
@@ -11052,6 +11067,7 @@
         }
       }
       selenaProgramCache.clear();
+      scenePBRAuthoredProgramKeys.delete(selenaProgramCache);
 
       if (lineProgram && lineResources) {
         disposeSceneWebGLRenderer(gl, lineProgram, lineResources);

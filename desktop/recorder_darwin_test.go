@@ -60,6 +60,9 @@ func TestRecorderRecordsEachStubsEvent(t *testing.T) {
 		{"didFinishNavigation", impStubNavigationFinished, evNavigationFinished, 0, false, 2},
 		{"didFailNavigation", impStubNavigationFailed, evNavigationFailed, retainArg2, true, 2},
 		{"menuAction", impStubMenuAction, evMenuAction, retainArg0, true, 0},
+		{"openFiles", impStubOpenFiles, evOpenFiles, retainArg1, true, 1},
+		{"openURLs", impStubOpenURLs, evOpenURLs, retainArg1, true, 1},
+		{"webMessage", impStubWebMessage, evWebMessage, retainArg1, true, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newTestRing(t, 8)
@@ -208,7 +211,9 @@ func TestRecorderToleratesAnUnwiredInstance(t *testing.T) {
 	// A delegate instance whose ctrl variable is still nil must be answered, not
 	// crash AppKit.
 	self := &fakeSelf{}
-	for i, stub := range impStubs {
+	// The WKUIDelegate stubs additionally require a real completion Block;
+	// TestDarwinWebUIUnwiredRecorderCancelsCompletion exercises that contract.
+	for i, stub := range impStubs[:impStubWebFilePanel] {
 		if ret := callStub(stub, self, objcSel("probe:"), 1, 2, 3); ret != 0 {
 			t.Errorf("stub %d returned %#x for an unwired instance, want 0", i, ret)
 		}
