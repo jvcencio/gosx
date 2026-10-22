@@ -268,8 +268,13 @@ const (
 	// trigger kind — interval, signal, event, or the public
 	// window.__gosx.live.refresh(element) API — shares one guard: a region
 	// already mid-fetch never starts a second, overlapping one.
-	NavigationLiveSrcAttr        = "data-gosx-live-src"
-	NavigationLiveIntervalAttr   = "data-gosx-live-interval"
+	NavigationLiveSrcAttr      = "data-gosx-live-src"
+	NavigationLiveIntervalAttr = "data-gosx-live-interval"
+	// NavigationLiveFocusAttr accepts pause (default) or allow. Allow keeps
+	// interval updates running with focus inside the region, for progress
+	// displays whose binds do not overwrite editable values. Hidden documents,
+	// active navigation/form submissions, and held pointers still pause updates.
+	NavigationLiveFocusAttr      = "data-gosx-live-focus"
 	NavigationLiveBindAttr       = "data-gosx-live-bind"
 	NavigationLiveFlashClassAttr = "data-gosx-live-flash-class"
 	NavigationLiveSignalAttr     = "data-gosx-live-signal"

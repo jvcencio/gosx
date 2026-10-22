@@ -923,7 +923,7 @@ func Page() Node {
 			</p>
 			{CodeBlock("gosx", data.sample021)}
 			<p>
-				A tick from the interval trigger alone skips, and retries next tick, while the document is hidden, a navigation is in flight, or the region contains the document's focused element or an element under an active pointer. A signal or hub-event trigger answers its own discrete, user-caused event immediately regardless — picking an option and having its own region refresh right away, even while that same element keeps focus, is the whole point of that trigger.
+				A tick from the interval trigger alone skips, and retries next tick, while the document is hidden, a navigation is in flight, or the region contains the document's focused element or an element under an active pointer. Set <span class="inline-code">data-gosx-live-focus="allow"</span> on a progress or meter region to keep polling while a control inside it has focus. The default is <span class="inline-code">pause</span>. Use this opt-in when bindings do not overwrite editable values; document visibility, navigation, form submission, and held pointers still pause interval updates. A signal or hub-event trigger answers its own discrete, user-caused event immediately regardless — picking an option and having its own region refresh right away, even while that same element keeps focus, is the whole point of that trigger.
 			</p>
 			<p>
 				Every trigger kind shares one fetch path: it sends
