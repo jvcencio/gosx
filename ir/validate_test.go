@@ -1009,3 +1009,21 @@ component Strict(props: CardProps) {
 		t.Fatalf("expected no warnings for zero-props, typed legacy, or strict components, got %+v", warnings)
 	}
 }
+
+func TestValidateLiveFocusPolicy(t *testing.T) {
+	for _, policy := range []string{"pause", "allow", "always"} {
+		source := []byte("package main\n\nfunc Page() Node {\n return <div data-gosx-live-src=\"/api/progress\" data-gosx-live-interval=\"1s\" data-gosx-live-focus=\"" + policy + "\"></div>\n}\n")
+		prog, err := parse(t, source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		diags := ir.Validate(prog)
+		if policy == "always" {
+			if len(diags) != 1 || !strings.Contains(diags[0].Message, "data-gosx-live-focus") {
+				t.Fatal("invalid live focus policy was accepted", diags)
+			}
+		} else if len(diags) != 0 {
+			t.Fatal(policy, diags)
+		}
+	}
+}

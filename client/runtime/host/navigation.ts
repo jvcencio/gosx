@@ -148,6 +148,7 @@
   // regions" below for the full contract; these are the attribute
   // constants it reads.
   const LIVE_SRC_ATTR = "data-gosx-live-src";
+  const LIVE_FOCUS_ATTR = "data-gosx-live-focus";
   const LIVE_INTERVAL_ATTR = "data-gosx-live-interval";
   const LIVE_BIND_ATTR = "data-gosx-live-bind";
   const LIVE_FLASH_CLASS_ATTR = "data-gosx-live-flash-class";
@@ -7141,9 +7142,9 @@
   // document.activeElement reads as <body> and would otherwise match
   // every region) or the element under an active pointer sits anywhere
   // inside root.
-  function liveRegionInteractionActive(root) {
+  function liveRegionInteractionActive(root, allowFocus) {
     const active = document.activeElement;
-    if (active && active !== document.body && elementContainsNode(root, active)) {
+    if (!allowFocus && active && active !== document.body && elementContainsNode(root, active)) {
       return true;
     }
     return elementContainsNode(root, activeLivePointerTarget);
@@ -7462,6 +7463,10 @@
       src = parsedSrc ? parsedSrc.href : "";
       if (!src) return null;
     }
+    const focusPolicy = root.getAttribute(LIVE_FOCUS_ATTR);
+    if (focusPolicy && focusPolicy !== "pause" && focusPolicy !== "allow") {
+      console.warn("[gosx] invalid " + LIVE_FOCUS_ATTR + " value; expected \"pause\" or \"allow\"; focused updates remain paused");
+    }
     const rawInterval = root.getAttribute(LIVE_INTERVAL_ATTR);
     let intervalMs = null;
     if (rawInterval) {
@@ -7490,6 +7495,7 @@
     return {
       root: root,
       src: src,
+      allowFocus: focusPolicy === "allow",
       eventMode: eventMode,
       hub: root.getAttribute(LIVE_HUB_ATTR) || "",
       intervalMs: intervalMs,
@@ -7583,7 +7589,7 @@
     if (
       documentIsHidden()
       || navigationOrFormSubmissionInFlight()
-      || liveRegionInteractionActive(record.root)
+      || liveRegionInteractionActive(record.root, record.allowFocus)
     ) {
       return;
     }

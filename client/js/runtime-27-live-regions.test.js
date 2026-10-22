@@ -569,3 +569,49 @@ test("window.__gosx.live.refresh(element) triggers a fetch directly and resolves
   assert.equal(score.textContent, "5.1");
   assert.equal(env.fetchCalls.length, 1);
 });
+
+
+test("live focus opt-in keeps progress moving without changing focused controls", async () => {
+  const url = "http://localhost:3000/api/progress";
+  const { root, score } = buildLiveRegion({ src: url });
+  root.setAttribute("data-gosx-live-focus", "allow");
+  const input = new FakeElement("input", null);
+  input.value = "next render settings";
+  root.appendChild(input);
+  let value = 1;
+  const env = createContext({ elements: [root], fetchRoutes: { [url]: () => ({text:JSON.stringify({"score:t42":value})}) } });
+  env.document.activeElement = input;
+  const timers = installManualTimers(env.context);
+  runScript(navigationSource, env.context, "navigation_runtime.js");
+  await flushAsyncWork();
+  assert.equal(score.textContent, "1");
+  value = 2; timers.runInterval(10000); await flushAsyncWork();
+  assert.equal(score.textContent, "2");
+  assert.equal(input.value, "next render settings");
+  assert.equal(env.document.activeElement, input);
+  env.document.dispatchEvent({type:"pointerdown", target:input});
+  value = 3; timers.runInterval(10000); await flushAsyncWork();
+  assert.equal(score.textContent, "2", "a held pointer still pauses updates");
+  env.document.dispatchEvent({type:"pointerup", target:input});
+  env.document.visibilityState = "hidden";
+  timers.runInterval(10000); await flushAsyncWork();
+  assert.equal(score.textContent, "2", "hidden documents still pause updates");
+  env.document.visibilityState = "visible";
+  timers.runInterval(10000); await flushAsyncWork();
+  assert.equal(score.textContent, "3");
+});
+
+test("invalid live focus policy warns and retains the default pause", async () => {
+  const url = "http://localhost:3000/api/progress";
+  const {root, score} = buildLiveRegion({src:url});
+  root.setAttribute("data-gosx-live-focus", "always");
+  const button = new FakeElement("button", null); root.appendChild(button);
+  const env = createContext({elements:[root],fetchRoutes:{[url]:{text:JSON.stringify({"score:t42":7})}}});
+  env.document.activeElement = button;
+  installManualTimers(env.context);
+  runScript(navigationSource, env.context, "navigation_runtime.js");
+  await flushAsyncWork();
+  assert.equal(score.textContent, "0.0");
+  assert.equal(env.fetchCalls.length, 0);
+  assert.ok(env.consoleLogs.warn.some(message => message.includes("data-gosx-live-focus")));
+});

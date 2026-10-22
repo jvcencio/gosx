@@ -322,6 +322,7 @@ const (
 // dot-separated key chain), never empty and never containing whitespace.
 const (
 	liveIntervalAttr   = "data-gosx-live-interval"
+	liveFocusAttr      = "data-gosx-live-focus"
 	liveBindAttr       = "data-gosx-live-bind"
 	liveFlashClassAttr = "data-gosx-live-flash-class"
 	regionIntervalAttr = "data-gosx-region-interval"
@@ -756,6 +757,10 @@ func (v *validator) validateStaticCountdownAttr(node *Node, attr *Attr) {
 				Message: fmt.Sprintf("invalid %s value %q: must be a whole number of seconds or minutes", attr.Name, attr.Value),
 				Hint:    `for example "4s" or "2m" — the same subset data-gosx-revalidate-interval accepts`,
 			})
+		}
+	case liveFocusAttr:
+		if attr.Value != "pause" && attr.Value != "allow" {
+			v.diags = append(v.diags, Diagnostic{Span: node.Span, Message: fmt.Sprintf("invalid %s value %q: must be \"pause\" or \"allow\"", liveFocusAttr, attr.Value), Hint: "Use allow for read-only progress that must update while a control remains focused."})
 		}
 	case regionModeAttr:
 		if !isValidRegionModeValue(attr.Value) {
