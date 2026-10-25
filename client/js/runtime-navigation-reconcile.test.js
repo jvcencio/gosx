@@ -303,16 +303,19 @@ test("GET and framework action forms are automatic while other POST and native f
   assert.equal(env.document.getElementById("results").textContent, "mesh results");
 });
 
-test("automatic action transport failure performs one native fallback without re-interception", async () => {
+test("automatic action transport failure retains the form and reports uncertainty without replay", async () => {
   const form = new FakeElement("form", null);
   form.setAttribute("action", "/scene/__actions/save");
   form.setAttribute("method", "post");
-  let nativeMarkerDuringFallback = false;
+  const draft = new FakeElement("textarea", null);
+  draft.setAttribute("name", "idea");
+  draft.value = "keep this melody";
+  form.appendChild(draft);
+  const status = new FakeElement("p", null);
+  status.setAttribute("class", "form-status");
+  form.appendChild(status);
   let fallbackCalls = 0;
-  form.requestSubmit = function() {
-    fallbackCalls += 1;
-    nativeMarkerDuringFallback = form.hasAttribute("data-gosx-native");
-  };
+  form.requestSubmit = function() { fallbackCalls++; };
 
   const env = createContext({
     elements: [form],
@@ -329,9 +332,20 @@ test("automatic action transport failure performs one native fallback without re
   await flushAsyncWork();
 
   assert.equal(event.prevented(), true);
-  assert.equal(fallbackCalls, 1);
-  assert.equal(nativeMarkerDuringFallback, true, "fallback requestSubmit must run behind the native opt-out");
-  assert.equal(form.hasAttribute("data-gosx-native"), false, "temporary opt-out must be restored afterward");
+  assert.equal(env.fetchCalls.length, 1);
+  assert.equal(fallbackCalls, 0, "automatically managed mutations must not replay through native submission");
+  assert.equal(form.submitCalls.length, 0);
+  assert.equal(form.hasAttribute("data-gosx-native"), false);
+  assert.equal(form.hasAttribute("data-gosx-form"), false, "automatic enhancement must not rewrite the authored opt-in");
+  assert.equal(form.parentNode, env.document.body);
+  assert.equal(form.querySelector("textarea"), draft);
+  assert.equal(draft.value, "keep this melody");
+  assert.equal(form.hasAttribute("data-gosx-pending"), false);
+  assert.equal(form.getAttribute("data-gosx-form-state"), "error");
+  assert.equal(status.textContent, "Could not confirm whether this action completed. Check the saved state before trying again.");
+  const result = env.document.dispatchedEvents.filter(event => event.type === "gosx:form:result").at(-1);
+  assert.equal(result.detail.ok, false);
+  assert.equal(result.detail.status, 0);
 });
 
 test("a superseded navigation cannot dispose the new page after awaiting async engine reuse", async () => {

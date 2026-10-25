@@ -2910,10 +2910,37 @@
       console.error("[gosx] form action failed:", err);
       reportNavigationFailure("form action", err, {
         source: url.href,
+        fallback: method === "GET" ? "native" : "none",
         telemetry: { url: url.href, method: method },
       });
-      nativeSubmitForm(form, submitter);
-      return;
+      if (method === "GET") {
+        nativeSubmitForm(form, submitter);
+        return;
+      }
+      // A rejected fetch does not prove that the server rejected the write.
+      // It may have committed before its response was lost. Never repeat a
+      // mutation through native fallback or replace the page holding drafts.
+      // Project an unconfirmed outcome through the ordinary feedback path so
+      // callers can inspect saved state before deciding whether to try again.
+      outcome = {
+        response: { ok: false, status: 0 },
+        result: {
+          ok: false,
+          message: "Could not confirm whether this action completed. Check the saved state before trying again.",
+        },
+        redirected: false,
+      };
+      try {
+        presentManagedFormToast(outcome.response, outcome.result);
+      } catch (feedbackError) {
+        reportManagedActionResponseFailure("form action toast", feedbackError, url.href, method);
+      }
+      try {
+        dispatchManagedFormResult(url.href, method, outcome.response, outcome.result);
+      } catch (feedbackError) {
+        reportManagedActionResponseFailure("form action result", feedbackError, url.href, method);
+      }
+      return outcome;
     } finally {
       try {
         if (managedFormSubmissions.get(form) === submission) {

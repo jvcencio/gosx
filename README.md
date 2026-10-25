@@ -405,6 +405,13 @@ state between requests. Browser sharing is scoped to the page runtime.
 
 Return targets must be root-relative and same-origin. An explicit handler redirect takes precedence; otherwise GoSX falls back to a safe same-site referrer and then the action route. Managed navigation preserves authored fragments across fetches and same-origin HTTP redirects, and same-document fragment changes do not refetch the page.
 
+If a managed mutation loses its response, GoSX keeps the page and its drafts
+in place. It reports that the outcome could not be confirmed instead of
+submitting the action again through a native form. Inspect the saved state
+before trying again. The `gosx:form:result` event reports `ok: false` and
+`status: 0` for this case; that means no response was received, not that the
+server rejected the change. GET forms retain their native navigation fallback.
+
 Actions that should return to the submitting page can opt in with
 `ctx.RedirectBackWithMessage("/fallback", "Saved.")`. GoSX chooses the valid
 `__gosx_return_to` target first, then the sanitized root-relative fallback;
