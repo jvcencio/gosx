@@ -8,6 +8,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -210,6 +211,8 @@ func TestPlaygroundDirectLoadMetadataAndMobileHeader(t *testing.T) {
 		SourcePath          string   `json:"sourcePath"`
 		HeaderDirection     string   `json:"headerDirection"`
 		HeaderAlign         string   `json:"headerAlign"`
+		HeaderContentLeft   float64  `json:"headerContentLeft"`
+		TitleLeft           float64  `json:"titleLeft"`
 		TitleWidth          float64  `json:"titleWidth"`
 		TitleHeight         float64  `json:"titleHeight"`
 		HasHorizontalScroll bool     `json:"hasHorizontalScroll"`
@@ -232,6 +235,8 @@ func TestPlaygroundDirectLoadMetadataAndMobileHeader(t *testing.T) {
 	  sourcePath: document.querySelector('.demo-details__path')?.textContent.trim() || '',
 	  headerDirection: headerStyle.flexDirection,
 	  headerAlign: headerStyle.alignItems,
+	  headerContentLeft: header.getBoundingClientRect().left + parseFloat(headerStyle.borderLeftWidth) + parseFloat(headerStyle.paddingLeft),
+	  titleLeft: titleRect.left,
 	  titleWidth: titleRect.width,
 	  titleHeight: titleRect.height,
 	  hasHorizontalScroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -262,9 +267,16 @@ func TestPlaygroundDirectLoadMetadataAndMobileHeader(t *testing.T) {
 	if !strings.Contains(got.SourceHref, "/examples/gosx-docs/app/demos/playground/page.gsx") || got.SourcePath != "examples/gosx-docs/app/demos/playground/page.gsx" {
 		t.Errorf("direct-load source = (%q, %q)", got.SourceHref, got.SourcePath)
 	}
-	if got.HeaderDirection != "column" || got.HeaderAlign != "flex-start" {
+	// CSS Align defines flex-start as a legacy value alias of flow-start;
+	// newer Chromium serializes the canonical name. Keep checking placement.
+	// https://drafts.csswg.org/css-align/#positional-values
+	if got.HeaderDirection != "column" || (got.HeaderAlign != "flex-start" && got.HeaderAlign != "flow-start") {
 		t.Errorf("mobile playground header layout = direction %q, align %q", got.HeaderDirection, got.HeaderAlign)
 	}
+	if math.Abs(got.TitleLeft-got.HeaderContentLeft) > 1 {
+		t.Errorf("mobile playground title left edge = %.2f, want header content edge %.2f", got.TitleLeft, got.HeaderContentLeft)
+	}
+	t.Logf("mobile playground header: direction %q, align %q, title %.2fx%.2f at %.2f, content edge %.2f", got.HeaderDirection, got.HeaderAlign, got.TitleWidth, got.TitleHeight, got.TitleLeft, got.HeaderContentLeft)
 	if got.TitleWidth < 250 || got.TitleHeight > 40 {
 		t.Errorf("mobile playground title bounds = %.2fx%.2f; title is still squeezed or wrapped", got.TitleWidth, got.TitleHeight)
 	}
