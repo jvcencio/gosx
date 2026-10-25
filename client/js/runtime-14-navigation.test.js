@@ -4373,39 +4373,125 @@ test("accepted actions block malformed and unsafe redirect targets without nativ
   }
 });
 
-test("action POST transport failure retains one native submission fallback", async () => {
+test("a lost POST response keeps the newer draft and never replays an accepted write", async () => {
   const actionURL = "http://localhost:3000/save";
+  const host = new FakeElement("div", null);
+  host.setAttribute("data-gosx-toast-host", "");
   const form = new FakeElement("form", null);
   form.setAttribute("action", actionURL);
   form.setAttribute("method", "post");
   form.setAttribute("data-gosx-form", "");
+  const draft = new FakeElement("textarea", null);
+  draft.setAttribute("name", "content");
+  draft.value = "submitted idea";
+  form.appendChild(draft);
+  const status = new FakeElement("p", null);
+  status.setAttribute("class", "form-status");
+  form.appendChild(status);
   const submitter = new FakeElement("button", null);
   form.appendChild(submitter);
+  let saved = "", writes = 0, releaseResponse;
+  const droppedResponse = new Promise(resolve => { releaseResponse = resolve; });
   const env = createContext({
-    elements: [form],
+    elements: [host, form],
     fetchRoutes: {
-      [actionURL]() { throw new Error("action transport failed"); },
+      async [actionURL](_url, init) {
+        writes++;
+        saved = init.body.values.find(([name]) => name === "content")[1];
+        if (writes === 1) {
+          await droppedResponse;
+          throw new Error("response lost after the server saved");
+        }
+        return { text: '{"ok":true,"message":"Saved after checking."}' };
+      },
     },
   });
   const hardNavigations = [];
+  const initialURL = env.context.location.href;
   env.context.location.assign = function(url) { hardNavigations.push(["assign", String(url)]); };
   env.context.location.replace = function(url) { hardNavigations.push(["replace", String(url)]); };
-
+  const timers = installManualTimers(env.context);
   runScript(navigationSource, env.context, "navigation_runtime.js");
-  env.document.eventListeners.get("submit")[0]({
-    type: "submit",
-    target: form,
-    submitter,
-    defaultPrevented: false,
+  const submit = () => env.document.eventListeners.get("submit")[0]({
+    type: "submit", target: form, submitter, defaultPrevented: false,
     preventDefault() { this.defaultPrevented = true; },
   });
+  submit();
+  await flushAsyncWork();
+  assert.equal(saved, "submitted idea", "the write succeeded before its acknowledgment was lost");
+  assert.equal(form.getAttribute("data-gosx-form-state"), "pending");
+  draft.value = "submitted idea\nnew unsaved melody";
+  draft.selectionStart = draft.selectionEnd = draft.value.length;
+  const caret = draft.selectionStart;
+  releaseResponse();
   await flushAsyncWork();
 
-  assert.deepEqual(env.fetchCalls.map((call) => call.url), [actionURL]);
-  assert.equal(form.requestSubmitCalls.length, 1);
-  assert.equal(form.requestSubmitCalls[0][0], submitter);
+  const message = "Could not confirm whether this action completed. Check the saved state before trying again.";
+  assert.equal(writes, 1, "an uncertain acknowledgment must not cause another write");
+  assert.deepEqual(env.fetchCalls.map(call => [call.url, call.init.method]), [[actionURL, "POST"]]);
+  assert.equal(form.requestSubmitCalls.length, 0);
   assert.equal(form.submitCalls.length, 0);
   assert.deepEqual(hardNavigations, []);
+  assert.equal(env.context.location.href, initialURL);
+  assert.equal(env.document.body.contains(form), true);
+  assert.equal(form.querySelector("textarea"), draft, "the mounted draft node must survive recovery feedback");
+  assert.equal(draft.value, "submitted idea\nnew unsaved melody");
+  assert.equal(draft.selectionStart, caret);
+  assert.equal(env.fetchCalls[0].init.body.values.find(([name]) => name === "content")[1], "submitted idea", "the pending submission remains a snapshot");
+  assert.equal(form.hasAttribute("data-gosx-pending"), false);
+  assert.equal(form.getAttribute("data-gosx-form-state"), "error");
+  assert.equal(status.textContent, message);
+  const toast = host.querySelector("[data-gosx-toast]");
+  assert.ok(toast);
+  assert.equal(toast.getAttribute("data-gosx-toast-kind"), "error");
+  assert.equal(toast.getAttribute("role"), "alert");
+  assert.equal(timers.count(), 0, "uncertain outcomes must stay visible");
+  const result = env.document.dispatchedEvents.filter(event => event.type === "gosx:form:result").at(-1).detail;
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 0);
+  assert.equal(result.result.message, message);
+
+  // Once the caller has checked saved state, an explicit retry is a new action
+  // using the current draft. The failed request must not leave the form stuck.
+  assert.equal(saved, "submitted idea");
+  submit();
+  await flushAsyncWork();
+  assert.equal(writes, 2);
+  assert.equal(saved, draft.value);
+  assert.equal(form.requestSubmitCalls.length, 0);
+  assert.equal(form.getAttribute("data-gosx-form-state"), "success");
+  assert.equal(status.textContent, "Saved after checking.");
+  assert.equal(form.hasAttribute("data-gosx-pending"), false);
+});
+
+test("programmatic action transport failure reports an uncertain result without submitting again", async () => {
+  const main = new FakeElement("main", null);
+  main.setAttribute("data-gosx-main", "");
+  const actionURL = "http://localhost:3000/__actions/duplicate";
+  let writes = 0;
+  const env = createContext({
+    elements: [main],
+    fetchRoutes: {
+      [actionURL]() { writes++; throw new Error("response dropped after duplication"); },
+    },
+  });
+  runScript(navigationSource, env.context, "navigation_runtime.js");
+  const form = env.context.__gosx_submit_action("/__actions/duplicate", { name: "chorus-copy" }, { root: main, keepForm: true });
+  const outcome = await form.__gosxSubmitPromise;
+  assert.equal(writes, 1);
+  assert.equal(form.parentNode, main);
+  assert.equal(form.requestSubmitCalls.length, 0);
+  assert.equal(form.submitCalls.length, 0);
+  assert.equal(form.hasAttribute("data-gosx-pending"), false);
+  assert.equal(form.getAttribute("data-gosx-form-state"), "error");
+  assert.equal(outcome.response.ok, false);
+  assert.equal(outcome.response.status, 0);
+  assert.equal(outcome.result.ok, false);
+  assert.equal(outcome.result.message, "Could not confirm whether this action completed. Check the saved state before trying again.");
+  assert.equal(outcome.redirected, false);
+  const event = env.document.dispatchedEvents.filter(event => event.type === "gosx:form:result").at(-1);
+  assert.equal(event.detail.ok, false);
+  assert.equal(event.detail.status, 0);
 });
 
 test("navigation runtime exposes programmatic managed action submission", async () => {
@@ -5542,15 +5628,15 @@ test("navigation runtime intercepts a POST form carrying only the data-gosx-mana
 
 // gosx#179 F7 + nativeSubmitForm: a form carrying only the data-gosx-managed
 // shorthand (never expanded server-side) must also fall back to a clean
-// native submission when the managed transport fails. nativeSubmitForm has
+// native GET submission when the managed transport fails. nativeSubmitForm has
 // to strip the shorthand — not just FORM_ATTR — before requestSubmit(), or
 // isManagedFormElement would re-intercept its own fallback submission; it
 // must then restore the exact prior value so the DOM is unchanged afterward.
-test("nativeSubmitForm strips and restores the shorthand attribute around a native fallback submission", async () => {
-  const actionURL = "http://localhost:3000/save";
+test("nativeSubmitForm strips and restores the shorthand attribute around a native GET fallback", async () => {
+  const actionURL = "http://localhost:3000/search";
   const form = new FakeElement("form", null);
   form.setAttribute("action", actionURL);
-  form.setAttribute("method", "post");
+  form.setAttribute("method", "get");
   form.setAttribute("data-gosx-managed", "true");
   const submitter = new FakeElement("button", null);
   form.appendChild(submitter);
@@ -5695,7 +5781,7 @@ test("navigation runtime restores prior managed form lifecycle attrs after submi
   assert.equal(env.document.dispatchedEvents.at(-1).type, "gosx:form:navigate");
 });
 
-test("navigation runtime honors submitter overrides and falls back with native semantics", async () => {
+test("navigation runtime honors GET overrides and does not replay a failed POST override", async () => {
   const form = new FakeElement("form", null);
   form.setAttribute("action", "/save");
   form.setAttribute("method", "post");
@@ -5757,6 +5843,9 @@ test("navigation runtime honors submitter overrides and falls back with native s
   assert.equal(env.fetchCalls[0].url, "http://localhost:3000/preview?title=hello&intent=preview");
   assert.equal(env.document.dispatchedEvents.at(-1).detail.method, "GET");
 
+  // The GET replaced the body. Mount the form in the current page before
+  // exercising a second submitter override and its inline feedback.
+  env.document.body.appendChild(form);
   env.fetchCalls.length = 0;
   submitter.setAttribute("formmethod", "post");
   submitter.setAttribute("formaction", "/missing");
@@ -5774,10 +5863,11 @@ test("navigation runtime honors submitter overrides and falls back with native s
   });
   await flushAsyncWork();
 
-  assert.equal(form.requestSubmitCalls.length, 1);
-  assert.equal(form.requestSubmitCalls[0][0], submitter);
+  assert.equal(form.requestSubmitCalls.length, 0);
+  assert.equal(form.submitCalls.length, 0);
   assert.equal(form.hasAttribute("data-gosx-form"), true);
-  assert.equal(form.getAttribute("data-gosx-form-state"), "idle");
+  assert.equal(form.getAttribute("data-gosx-form-state"), "error");
+  assert.equal(env.document.dispatchedEvents.at(-1).detail.status, 0);
 });
 
 test("navigation runtime ignores default submitter action property when no override attribute exists", async () => {

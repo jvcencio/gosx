@@ -11,7 +11,8 @@
 // committed .min.js stays byte-current with it. This file's only job is the
 // one thing --check cannot prove: that the minified bytes are still valid,
 // executable JavaScript whose top-level IIFE runs to completion and installs
-// the same public surface the source installs.
+// the same public surface the source installs. The mutation transport case below
+// also guards against replaying a write in the emitted production bytes.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -84,4 +85,44 @@ test("the minified artifact publishes the same navigation API surface as the sou
   // identical. A drift here would mean a minifier pass mangled properties
   // (mangleProps), which this build must never enable.
   assert.deepEqual(minifiedKeys, sourceKeys);
+});
+
+
+test("the minified runtime does not replay a write after its response is lost", async () => {
+  const main = new FakeElement("main", null);
+  main.setAttribute("data-gosx-main", "");
+  const actionURL = "http://localhost:3000/__actions/copy";
+  let savedCopies = 0;
+  const env = createContext({
+    elements: [main],
+    fetchRoutes: {
+      [actionURL]() {
+        savedCopies++;
+        throw new Error("connection closed after saving the copy");
+      },
+    },
+  });
+  const hardNavigations = [];
+  env.context.location.assign = url => hardNavigations.push(String(url));
+  env.context.location.replace = url => hardNavigations.push(String(url));
+  const originalURL = env.context.location.href;
+  runScript(navigationRuntimeMinifiedSource, env.context, "navigation-runtime.min.js");
+  const form = env.context.__gosx.navigation.submitAction("/__actions/copy", { name: "finale" }, { root: main, keepForm: true });
+  const outcome = await form.__gosxSubmitPromise;
+  assert.equal(savedCopies, 1);
+  assert.equal(env.fetchCalls.length, 1);
+  assert.equal(form.requestSubmitCalls.length, 0);
+  assert.equal(form.submitCalls.length, 0);
+  assert.equal(form.parentNode, main);
+  assert.deepEqual(hardNavigations, []);
+  assert.equal(env.context.location.href, originalURL);
+  assert.equal(form.hasAttribute("data-gosx-pending"), false);
+  assert.equal(form.getAttribute("data-gosx-form-state"), "error");
+  assert.equal(outcome.response.status, 0);
+  assert.equal(outcome.result.ok, false);
+  assert.equal(outcome.redirected, false);
+  const resultEvent = env.document.dispatchedEvents.find(event => event.type === "gosx:form:result");
+  assert.equal(resultEvent.detail.ok, false);
+  assert.equal(resultEvent.detail.status, 0);
+  assert.match(resultEvent.detail.result.message, /Check the saved state before trying again/);
 });
